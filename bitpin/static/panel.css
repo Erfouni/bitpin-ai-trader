@@ -997,6 +997,43 @@ form.range-f input[type=date] { width: auto; height: 32px; padding: 0 8px; font-
 .position-h code { font-size: 13px; font-weight: 650; }
 .position .facts { margin: 14px 0 0; }
 .position .note { margin: 10px 0 0; color: var(--text-3); font-size: 12px; line-height: 1.6; }
+
+/* v3.6.1 the outlook of a position: the future shaded, the normal range (68% / 95%), Kimi's two scenarios and
+   their probability-weighted price, the invalidation level, the line of now */
+.chart .future { fill: var(--surface-3); opacity: .6; }
+.chart .a { stroke: none; }
+.chart .cone2 { fill: var(--accent); fill-opacity: .07; }
+.chart .cone1 { fill: var(--accent); fill-opacity: .16; }
+.chart .fc-tp { stroke: var(--ok); stroke-dasharray: 6 4; stroke-width: 1.8; }
+.chart .fc-inv { stroke: var(--err); stroke-dasharray: 6 4; stroke-width: 1.8; }
+.chart .fc-ev { stroke: var(--accent); stroke-dasharray: 2 3; stroke-width: 2.8; }
+.chart .inv { stroke: var(--err); stroke-dasharray: 8 4; opacity: .7; }
+.chart .now { stroke: var(--text-2); stroke-dasharray: 3 3; }
+.sw.inv { border-top-color: var(--err); border-top-style: dashed; opacity: .7; }
+.sw.fc-tp { border-top-color: var(--ok); border-top-style: dashed; }
+.sw.fc-inv { border-top-color: var(--err); border-top-style: dashed; }
+.sw.fc-ev { border-top-color: var(--accent); border-top-style: dotted; border-top-width: 3px; }
+.legend .sw.cone { height: 10px; border: 0; border-radius: 3px; background: var(--accent); opacity: .3; }
+.fc-h { margin: 14px 0 0; color: var(--text-2); font-size: 12.5px; font-weight: 650; }
+.fc-h + .legend { margin-top: 8px; }
+.analysis {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.analysis h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 13.5px; font-weight: 650; }
+.analysis h4 svg.i { width: 16px; height: 16px; color: var(--accent); }
+dl.an { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 7px 14px; margin: 0; font-size: 13px; }
+dl.an dt { color: var(--text-3); font-weight: 550; }
+dl.an dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.analysis details.more { margin-top: 10px; }
+.analysis details.more p { margin: 6px 0 0; color: var(--text-2); font-size: 12.5px; }
+@media (max-width: 640px) {
+  dl.an { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+  dl.an dd { margin-bottom: 8px; }
+}
 @media (max-width: 640px) {
   .chart { grid-template-rows: 190px auto; }
   .chart.sm { grid-template-rows: 150px auto; }

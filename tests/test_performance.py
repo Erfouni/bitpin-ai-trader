@@ -3,6 +3,7 @@ add up, fees, the trade history, the chart series, the open positions with their
 the state files with hourly and 4-hour candles. A synthetic world with known prices: USDT gets 0.1% dearer every
 hour (the rial falls), BTC gains 0.05% per hour in USDT. No network."""
 import json
+import math
 import os
 import shutil
 import sys
@@ -89,8 +90,19 @@ def world_records(n=30, skew=1.0):
     records[-1]["positions"] = {"BTC_USDT": {
         "amount": "0.0001998", "entry_px_usdt": str(btc_usdt_at(cycle(2))), "stop_px_usdt": "45000",
         "target_px_usdt": "60000", "max_hold_until": str(cycle(2) + 7 * 86400),
-        "plan": {"setup": "trend_continuation", "note": "A test plan <b>", "set_at": str(cycle(2))}}}
+        "plan": {"setup": "trend_continuation", "note": "A test plan <b>", "set_at": str(cycle(2)),
+                 "invalidation_usdt": "47000", "take_profit_usdt": "60000", "px_usdt": str(btc_usdt_at(cycle(2))),
+                 "horizon_hours": 168}}}
     return records
+
+
+def world_analyses(at=None):
+    """read_analyses() of a decision at cycle 20 that re-tested the BTC plan."""
+    return {"BTC": {"symbol": "BTC_IRT", "time": at or cycle(20), "pass": True, "setup": "trend_continuation",
+                    "row": "B10", "verdict": "hold", "p0": 0.3, "p": 0.35, "gain_pct": 20.0, "loss_pct": 6.0,
+                    "cost_pct": 0.5, "ev_pct": 2.6,
+                    "evidence": "ema_dev_pct=[0.5,0.9,5.0] all>0, ret_usdt[2]=4.2, macro.btc_trend84 on",
+                    "bear": "B7 trend_continuation net -1.6% 7d in HOLDOUT; beta_btc=1.3"}}
 
 
 def world_prices(now, start=T0 - 48 * H):
@@ -249,6 +261,106 @@ class TestChartAndPositions(unittest.TestCase):
         self.assertEqual(pos["ETH"]["orders"][0]["price_usdt"], 2000.0)
 
 
+def decision_line(t, cands, valid=True, fallback=False, reply=None):
+    """One kimi_decisions.jsonl record: the parsed decision (cleaned texts) and Kimi's reply as written."""
+    return json.dumps({"time": t, "decision": {"valid": valid, "fallback": fallback, "decided_at": t,
+                                               "analysis": {"candidates": cands}},
+                       "response": json.dumps({"analysis": {"candidates": reply}}) if reply is not None else "<junk"})
+
+
+class TestOutlook(unittest.TestCase):
+    """v3.6.1: Kimi's newest analysis of each coin and the outlook drawn from it."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="bitpin_outlook_")
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.path = os.path.join(self.dir, perf.DECISIONS_FILE)
+
+    def test_the_newest_valid_analysis_of_each_coin(self):
+        btc_old = {"setup": "breakout", "row": "B7", "p": 0.25, "evidence": "old"}
+        eth = {"setup": "trend_continuation", "row": "b10", "p": "0.4", "p0": 0.3, "gain_pct": 15, "loss_pct": 5,
+               "cost_pct": 0.5, "ev_pct": 2.5, "pass": True, "verdict": "hold", "evidence": "ema dev pct 1 all 0",
+               "bear": "x" * 900}
+        btc = {"setup": "trend_continuation", "row": "B10", "p": 0.3, "evidence": "ema dev pct 0.5 all 0",
+               "bear": "close 70000 breaks it"}
+        lines = [decision_line(T0, {"BTC_IRT": btc_old, "ETH_IRT": eth}),
+                 decision_line(T0 + H, {"BTC_IRT": btc}, reply={"BTC_IRT": dict(btc, evidence="ema_dev_pct=[0.5] all>0",
+                                                                                bear="close <70000  breaks it")}),
+                 decision_line(T0 + 2 * H, {"BTC_IRT": dict(btc, p=0.9)}, valid=False),     # an invalid decision
+                 decision_line(T0 + 3 * H, {"BTC_IRT": dict(btc, p=0.8)}, fallback=True),  # the bot's fallback
+                 "{broken", json.dumps(["not", "a", "record"])]
+        with open(self.path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        a = perf.read_analyses(self.path)
+        self.assertEqual(sorted(a), ["BTC", "ETH"])
+        self.assertEqual((a["BTC"]["p"], a["BTC"]["time"], a["BTC"]["symbol"]), (0.3, T0 + H, "BTC_IRT"))
+        self.assertEqual(a["BTC"]["evidence"], "ema_dev_pct=[0.5] all>0")        # Kimi's own words
+        self.assertEqual(a["BTC"]["bear"], "close <70000 breaks it")             # one line
+        self.assertEqual((a["ETH"]["p"], a["ETH"]["row"], a["ETH"]["pass"]), (0.4, "b10", True))
+        self.assertEqual(a["ETH"]["evidence"], "ema dev pct 1 all 0")           # no readable reply: the cleaned text
+        self.assertEqual(len(a["ETH"]["bear"]), perf.ANALYSIS_TEXT_MAX)
+        self.assertEqual(perf.read_analyses(os.path.join(self.dir, "missing.jsonl")), {})
+
+    def test_the_tail_of_a_big_file_is_enough(self):
+        with open(self.path, "w", encoding="utf-8") as f:
+            f.write("x" * 5000 + "\n" + decision_line(T0, {"SOL_IRT": {"p": 0.5}}) + "\n")
+        self.assertEqual(perf.read_analyses(self.path, limit=2000)["SOL"]["p"], 0.5)
+
+    def test_hourly_volatility(self):
+        up, down = 1.01, 1 / 1.01
+        line, px = [], 100.0
+        for i in range(49):
+            line.append([T0 + i * H, px])
+            px *= up if i % 2 == 0 else down
+        sig = perf.hourly_sigma(line)
+        self.assertAlmostEqual(sig, math.log(1.01) * math.sqrt(48 / 47.0), places=9)
+        four_hourly = [[T0 + i * 4 * H, p] for i, (_t, p) in enumerate(line)]
+        self.assertAlmostEqual(perf.hourly_sigma(four_hourly), sig / 2, places=9)   # sqrt(4) per step
+        self.assertIsNone(perf.hourly_sigma(line[:10]))
+        self.assertIsNone(perf.hourly_sigma([[T0 + i * 20 * H, 1.0 + i] for i in range(40)]))  # gaps are skipped
+
+    def test_the_range_the_scenarios_and_their_weighted_price(self):
+        o = perf.outlook(100.0, T0, T0 + 16 * H, 0.01, 120.0, 90.0, 0.4, [T0 - 5 * H, 98.0])
+        self.assertEqual(len(o["cone"]), perf.CONE_STEPS + 1)
+        self.assertEqual(o["cone"][0], [T0, 100.0, 100.0, 100.0, 100.0])
+        t, lo1, hi1, lo2, hi2 = o["cone"][-1]
+        self.assertEqual(t, T0 + 16 * H)
+        for got, want in ((lo1, 100 * math.exp(-0.04)), (hi1, 100 * math.exp(0.04)), (lo2, 100 * math.exp(-0.08)),
+                          (hi2, 100 * math.exp(0.08))):
+            self.assertAlmostEqual(got, want, places=9)
+        self.assertAlmostEqual(o["expected"], 0.4 * 120 + 0.6 * 90, places=9)
+        self.assertEqual(o["origin"], [T0 - 5 * H, 98.0])
+        self.assertIsNone(perf.outlook(100.0, T0, T0 + H, 0.01, 120.0, 90.0, None)["expected"])
+        self.assertIsNone(perf.outlook(100.0, T0, T0 + H, 0.01, 90.0, 120.0, 0.5)["expected"])     # levels swapped
+        self.assertEqual(perf.outlook(100.0, T0, T0 + H, None)["cone"], [])
+        self.assertEqual(perf.outlook(None, T0, T0 + H, 0.01)["cone"], [])
+
+    def test_the_outlook_ends_with_the_plan(self):
+        now = T0
+        self.assertEqual(perf.outlook_end({"max_hold_until": now + 50 * H}, now), now + 50 * H)
+        for hold in (None, now - H, now + 0.5 * H, now + 40 * 86400, "x"):
+            self.assertEqual(perf.outlook_end({"max_hold_until": hold}, now), now + perf.FORECAST_DEFAULT_HOURS * H)
+
+    def test_positions_carry_kimis_analysis_and_the_outlook(self):
+        now = cycle(29) + 600
+        records, prices = world_records(), world_prices(now)
+        r = perf.report(records, START, prices, T0, now, now, [], world_analyses())
+        btc = [p for p in r["positions"] if p["asset"] == "BTC"][0]
+        self.assertEqual((btc["invalidation_usdt"], btc["target_usdt"], btc["horizon_hours"]), (47000.0, 60000.0, 168.0))
+        self.assertEqual(btc["analysis"]["row"], "B10")
+        o = btc["outlook"]
+        self.assertEqual(o["to"], float(cycle(2) + 7 * 86400))                   # the plan's max hold
+        self.assertEqual(o["origin"][0], cycle(20))                              # Kimi's decision ...
+        self.assertAlmostEqual(o["origin"][1], 60000 / 1.2, places=6)          # ... at its price: take profit / (1 + g)
+        self.assertAlmostEqual(o["expected"], 0.35 * 60000 + 0.65 * 47000, places=6)
+        self.assertEqual((o["target"], o["invalidation"], o["p"]), (60000.0, 47000.0, 0.35))
+        self.assertTrue(o["cone"])
+        self.assertEqual(o["cone"][0][0], now)
+        plain = perf.report(records, START, prices, T0, now, now, [])["positions"][0]["outlook"]
+        self.assertEqual(plain["origin"], [float(cycle(2)), btc_usdt_at(cycle(2))])   # the plan: when it was set
+        self.assertIsNone(plain["expected"])
+
+
 class TestPricesAndParsing(unittest.TestCase):
     def test_hourly_candles_replace_the_4_hour_ones_where_both_exist(self):
         now = T0 + 30 * H + 600
@@ -309,6 +421,8 @@ class TestCollect(unittest.TestCase):
             json.dump({"equity_start_irt": START, "hwm_irt": START * 1.2, "updated": T0}, f)
         with open(os.path.join(self.dir, perf.ORDERS_FILE), "w", encoding="utf-8") as f:
             json.dump(ORDERS_DOC, f)
+        with open(os.path.join(self.dir, perf.DECISIONS_FILE), "w", encoding="utf-8") as f:
+            f.write(decision_line(cycle(20), {"BTC_IRT": world_analyses()["BTC"]}) + "\n")
         self.calls = []
 
     def fetch(self, symbol, res, start, end):
@@ -330,6 +444,9 @@ class TestCollect(unittest.TestCase):
         self.assertEqual(r["totals"]["trades"], 4)                              # the "scheduled" record counts too
         self.assertAlmostEqual(r["totals"]["value_to_irt"], world_records()[-1]["equity_irt"], places=4)
         self.assertEqual(len(r["positions"]), 2)
+        btc = [p for p in r["positions"] if p["asset"] == "BTC"][0]
+        self.assertEqual((btc["analysis"]["p"], btc["analysis"]["row"]), (0.35, "B10"))   # from kimi_decisions.jsonl
+        self.assertAlmostEqual(btc["outlook"]["expected"], 0.35 * 60000 + 0.65 * 47000, places=6)
         json.dumps(r)                                                           # what the worker prints
 
     def test_an_older_range_takes_4_hour_candles_before_the_last_ten_days(self):

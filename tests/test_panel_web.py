@@ -123,7 +123,7 @@ def vpn_put(a):
 def perf_report(a):
     """bitpin/performance.py's report of the synthetic world of tests/test_performance.py, at the panel's T0."""
     return perf.report(tp.world_records(21), tp.START, tp.world_prices(T0), a["from"], a["to"], T0,
-                       perf.resting_orders(tp.ORDERS_DOC))
+                       perf.resting_orders(tp.ORDERS_DOC), tp.world_analyses())
 
 
 def default_responses():
@@ -996,7 +996,7 @@ class TestPerformancePages(PanelCase):
         self.assertEqual(self.perf_calls(), [{"from": int(T0) - 400 * 86400, "to": int(T0)}])
         for s in (u"عملکرد", u"ارزش سبد", u"سود / زیان به تومان", u"سود / زیان به تتر", u"اگر فقط تتر نگه می‌داشتیم",
                   u"سود و زیان هر دارایی", u"تومان (نقد)", u"جمع", u"موقعیت‌های باز و سفارش‌ها", "BTC / USDT",
-                  u"سفارش فروش", u"سفارش خرید", u"حد ضرر", "trend continuation", "A test plan &lt;b&gt;", u"زنده",
+                  u"سفارش فروش", u"سفارش خرید", u"حد ضرر", u"ادامهٔ روند", "A test plan &lt;b&gt;", u"زنده",
                   '<polyline class="l s1"', '<polyline class="l s2"', '<polyline class="l s3"',
                   '<polyline class="l pl"', 'class="h stop"', 'class="h target"', 'class="h entry"', 'class="h sell"',
                   'class="h buy"', 'class="v set"', 'preserveAspectRatio="none"', '<figure class="chart" dir="ltr">',
@@ -1007,6 +1007,34 @@ class TestPerformancePages(PanelCase):
         self.assertNotIn("auto%3D1", t)                              # the language switch comes back without it
         self.assertEqual(t.count('<article class="position">'), 2)   # BTC held, ETH only an order
         self.assertIn(u"هنوز دادهٔ کافی برای نمودار نیست.", t)      # no ETH candles in this world
+
+    def test_the_outlook_and_the_analysis_of_a_position(self):
+        """v3.6.1: the future of each position chart (the normal range, Kimi's two scenarios and their weighted
+        price) and its strategy and analysis in words."""
+        self.login()
+        t = self.c.get("/performance").text
+        for s in ('<rect class="future"', '<polygon class="a cone2"', '<polygon class="a cone1"', 'class="v now"',
+                  '<polyline class="l fc-tp"', '<polyline class="l fc-inv"', '<polyline class="l fc-ev"',
+                  'class="h inv"', u"پیش‌بینی تا", u"سناریوی هدف <bdi dir=\"ltr\">60,000.00</bdi> &middot; احتمال "
+                  u"<bdi dir=\"ltr\">35%</bdi>", u"سناریوی ابطال یا پایان مهلت <bdi dir=\"ltr\">47,000.00</bdi> &middot; "
+                  u"احتمال <bdi dir=\"ltr\">65%</bdi>", u"قیمت مورد انتظار (وزن‌دار با احتمال) <bdi dir=\"ltr\">51,550.00"
+                  u"</bdi>", u"محدودهٔ نوسان عادی قیمت", u"استراتژی و تحلیل", u"<b>ادامهٔ روند</b>",
+                  u"<bdi dir=\"ltr\">B10</bdi> &middot; وضعیت روند ۸۴ روزهٔ بیت‌کوین", u"<b>تکنیکال:</b> میانگین‌های متحرک "
+                  u"نمایی (EMA) چهارساعته، بازده به تتر", u"<b>کلان:</b> روند ۸۴ روزهٔ بیت‌کوین، بتا نسبت به بیت‌کوین",
+                  u"<b>آماری:</b> نرخ پایهٔ تاریخی، احتمال و ارزش انتظاری",
+                  u"رسیدن به هدف پیش از سطح ابطال: <bdi dir=\"ltr\">35%</bdi> (در بازار بی‌جهت: <bdi dir=\"ltr\">30%</bdi>)",
+                  u"تا هدف", u"<span class=\"gain\"><bdi dir=\"ltr\">+2.60%</bdi></span>", u"نگه‌داشتن (HOLD)",
+                  u"ema_dev_pct=[0.5,0.9,5.0] all&gt;0", u"متن اصلی کیمی",
+                  u"کیمی در تصمیم‌های اخیرش این کوین را دوباره نسنجیده"):        # ETH: no analysis
+            self.assertIn(s, t, s)
+        c = Client(self.app, lang="en")
+        self.login(c)
+        t = c.get("/performance").text
+        for s in ("Target scenario", "probability <bdi dir=\"ltr\">35%</bdi>", "Trend continuation",
+                  "the 84-day trend state of BTC", "<b>Technical:</b> 4h EMAs, returns in USDT",
+                  "take profit before the invalidation: <bdi dir=\"ltr\">35%</bdi> (without an edge: "
+                  "<bdi dir=\"ltr\">30%</bdi>)"):
+            self.assertIn(s, t, s)
 
     def test_the_numbers_on_the_page_are_the_report(self):
         self.login()
@@ -1155,6 +1183,8 @@ class TestPerformancePages(PanelCase):
         rep["warnings"] = [HOSTILE]
         rep["assets"][0]["asset"] = HOSTILE
         rep["positions"][0].update(asset=HOSTILE, note=HOSTILE, setup=HOSTILE)
+        rep["positions"][0]["analysis"].update(evidence=HOSTILE, bear=HOSTILE, row=HOSTILE, verdict=HOSTILE,
+                                               setup=HOSTILE)
         for h in rep["history"]:
             h.update(symbol=HOSTILE, reason=HOSTILE, quote_asset=HOSTILE, fee_asset=HOSTILE, asset=HOSTILE)
         self.helper.responses["performance"] = rep
@@ -1171,7 +1201,13 @@ class TestPerformancePages(PanelCase):
                     {"equity": [[T0, 5.0, None, None], [T0 + 60, 6.0, None, None]], "totals": {"trades": "x"}},
                     {"equity": [[1e300, 5.0, 1.0, 5.0], [T0, 6.0, 1.0, 6.0], [T0 + 60, 7.0, 1.0, 7.0]], "live": True,
                      "positions": [{"asset": "BTC", "prices": [[1e300, 5.0], [T0, 1.0], [T0 + 9, 2.0]],
-                                    "set_at": 1e300, "max_hold_until": 1e300}]}):
+                                    "set_at": 1e300, "max_hold_until": 1e300},
+                                   {"asset": "SOL", "prices": [[T0, 1.0], [T0 + 9, 2.0]], "analysis": {
+                                       "p": "x", "row": 5, "evidence": 7, "time": "y", "verdict": None},
+                                    "outlook": {"cone": [[1, 2], "x"], "origin": "x", "to": "y", "p": "z"}},
+                                   {"asset": "XRP", "prices": [[T0, 1.0], [T0 + 9, 2.0]], "analysis": "x",
+                                    "outlook": {"cone": [[T0, 1, 2, 0, 3], [T0 + 99, 1, 2, 0, None]],
+                                                "origin": [T0, None], "to": T0 + 99, "target": 3, "p": 2}}]}):
             self.helper.responses["performance"] = rep
             self.app._perf_cache.clear()
             for path in ("/performance", "/history", "/history.csv"):

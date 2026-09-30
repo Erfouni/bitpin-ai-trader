@@ -4,6 +4,32 @@
 
 ---
 
+## 3.6.1 — پیش‌بینی و تحلیل هر موقعیت در پنل (2026-09-30)
+
+- نمودار هر موقعیت باز حالا **آینده** را هم نشان می‌دهد: ناحیهٔ کمرنگ از «الان» تا پایان مهلت نگهداری برنامه.
+  - **دو سناریوی کیمی** از لحظه و قیمتِ آخرین تصمیمش: رسیدن به هدف (خط‌چین سبز) با احتمالی که خود کیمی داده، و خوردن به سطح
+    ابطال یا تمام شدن مهلت (خط‌چین قرمز) با احتمال باقی‌مانده. **قیمت مورد انتظار** (نقطه‌چین) میانگین وزن‌دار این دو با همان
+    احتمال‌هاست.
+  - **محدودهٔ نوسان عادی** (سایهٔ دولایه): جایی که قیمت در یک بازار بی‌جهت، با نوسان واقعی ساعتی اخیرِ همان کوین، در ۶۸٪ و
+    ۹۵٪ مواقع می‌ماند (قیمت × e^(±zσ√t)؛ همان فرض «بازار بی‌جهت» که کیمی احتمال پایه‌اش را با آن می‌سنجد).
+  - سطح ابطال برنامه (خط‌چین قرمز افقی) هم به خط‌های ورود، حد ضرر، هدف و سفارش‌ها اضافه شد.
+- زیر هر موقعیت، جعبهٔ **«استراتژی و تحلیل»** به فارسی:
+  - استراتژی (مثلاً «ادامهٔ روند» با شرطش) و ردیف جدول نرخ پایه (مثلاً B10)؛
+  - روش‌های تحلیل (تکنیکال، کلان، آماری، اخبار) از روی فیلدهایی که کیمی به‌عنوان شاهد آورده؛
+  - احتمال کیمی در برابر احتمال بازار بی‌جهت، سود تا هدف، زیان تا ابطال، کارمزد و ارزش انتظاری؛
+  - حکم کیمی، زمان تحلیل، و متن اصلی شواهد و سناریوی مخالف کیمی.
+- کیمی این داده‌ها را از قبل در هر تصمیم می‌داد (بخش analysis پاسخ تصمیم، در `kimi_decisions.jsonl`). پس دستور کیمی عوض
+  نشده و هزینه‌ای اضافه نمی‌شود؛ هر تصمیم تازه این بخش را به‌روز می‌کند.
+- رفتار معامله‌ای و تنظیمات عوض نشده‌اند و تأیید تازه لازم نیست.
+- English: `bitpin/performance.py`: `read_analyses()` (the newest analysis candidate of each coin from the valid,
+  non-fallback decisions in kimi_decisions.jsonl; Kimi's own texts from its reply when that can be read),
+  `hourly_sigma()`, `outlook()` (the 68% / 95% range of a driftless lognormal walk from now to the plan's max hold,
+  the take-profit / invalidation scenarios from Kimi's decision point, the probability-weighted price
+  p x TP + (1 - p) x INV), `outlook_end()`; a position's price chart reaches back as far as its outlook runs ahead
+  (7..30 days). `bitpin/panel_web.py`: `line_chart(areas=, shade=)`, the outlook legend, `analysis_html()` (setup,
+  base-rate row, the methods of the cited fields, p against p0, reward / risk / cost, EV, verdict, time, Kimi's
+  words). Tests: `tests/test_performance.py` (TestOutlook), panel tests.
+
 ## 3.6.0 — عملکرد، نمودارهای زنده و سابقهٔ معاملات در پنل (2026-09-30)
 
 - صفحهٔ تازهٔ **عملکرد** (`/performance`): سود و زیان حساب برای هر بازهٔ زمانی (۲۴ ساعت، ۷ روز، ۳۰ روز، از شروع، یا روزهای

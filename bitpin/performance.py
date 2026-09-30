@@ -16,6 +16,14 @@ How a range is measured (t_from, t_to]:
 * a range that ends now also gets an estimate of the account value at this minute (the last recorded value moved
   by the latest prices) and the open positions with their resting orders and price charts.
 
+The outlook of an open position (v3.6.1), drawn from now to the end of its plan (its max hold time):
+* Kimi's own analysis of the coin from its newest valid decision (kimi_decisions.jsonl, analysis.candidates: the
+  setup, the base-rate row, the evidence, the bear case, p = P(take profit before an hourly close below the
+  invalidation within the horizon), p0 = the same for a driftless walk, gain / loss / cost / ev in percent);
+* two scenarios, the take profit (p) and the invalidation (1 - p), and their probability-weighted price;
+* the range a driftless random walk with the coin's recent hourly volatility stays in with 68% / 95% probability
+  (price x exp(+-z sigma sqrt(hours))): the "normal" move, the null hypothesis of Kimi's own p0.
+
 Prices: hourly candles for the last FINE_DAYS days, 4-hour candles before that (a year of history stays one small
 request per market, even with the panel's page reloading every minute).
 """
@@ -28,6 +36,8 @@ import time
 RUNNER_LOG = "kimi_runner.jsonl"
 EQUITY_FILE = "kimi_equity.json"
 ORDERS_FILE = "live_orders.json"
+DECISIONS_FILE = "kimi_decisions.jsonl"
+MAX_DECISIONS_BYTES = 8 * 1024 * 1024  # the tail read for Kimi's newest analysis of each coin
 MAX_RUNNER_BYTES = 128 * 1024 * 1024
 MAX_SMALL_FILE_BYTES = 16 * 1024 * 1024
 HOUR = 3600
@@ -42,6 +52,10 @@ CASH = "IRT"
 UNIT = "USDT"
 RESTING = ("resting", "submitting", "unknown")
 MISMATCH_WARN = 0.02              # rebuilt vs recorded equity
+FORECAST_DEFAULT_HOURS = 72       # the outlook of a position without a plan in force (no max hold ahead)
+CONE_STEPS = 24                   # points of the volatility range
+SIGMA_MIN_RETURNS = 24            # hourly returns needed for the volatility range
+ANALYSIS_TEXT_MAX = 400
 
 
 def _f(x):
@@ -159,6 +173,124 @@ def _plan_time(plan):
     return _f(inner.get("set_at"))
 
 
+def _text(v, n=ANALYSIS_TEXT_MAX):
+    return " ".join(v.split())[:n] if isinstance(v, str) else ""
+
+
+def read_analyses(path, limit=MAX_DECISIONS_BYTES):
+    """{asset: Kimi's newest analysis of it} from the candidates of the newest VALID decisions in
+    kimi_decisions.jsonl: symbol, time, setup, row, verdict, p0, p, gain_pct, loss_pct, cost_pct, ev_pct, pass,
+    evidence, bear. The two texts are taken from Kimi's reply as written when it can be read (the decision keeps
+    a copy cleaned for the prompt: "=", "<" and "[ ]" removed)."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            if size > limit:
+                f.seek(size - limit)
+                f.readline()                           # the first line may be cut: skip it
+            lines = f.read().splitlines()
+    except OSError:
+        return {}
+    out = {}
+    for raw in reversed(lines):
+        try:
+            rec = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            continue
+        dec = rec.get("decision") if isinstance(rec, dict) else None
+        if not isinstance(dec, dict) or dec.get("valid") is not True or dec.get("fallback"):
+            continue
+        ana = dec.get("analysis")
+        cands = ana.get("candidates") if isinstance(ana, dict) else None
+        if not isinstance(cands, dict):
+            continue
+        try:
+            reply = json.loads(rec.get("response") or "")
+            reply = reply["analysis"]["candidates"]
+        except (TypeError, ValueError, KeyError):
+            reply = {}
+        reply = reply if isinstance(reply, dict) else {}
+        t = _f(dec.get("decided_at")) or _f(rec.get("time"))
+        for sym, c in cands.items():
+            sym = str(sym).upper()
+            asset = sym.split("_")[0]
+            if not isinstance(c, dict) or sym.count("_") != 1 or asset in out:
+                continue
+            rc = reply.get(sym) if isinstance(reply.get(sym), dict) else {}
+            item = {"symbol": sym, "time": t, "pass": c.get("pass") is True}
+            for k in ("setup", "row", "verdict"):
+                item[k] = str(c.get(k) or "")[:40]
+            for k in ("p0", "p", "gain_pct", "loss_pct", "cost_pct", "ev_pct"):
+                item[k] = _f(c.get(k))
+            for k in ("evidence", "bear"):
+                item[k] = _text(rc.get(k)) or _text(c.get(k))
+            out[asset] = item
+    return out
+
+
+def hourly_sigma(line):
+    """The standard deviation of the hourly log returns of [[time, price], ...] (a longer step, e.g. a 4-hour
+    candle, is scaled by sqrt(hours)); None with fewer than SIGMA_MIN_RETURNS returns."""
+    rets = []
+    for (t0, p0), (t1, p1) in zip(line, line[1:]):
+        dt = (t1 - t0) / float(HOUR)
+        if p0 and p1 and p0 > 0 and p1 > 0 and 0.5 <= dt <= 8:
+            rets.append(math.log(p1 / p0) / math.sqrt(dt))
+    if len(rets) < SIGMA_MIN_RETURNS:
+        return None
+    m = sum(rets) / len(rets)
+    return math.sqrt(sum((r - m) ** 2 for r in rets) / (len(rets) - 1))
+
+
+def outlook(price, now, end, sigma_h, target=None, invalidation=None, p=None, origin=None):
+    """The drawing data of a position's outlook: the 68% / 95% range of a driftless walk from now to end
+    ([[time, low1, high1, low2, high2], ...]); the two scenarios, drawn from `origin` ([time, price] where they
+    were set: Kimi's decision, else the plan) to end; the probability-weighted price at end (Kimi's p)."""
+    out = {"from": now, "to": end, "price": price, "sigma_h": sigma_h, "cone": [], "target": target,
+           "invalidation": invalidation, "p": p, "expected": None, "origin": origin}
+    if price and price > 0 and sigma_h and end > now:
+        for i in range(CONE_STEPS + 1):
+            t = now + (end - now) * i / float(CONE_STEPS)
+            s = sigma_h * math.sqrt((t - now) / float(HOUR))
+            out["cone"].append([t, price * math.exp(-s), price * math.exp(s), price * math.exp(-2 * s),
+                                price * math.exp(2 * s)])
+    if p is not None and 0 <= p <= 1 and target and invalidation and target > invalidation:
+        out["expected"] = p * target + (1 - p) * invalidation
+    return out
+
+
+def _origin(analysis, plan, line):
+    """[time, USDT price] the scenarios start from: Kimi's decision (its price: take profit / (1 + gain)), else the
+    plan (its px_usdt when it was set), else None; the chart's own price at that time when neither gives one."""
+    inner = plan.get("plan") if isinstance(plan.get("plan"), dict) else {}
+    t = px = None
+    if analysis and analysis.get("time"):
+        t = analysis["time"]
+        tp = _f(plan.get("target_px_usdt")) or _f(inner.get("take_profit_usdt"))
+        inv = _f(inner.get("invalidation_usdt"))
+        g, l = analysis.get("gain_pct"), analysis.get("loss_pct")
+        if tp and g is not None and g > -100:
+            px = tp / (1.0 + g / 100.0)
+        elif inv and l is not None and l < 100:
+            px = inv / (1.0 - l / 100.0)
+    elif _plan_time(plan) is not None:
+        t, px = _plan_time(plan), _f(inner.get("px_usdt"))
+    if t is None:
+        return None
+    if not px:
+        before = [q for q in line if q[0] <= t]
+        px = (before[-1] if before else (line[0] if line else [None, None]))[1]
+    return [t, px] if px else None
+
+
+def outlook_end(plan, now):
+    """Where a position's outlook ends: its max hold time when that is ahead (at most 30 days), else 72 h."""
+    hold = _f(plan.get("max_hold_until")) if isinstance(plan, dict) else None
+    if hold is not None and now + HOUR < hold <= now + POSITION_CHART_MAX_DAYS * 86400:
+        return hold
+    return now + FORECAST_DEFAULT_HOURS * HOUR
+
+
 # --------------------------------------------------------------------------- prices
 class Prices(object):
     """Closes in toman: closes[asset] = (close times, closes) of ASSET_IRT; USDT_IRT is the rial's rate.
@@ -265,8 +397,9 @@ def _thin(points, n=CHART_POINTS):
 
 
 # --------------------------------------------------------------------------- the report
-def report(records, start_equity, prices, t_from, t_to, now, orders=None):
-    """Everything the panel shows for (t_from, t_to]; see the module docstring. Never raises on odd data."""
+def report(records, start_equity, prices, t_from, t_to, now, orders=None, analyses=None):
+    """Everything the panel shows for (t_from, t_to]; see the module docstring. Never raises on odd data.
+    analyses: read_analyses() - Kimi's newest analysis of each coin, for the outlook of the open positions."""
     fills = parse_fills(records)
     pts = equity_points(records)
     warnings = []
@@ -387,7 +520,7 @@ def report(records, start_equity, prices, t_from, t_to, now, orders=None):
     # the open positions and the resting orders, each with its price chart in USDT (a range that ends now)
     positions = []
     if live:
-        positions = _positions(rows, open_plans(records), orders or [], prices, t_to, now)
+        positions = _positions(rows, open_plans(records), orders or [], prices, t_to, now, analyses or {})
 
     history = []
     for f in reversed(in_range[-MAX_HISTORY:]):
@@ -402,7 +535,17 @@ def report(records, start_equity, prices, t_from, t_to, now, orders=None):
             "rebuilt_value_to_irt": rebuilt_to}
 
 
-def _positions(rows, plans, orders, prices, t_to, now):
+def _chart_span(plan, now):
+    """How far back a position's price chart reaches: at least 7 days, at least as far as its outlook runs ahead
+    (so the past is not squeezed), and from 12 hours before its plan was set; at most 30 days."""
+    span = max(POSITION_CHART_HOURS * HOUR, outlook_end(plan, now) - now)
+    set_at = _plan_time(plan) if isinstance(plan, dict) else None
+    if set_at is not None:
+        span = max(span, now - (set_at - 12 * HOUR))
+    return min(span, POSITION_CHART_MAX_DAYS * 86400)
+
+
+def _positions(rows, plans, orders, prices, t_to, now, analyses=None):
     held = [r["asset"] for r in rows if r["asset"] not in (CASH, UNIT) and r["qty_to"] > 1e-12]
     chart_assets = list(held)
     for o in orders:
@@ -418,9 +561,7 @@ def _positions(rows, plans, orders, prices, t_to, now):
                 break
         inner = plan.get("plan") if isinstance(plan.get("plan"), dict) else {}
         set_at = _plan_time(plan)
-        c_from = t_to - POSITION_CHART_HOURS * HOUR
-        if set_at is not None and set_at - 12 * HOUR < c_from:
-            c_from = max(set_at - 12 * HOUR, t_to - POSITION_CHART_MAX_DAYS * 86400)
+        c_from = t_to - _chart_span(plan, now)
         ts, cs = prices.closes.get(a) or ((), ())
         line = []
         for t, c in zip(ts, cs):
@@ -441,13 +582,20 @@ def _positions(rows, plans, orders, prices, t_to, now):
                            "amount": o["amount"], "tag": o["tag"], "symbol": o["symbol"]})
         o_list.sort(key=lambda o: -(o["price_usdt"] or 0.0))
         entry = _f(plan.get("entry_px_usdt"))
+        target = _f(plan.get("target_px_usdt")) or _f(inner.get("take_profit_usdt"))
+        invalidation = _f(inner.get("invalidation_usdt"))
+        analysis = (analyses or {}).get(a)
         out.append({"asset": a, "qty": row.get("qty_to", 0.0), "value_irt": row.get("value_to_irt"),
                     "value_usdt": row.get("value_to_usdt"), "price_usdt": now_usdt, "entry_usdt": entry,
-                    "stop_usdt": _f(plan.get("stop_px_usdt")), "target_usdt": _f(plan.get("target_px_usdt")),
+                    "stop_usdt": _f(plan.get("stop_px_usdt")), "target_usdt": target,
+                    "invalidation_usdt": invalidation, "horizon_hours": _f(inner.get("horizon_hours")),
                     "max_hold_until": _f(plan.get("max_hold_until")), "set_at": set_at,
                     "setup": str(inner.get("setup") or "")[:40], "note": str(inner.get("note") or "")[:600],
                     "change_pct": ((now_usdt / entry - 1.0) * 100.0) if (entry and now_usdt) else None,
-                    "orders": o_list, "prices": _thin(line)})
+                    "orders": o_list, "prices": _thin(line), "analysis": analysis,
+                    "outlook": outlook(now_usdt, now, outlook_end(plan, now), hourly_sigma(line), target,
+                                       invalidation, analysis.get("p") if analysis else None,
+                                       _origin(analysis, plan, line))})
     return out
 
 
@@ -475,9 +623,7 @@ def collect(state_dir, t_from, t_to, now=None, fetch=None):
     assets.discard(CASH)
     chart_from = min(t_to, now) - POSITION_CHART_HOURS * HOUR
     for plan in open_plans(records).values():
-        set_at = _plan_time(plan)
-        if set_at is not None:
-            chart_from = min(chart_from, max(set_at - 12 * HOUR, now - POSITION_CHART_MAX_DAYS * 86400))
+        chart_from = min(chart_from, now - _chart_span(plan, now))
     start = int(min(t_from, chart_from) - 3 * HOUR)
     fine_from = max(start, int(now) - FINE_DAYS * 86400)
     fine, coarse, errors = {}, {}, []
@@ -489,6 +635,7 @@ def collect(state_dir, t_from, t_to, now=None, fetch=None):
         except Exception as e:  # noqa: BLE001 - one market less, not a broken page
             errors.append("%s_IRT candles: %s" % (a, str(e)[:120]))
             fine.setdefault(a, [])
-    out = report(records, start_equity, prices_from_bars(fine, now, coarse), t_from, t_to, now, orders)
+    out = report(records, start_equity, prices_from_bars(fine, now, coarse), t_from, t_to, now, orders,
+                 read_analyses(os.path.join(state_dir, DECISIONS_FILE)))
     out["warnings"] = errors + out["warnings"]
     return out

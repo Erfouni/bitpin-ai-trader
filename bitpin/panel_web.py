@@ -153,6 +153,50 @@ PERF_CACHE_ENTRIES = 16
 LIVE_REFRESH_SECONDS = 60
 HISTORY_PAGE_ROWS = 50
 SIDE_LABELS = {"buy": N_("Buy"), "sell": N_("Sell")}
+# v3.6.1: the strategy and the analysis behind a position in words (bitpin/prompt_template.txt SETUPS and the base
+# rates B1..B12 of docs/STRATEGY_KNOWLEDGE.md; the methods are read from the fields Kimi cites as evidence)
+SETUP_LABELS = {
+    "dip_in_uptrend": (N_("Dip in an uptrend"),
+                       N_("above the 4h EMA50 and EMA200 after a 4-12% drop in 48 hours, or with RSI (4h) under 45")),
+    "trend_continuation": (N_("Trend continuation"),
+                           N_("above all three 4h EMAs, near the 30-day high, with a positive 7-day return")),
+    "breakout": (N_("Breakout"), N_("at the 30-day high with at least 1.5 times the usual volume")),
+    "crash_rebound": (N_("Rebound after a crash"), N_("a major coin 20% or more under its 48-hour high")),
+    "relative_strength": (N_("Relative strength"),
+                          N_("7- and 30-day returns above those of BTC, with a named and dated catalyst")),
+    "mean_reversion": (N_("Mean reversion"), N_("RSI (4h) under 30 in a longer uptrend")),
+    "macro_hedge": (N_("Macro hedge"), N_("gold or silver, or a stock / ETF / oil token judged by its underlying")),
+    "other": (N_("Other"), N_("a case outside the setups above")),
+}
+ROW_TITLES = {"B1": N_("holding USDT, the benchmark"), "B2": N_("a top coin against USDT, without a condition"),
+              "B3": N_("a rise of 15% or more within 48 hours"), "B4": N_("the majors fell 8% or more"),
+              "B5": N_("the crash ladder: a buy 20% under the 48-hour high"),
+              "B6": N_("a pump of 30% or more within 24 hours"), "B7": N_("mechanical strategies tested out of sample"),
+              "B8": N_("short-term timing at a 1% round trip"), "B9": N_("volatility and small caps"),
+              "B10": N_("the 84-day trend state of BTC"), "B11": N_("gold against USDT"),
+              "B12": N_("tokenized US stocks, ETFs and oil")}
+VERDICT_LABELS = {"open": N_("Open"), "add": N_("Add"), "hold": N_("Hold"), "trim": N_("Trim"), "cut": N_("Cut"),
+                  "reject": N_("Reject")}
+ANALYSIS_METHODS = (           # (group, method, pattern over Kimi's evidence and bear texts, lower case)
+    ("technical", N_("4h EMAs"), r"\bema"),
+    ("technical", "RSI", r"\brsi"),
+    ("technical", "MACD", r"\bmacd"),
+    ("technical", N_("Bollinger bands"), r"\bbb4h|bollinger"),
+    ("technical", N_("Donchian channel"), r"\bdon20|donchian"),
+    ("technical", "ATR", r"\batr"),
+    ("technical", N_("support and resistance"), r"\bsup\b|\bres\b|support|resistance"),
+    ("technical", N_("place in the 30-day range"), r"\bpos30|\bd30h"),
+    ("technical", N_("48-hour drawdown"), r"\bdd48"),
+    ("technical", N_("returns in USDT"), r"\br(?:et)?[ _]?usdt"),
+    ("technical", N_("trading volume"), r"\bvol[ _]?ratio|\bvolume"),
+    ("macro", N_("the 84-day trend of BTC"), r"trend84"),
+    ("macro", N_("beta to BTC"), r"\bbeta"),
+    ("macro", N_("the US session and the underlying"), r"\bus[ _]?session|\bunderlying"),
+    ("stats", N_("daily volatility"), r"\bsig[ _]?d\b|\bsigma"),
+    ("news", N_("the news brief"), r"\bnews|\bbrief\b|\bevent|\bcatalyst"),
+)
+METHOD_GROUPS = (("technical", N_("Technical")), ("macro", N_("Macro")), ("stats", N_("Statistical")),
+                 ("news", N_("News")))
 _DIGITS = {ord(a): b for a, b in zip(u"۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")}
 
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,100}$")
@@ -748,13 +792,21 @@ def time_ticks(t0, t1, n=5):
     return [datetime.fromtimestamp(t0 + span * i / float(n - 1), TEHRAN).strftime(fmt) for i in range(n)]
 
 
-def line_chart(series, hlines=(), vlines=(), pct=False, label="", cls=""):
+def line_chart(series, hlines=(), vlines=(), pct=False, label="", cls="", areas=(), shade=None):
     """series: [(class, [(time, value)])] drawn in this order; hlines: [(class, value)] across the chart (entry,
-    stop, orders ...); vlines: [(class, time)]. The chart's HTML, or a note when there is nothing to draw."""
-    series = [(c, [(t, v) for t, v in s if _is_num(t) and 0 < t < 1e11 and _is_num(v)]) for c, s in series]
+    stop, orders ...); vlines: [(class, time)]; areas: [(class, [(time, low, high)])] bands under the lines (v3.6.1:
+    the outlook's volatility range); shade: (class, from, to) a stretch of time behind everything (the future).
+    The chart's HTML, or a note when there is nothing to draw."""
+
+    def ok_t(t):
+        return _is_num(t) and 0 < t < 1e11
+
+    series = [(c, [(t, v) for t, v in s if ok_t(t) and _is_num(v)]) for c, s in series]
+    areas = [(c, [(t, lo, hi) for t, lo, hi in a if ok_t(t) and _is_num(lo) and _is_num(hi)]) for c, a in areas]
     pts = [p for _c, s in series for p in s]
     if len(pts) < 2:
         return '<p class="muted empty">%s</p>' % te("Not enough data for a chart yet.")
+    pts += [(t, v) for _c, a in areas for t, lo, hi in a for v in (lo, hi)]
     t0, t1 = min(t for t, _v in pts), max(t for t, _v in pts)
     vals = [v for _t, v in pts] + [v for _c, v in hlines if _is_num(v)] + ([0.0] if pct else [])
     bottom, top, ticks, step = nice_ticks(min(vals), max(vals))
@@ -766,8 +818,18 @@ def line_chart(series, hlines=(), vlines=(), pct=False, label="", cls=""):
     def y(v):
         return h - (v - bottom) / (top - bottom) * h
 
-    g = ['<line class="g%s" x1="0" y1="%.1f" x2="%d" y2="%.1f"/>' % (" z" if pct and abs(v) < step * 1e-6 else "",
-                                                                      y(v), w, y(v)) for v in ticks]
+    g = []
+    if shade and ok_t(shade[1]) and ok_t(shade[2]) and shade[2] > shade[1]:
+        s0, s1 = max(t0, shade[1]), min(t1, shade[2])
+        if s1 > s0:
+            g.append('<rect class="%s" x="%.1f" y="0" width="%.1f" height="%d"/>' % (shade[0], x(s0), x(s1) - x(s0), h))
+    g += ['<line class="g%s" x1="0" y1="%.1f" x2="%d" y2="%.1f"/>' % (" z" if pct and abs(v) < step * 1e-6 else "",
+                                                                       y(v), w, y(v)) for v in ticks]
+    for c, a in areas:
+        if len(a) >= 2:
+            g.append('<polygon class="a %s" points="%s"/>' % (c, " ".join(
+                ["%.1f,%.1f" % (x(t), y(hi)) for t, _lo, hi in a] + ["%.1f,%.1f" % (x(t), y(lo)) for t, lo, _hi in
+                                                                    reversed(a)])))
     for c, t in vlines:
         if _is_num(t) and t0 <= t <= t1:
             g.append('<line class="v %s" x1="%.1f" y1="0" x2="%.1f" y2="%d"/>' % (c, x(t), x(t), h))
@@ -842,6 +904,62 @@ def csv_cell(v):
     """A text cell a spreadsheet will not run as a formula."""
     s = "" if v is None else str(v)
     return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
+
+def analysis_html(p):
+    """v3.6.1: the strategy and the analysis behind a position in words - Kimi's newest analysis of the coin
+    (bitpin/performance.py read_analyses: setup, base-rate row, the methods its evidence cites, p against the
+    driftless p0, reward / risk / cost, expected value, verdict, its own words), else the plan's setup."""
+    a = p.get("analysis") if isinstance(p.get("analysis"), dict) else None
+    setup = str((a or {}).get("setup") or p.get("setup") or "")
+    name, desc = SETUP_LABELS.get(setup, (None, None))
+    rows = [(N_("Strategy"), ('<b>%s</b> <span class="muted">%s</span>' % (te(name), te(desc))) if name
+             else (ltr(setup.replace("_", " ")) if setup else dash()))]
+    extra = ""
+    if a:
+        row = str(a.get("row") or "").upper()
+        if row:
+            rows.append((N_("Base rate"), ltr(row) + ((" &middot; " + te(ROW_TITLES[row])) if row in ROW_TITLES else "")))
+        text = " ".join((str(a.get("evidence") or ""), str(a.get("bear") or ""))).lower()
+        groups = {}
+        for group, method, pattern in ANALYSIS_METHODS:
+            if re.search(pattern, text) and method not in groups.get(group, []):
+                groups.setdefault(group, []).append(method)
+        stats = groups.setdefault("stats", [])
+        if row:
+            stats.insert(0, N_("the historical base rate"))
+        if _is_num(a.get("p")):
+            stats.append(N_("probability and expected value"))
+        rows.append((N_("Analysis methods"), " &middot; ".join(
+            "<b>%s:</b> %s" % (te(label), esc(tr(", ").join(tr(m) for m in groups[key])))
+            for key, label in METHOD_GROUPS if groups.get(key))))
+        pk, p0 = a.get("p"), a.get("p0")
+        pk = pk if (_is_num(pk) and 0 <= pk <= 1) else None
+        p0 = p0 if (_is_num(p0) and 0 <= p0 <= 1) else None
+        if _is_num(pk):
+            rows.append((N_("Kimi's probability"), tr("take profit before the invalidation: %s (without an edge: %s)")
+                         % (ltr(pct_text(pk * 100.0, 1)), ltr(pct_text(p0 * 100.0, 1)) if _is_num(p0) else dash())))
+        g, l, c = a.get("gain_pct"), a.get("loss_pct"), a.get("cost_pct")
+        if _is_num(g) and _is_num(l):
+            rows.append((N_("Reward and risk"), tr("%s to the target, %s to the invalidation, cost %s") % (
+                signed_num(g, 2, "%"), signed_num(-l, 2, "%"), ltr(pct_text(c)) if _is_num(c) else dash())))
+        if _is_num(a.get("ev_pct")):
+            rows.append((N_("Expected value"), signed_num(a.get("ev_pct"), 2, "%")))
+        v = a.get("verdict")
+        if v:
+            rows.append((N_("Kimi's verdict"), te(VERDICT_LABELS[v]) if v in VERDICT_LABELS else ltr(v)))
+        rows.append((N_("Analysed"), fmt_time(a.get("time"))))
+        if a.get("evidence") or a.get("bear"):
+            extra = '<details class="more"><summary>%s</summary><p><b>%s</b> %s</p><p><b>%s</b> %s</p></details>' % (
+                te("Kimi's own words"), te("Evidence:"), bdi(a.get("evidence") or ""), te("Against it:"),
+                bdi(a.get("bear") or ""))
+    else:
+        extra = '<p class="muted small">%s</p>' % te(
+            "Kimi has not re-tested this coin in its recent decisions: the chart shows the levels of its plan.")
+    if p.get("note"):
+        rows.append((N_("Kimi's note on the plan"), bdi(p.get("note"))))
+    return '<div class="analysis"><h4>%s%s</h4><dl class="an">%s</dl>%s</div>' % (
+        icon("spark"), te("Strategy and analysis"), "".join("<dt>%s</dt><dd>%s</dd>" % (te(k), v) for k, v in rows), extra)
 
 
 class _Req(object):
@@ -2563,38 +2681,61 @@ class PanelApp(object):
         asset = str(p.get("asset") or "")
         now = p.get("price_usdt")
         line = [(x[0], x[1]) for x in p.get("prices") or [] if isinstance(x, list) and len(x) >= 2]
-        hl = []
+        o = p.get("outlook") if isinstance(p.get("outlook"), dict) else {}
+        hl, series = [], [("pl", line)]
         items = [("pl", (tr("Price now %s") % ltr(price_text(now))) if _is_num(now) else te("Price"))]
         for cls, key, label in (("entry", "entry_usdt", N_("Entry %s")), ("stop", "stop_usdt", N_("Stop %s")),
-                                ("target", "target_usdt", N_("Target %s"))):
+                                ("target", "target_usdt", N_("Target %s")),
+                                ("inv", "invalidation_usdt", N_("Invalidation %s"))):
             v = p.get(key)
             if _is_num(v):
                 hl.append((cls, v))
                 items.append((cls, tr(label) % ltr(price_text(v))))
-        for o in p.get("orders") or []:
-            if not isinstance(o, dict) or not _is_num(o.get("price_usdt")):
+        for od in p.get("orders") or []:
+            if not isinstance(od, dict) or not _is_num(od.get("price_usdt")):
                 continue
-            cls = "buy" if o.get("side") == "buy" else "sell"
-            hl.append((cls, o["price_usdt"]))
-            text = (tr("Buy order %s") if cls == "buy" else tr("Sell order %s")) % ltr(price_text(o["price_usdt"]))
-            if _is_num(o.get("amount")):
-                text += " &middot; " + ltr(qty_text(o.get("amount"), asset))
+            cls = "buy" if od.get("side") == "buy" else "sell"
+            hl.append((cls, od["price_usdt"]))
+            text = (tr("Buy order %s") if cls == "buy" else tr("Sell order %s")) % ltr(price_text(od["price_usdt"]))
+            if _is_num(od.get("amount")):
+                text += " &middot; " + ltr(qty_text(od.get("amount"), asset))
             items.append((cls, text))
         if _is_num(p.get("set_at")):
             items.append(("set", tr("Plan set %s") % fmt_time(p.get("set_at"))))
-        chart = line_chart([("pl", line)], hl, [("set", p.get("set_at"))], label=tr("Price of %s in USDT") % asset,
-                           cls="sm")
+        # v3.6.1 the outlook: Kimi's two scenarios and their weighted price from its decision to the end of the
+        # plan, over the range a driftless walk stays in (68% / 95%) from now; the future is shaded
+        cone = [c for c in o.get("cone") or [] if isinstance(c, list) and len(c) >= 5]
+        areas = [("cone2", [(c[0], c[3], c[4]) for c in cone]), ("cone1", [(c[0], c[1], c[2]) for c in cone])]
+        origin, end, prob = o.get("origin"), o.get("to"), o.get("p")
+        prob = prob if (_is_num(prob) and 0 <= prob <= 1) else None
+        fc = []
+        if isinstance(origin, list) and len(origin) >= 2 and _is_num(origin[0]) and _is_num(origin[1]) \
+                and _is_num(end):
+            for cls, key, label, pr in (("fc-tp", "target", N_("Target scenario %s"), prob),
+                                        ("fc-inv", "invalidation", N_("Invalidation or the max hold %s"),
+                                         (1.0 - prob) if _is_num(prob) else None),
+                                        ("fc-ev", "expected", N_("Probability-weighted price %s"), None)):
+                v = o.get(key)
+                if _is_num(v):
+                    series.append((cls, [(origin[0], origin[1]), (end, v)]))
+                    text = tr(label) % ltr(price_text(v))
+                    if _is_num(pr):
+                        text += " &middot; " + tr("probability %s") % ltr(pct_text(pr * 100.0, 1))
+                    fc.append((cls, text))
+        if cone:
+            fc.append(("cone", te("the normal range of the price: 68% and 95% of the time")))
+        chart = line_chart(series, hl, [("set", p.get("set_at")), ("now", o.get("from"))],
+                           label=tr("Price of %s in USDT") % asset, cls="sm", areas=areas,
+                           shade=("future", o.get("from"), end))
+        fc_html = ('<p class="fc-h">%s</p>%s' % (tr("Outlook until %s") % fmt_time(end), legend(fc))) if fc else ""
         ch = p.get("change_pct")
         badge = (' <span class="badge %s">%s</span>' % ("ok" if ch > 0 else ("err" if ch < 0 else ""),
                                                         ltr("%+.2f%%" % ch))) if _is_num(ch) else ""
         rows = [(N_("Amount"), ltr(qty_text(p.get("qty"), asset)) if _is_num(p.get("qty")) else dash()),
                 (N_("Value (IRT)"), fmt_num(p.get("value_irt"), 0)), (N_("Value (USDT)"), fmt_num(p.get("value_usdt"), 2)),
                 (N_("Hold until"), fmt_time(p.get("max_hold_until")))]
-        if p.get("setup"):
-            rows.append((N_("Setup"), ltr(str(p.get("setup")).replace("_", " "))))
-        note = ('<p class="note">%s</p>' % bdi(p.get("note"))) if p.get("note") else ""
-        return '<article class="position"><div class="position-h">%s%s</div>%s%s%s%s</article>' % (
-            code(asset + " / USDT"), badge, chart, legend(items), facts(rows), note)
+        return '<article class="position"><div class="position-h">%s%s</div>%s%s%s%s%s</article>' % (
+            code(asset + " / USDT"), badge, chart, legend(items), fc_html, facts(rows), analysis_html(p))
 
     def _history_filters(self, req):
         asset = re.sub(r"[^A-Z0-9]", "", req.query.get("asset", "").upper())[:12]
