@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.5.1` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.6.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -132,6 +132,10 @@ sudo ufw allow 8443/tcp            # only if ufw is active: the panel never open
 | Page | What you can do |
 |---|---|
 | Dashboard | services, account value, profit or loss, drawdown, the last decision with its report, positions, spend |
+| Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders |
+| Trade history | every buy and sell of the bot, with filters, pages and a CSV download |
+| Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders |
+| Trade history | every buy and sell of the bot, with filters, pages and a CSV download |
 | Trade settings | about 60 key settings in 9 groups (the trusted news sources too), with a preview and a diff before saving |
 | Models and keys | Moonshot, OpenRouter or another provider; the model list with prices; write-only keys |
 | Settings (JSON) | the complete `config.json` and `kimi.json`, validated before saving |
@@ -315,6 +319,8 @@ skipped elsewhere. No test touches the network or a real key: exchange and model
 | `analysis.py` | the market context: volatility, drawdowns, indicators, support and resistance, beta and correlation, spread and depth, asset classes, the US session |
 | `notify.py` | the Telegram notifier (Persian) |
 | `panel_web.py`, `panel_auth.py`, `panel_settings.py`, `panel_i18n.py`, `static/` | the web panel: pages, login and sessions, the trade settings form, the Persian translations, the stylesheet |
+| `performance.py` | the panel's profit and loss report: totals in toman and USDT, rows per asset, chart data, the trade history |
+| `performance.py` | the panel's profit and loss report: totals in toman and USDT, rows per asset, chart data, the trade history |
 | `vpn.py` | VPN share links to xray outbounds, secret masking, xray and proxy tests |
 | `spend.py` | the USD spend meter of the model calls |
 | `data.py`, `indicators.py`, `backtest.py`, `research.py`, `strategies/` | candles, indicators, a lookahead-free backtester and the rule strategies that were tested |

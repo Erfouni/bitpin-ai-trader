@@ -1073,15 +1073,15 @@ class TestPromptBlockLimits(unittest.TestCase):
 class TestRobustness(NewsTestBase):
     def test_deeply_nested_reply_uses_the_stale_brief_and_cools_down(self):
         deep = '{"items": ' + "[" * 200000 + "]" * 200000 + "}"
-        r, tr = self.researcher([(200, completion(GOOD)), (200, completion(deep)), (200, completion(GOOD))],
-                                cache_minutes=0)
+        r, tr = self.researcher([(200, completion(GOOD)), (200, completion(deep)), (200, completion(deep)),
+                                 (200, completion(GOOD))], cache_minutes=0)       # v3.5.3: asked once more
         self.assertTrue(r.research(T0).ok)
         b = r.research(T0 + 5 * MIN)
         self.assertTrue(b.ok and b.stale and b.cached, b.error)
         self.assertIn("no JSON object", b.error)
         b3 = r.research(T0 + 6 * MIN)                  # inside the cool-down: no new call
         self.assertTrue(b3.stale)
-        self.assertEqual(len(tr.requests), 2)
+        self.assertEqual(len(tr.requests), 3)
         with open(os.path.join(self.dir, CACHE_FILE), encoding="utf-8") as f:
             self.assertIn("no JSON object", json.load(f)["last_error"])
 

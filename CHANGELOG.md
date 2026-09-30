@@ -4,6 +4,71 @@
 
 ---
 
+## 3.6.0 — عملکرد، نمودارهای زنده و سابقهٔ معاملات در پنل (2026-09-30)
+
+- صفحهٔ تازهٔ **عملکرد** (`/performance`): سود و زیان حساب برای هر بازهٔ زمانی (۲۴ ساعت، ۷ روز، ۳۰ روز، از شروع، یا روزهای
+  دلخواه به وقت تهران)، هم **به تومان** و هم **به تتر**، یعنی بدون اثر افت ریال. کنارش نشان می‌دهد اگر همهٔ سرمایه فقط تتر
+  نگه داشته می‌شد چقدر می‌شد، و ربات چند واحد درصد از آن جلوتر یا عقب‌تر است. تعداد معامله‌ها و کارمزدها هم هست.
+- **سود و زیان هر دارایی جدا** (BTC، ETH، ...، تتر و تومان نقد) به تومان و به تتر: ارزش پایان − ارزش شروع − پولی که وارد شده +
+  پولی که بیرون آمده، هر معامله با قیمت خودش. جمع ردیف‌ها دقیقاً تغییر حسابی است که از روی معامله‌های ربات بازسازی می‌شود. اگر
+  با ارزش ثبت‌شده بیش از ۲٪ فرق کند (مثلاً معامله یا واریزی که ربات نکرده)، هشدار داده می‌شود.
+- **نمودارهای زنده**: درصد تغییر ارزش سبد (به تومان، به تتر، و «فقط تتر»)، و برای هر موقعیت باز نمودار قیمت به تتر با خط ورود،
+  حد ضرر، هدف، سفارش‌های خرید و فروشِ باز و زمان ثبت برنامه. نقطهٔ آخر هر نمودار همین دقیقه است. صفحه هر دقیقه خودش تازه
+  می‌شود (بدون جاوااسکریپت) و با یک دکمه خاموش می‌شود. تازه‌سازی خودکار نشست را زنده نگه نمی‌دارد، پس خروج خودکار بعد از
+  بی‌کاری مثل قبل کار می‌کند.
+- صفحهٔ تازهٔ **سابقهٔ معاملات** (`/history`): همهٔ خریدها و فروش‌های ربات، جدید به قدیم، با فیلتر دارایی و نوع، صفحه‌به‌صفحه،
+  و **دانلود CSV** برای اکسل.
+- حساب‌ها فقط‌خواندنی‌اند: از فایل‌های خود ربات (با کاربر `bitpin`، نه root) و کندل‌های **عمومی** بیت‌پین؛ هیچ کلید، هیچ
+  درخواست احرازشده و هیچ سفارشی در کار نیست. برای بازه‌های بلند، قیمت‌های قدیمی‌تر از ۱۰ روز از کندل‌های ۴ ساعته می‌آیند تا
+  گزارش در تمام سال سبک بماند.
+- رفتار معامله‌ای و تنظیمات عوض نشده‌اند و تأیید تازه لازم نیست.
+- English: `bitpin/performance.py` (new): `report()` - totals from the recorded equity (the value at t_from is the last
+  record at or before it, else the start value), each value converted to USDT at its own hour's USDT_IRT close,
+  rows per asset (value change minus net flows, each fill at its own price, fees against the asset traded; the rows
+  add up to the change of the account rebuilt from the fills; >2% rebuilt/recorded mismatch = warning), the
+  estimate of the value at this minute (the last record moved by the latest prices), chart series thinned to 360
+  points, the open positions (plan, resting limit orders, 7..30 days of prices in USDT) and the history (newest
+  5000); `collect()` - reads kimi_runner.jsonl / kimi_equity.json / live_orders.json, clamps a range to one hour
+  before the first record, fetches hourly candles for the last 10 days and 4-hour candles before.
+  `scripts/panel_helper.py`: command `performance` (from / to validated, at most 400 days) run by `perf-worker` as
+  the user bitpin, output limit 3 MB (`run_command(limit=)`). `bitpin/panel_web.py`: `/performance`, `/history`,
+  `/history.csv` (CSV-injection-safe cells, BOM), SVG line charts stretched to their box with HTML axis labels
+  (`line_chart`, `nice_ticks`), a 45 s report cache per range, `<meta http-equiv="refresh">` with `auto=1` that does
+  not touch the session (`SessionStore.get(touch=False)`); Persian texts in `panel_i18n.py`, styles in `panel.css`.
+  Tests: `tests/test_performance.py`, panel and helper tests.
+
+## 3.5.3 — جواب خبرِ بی‌قالب و قطعی اتصال تونل (2026-09-30)
+
+- آزمون واقعی بعد از ۳٫۵ نشان داد مدل خبر (kimi-k2.6) با دستور تازهٔ منابع گاهی به‌جای JSON یک متن معمولی می‌نویسد (دو بار
+  پشت سر هم). حالا: (۱) دستور منابع نرم‌تر است: فیلتر `site:` فقط کمک است و اگر جست‌وجوی فیلترشده چیزی پیدا نکرد، بدون فیلتر
+  جست‌وجو می‌شود و فقط نتیجه‌های سایت‌های فهرست نگه داشته می‌شود؛ (۲) جوابی که JSON نیست یک بار دیگر خواسته می‌شود و متن خود
+  مدل به او برگردانده می‌شود تا همان را در قالب JSON بنویسد؛ (۳) لاگ، جست‌وجوهای انجام‌شده و آغاز جواب خوانده‌نشده را نشان
+  می‌دهد.
+- وقتی خودِ اتصال از تونل برقرار نشود (مثلاً «TLS handshake timed out»)، درخواست هرگز فرستاده نشده؛ این حالت هم مثل «هیچ
+  جوابی نیامد» حساب می‌شود و تلاش‌های اضافهٔ ۳٫۵٫۲ را می‌گیرد.
+- رفتار معامله‌ای و تنظیمات عوض نشده‌اند و تأیید تازه لازم نیست.
+- English: `bitpin/news.py`: FORMAT_NUDGE (a complete reply without the JSON object is asked for once more, its own text
+  given back, the tool withdrawn; the OpenRouter plugin request is repeated with FORMAT_NUDGE_PLAIN), the softer
+  SOURCES rule (a filtered search that finds nothing is repeated without the filter), the search queries in the
+  log, `_excerpt` of an unreadable reply; `_one_request`: a URLError whose reason is a timeout (CONNECT / TLS
+  handshake) is raised as `no connection ...` with `no_answer`. Tests: `tests/test_news_format.py`.
+
+## 3.5.2 — تلاش بیشتر برای درخواستی که تونل بلعید (2026-09-30)
+
+- گاهی اولین درخواست بزرگِ بعد از یک دورهٔ بیکاری در تونل (پراکسی محلی) گیر می‌کند و **هیچ** جوابی برنمی‌گردد، ولی درخواست
+  بعدی بی‌مشکل رد می‌شود (آزمون روی سرور: یک درخواست ۴۰ کیلوبایتی ۶۰ ثانیه بی‌جواب ماند و سه درخواست بعدی در کمتر از یک ثانیه
+  جواب گرفتند؛ درخواست‌های کوچک همیشه رد می‌شدند). تا حالا درخواست تصمیمی که ۱۲۰ ثانیه هیچ جوابی نمی‌گرفت فقط یک بار دوباره
+  فرستاده می‌شد و دو شکست پشت سر هم تصمیم را باطل می‌کرد.
+- حالا درخواستی که **هیچ** جوابی نگرفته (حتی سرآیند پاسخ) تا ۳ بار دیگر دوباره فرستاده می‌شود، داخل همان مهلت کل تصمیم. جوابی
+  که بعد از شروع قطع شود (یعنی Moonshot آن را پردازش و حساب کرده) مثل قبل فقط یک بار دوباره فرستاده می‌شود. هزینهٔ تخمینی هر
+  تلاش گم‌شده مثل قبل در بودجه حساب می‌شود.
+- رفتار معامله‌ای و تنظیمات عوض نشده‌اند و تأیید تازه لازم نیست. ریشهٔ مشکل در مسیر تونل است (به احتمال زیاد اندازهٔ بسته /
+  MTU)؛ این نسخه فقط اثرش را کم می‌کند.
+- English: `bitpin/llm.py` SILENT_EXTRA_RETRIES = 3: a streamed POST without any answer (`no_answer`, set by
+  `bitpin/news.py` `_one_request` at STREAM_HEADERS_SECONDS and passed on by `make_llm_transport`) is retried up to three
+  more times on top of `max_timeout_retries` (the chat's `timeouts` counter is now `[timed out, silent]`); replies lost
+  after their headers keep the old limit. Tests: `tests/test_llm_silent.py`.
+
 ## 3.5.1 — آزمون واقعی‌تر خبر (2026-09-30)
 
 - `kimi-check --news` به پژوهش خبر ۴۸۰ ثانیه وقت می‌دهد، نه ۱۵۰: یک جست‌وجوی وب و جوابی تا ۱۶۰۰۰ توکن از پشت تونل چند دقیقه

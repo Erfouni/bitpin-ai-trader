@@ -48,10 +48,13 @@ class FakeRun(object):
         self.show_rc = 0
         self.stop_rc = 0
         self.worker_out = '{"ok": true, "models": [{"id": "moonshotai/kimi-k3"}]}'
+        self.perf_out = 'a warning on stderr\n{"totals":{"trades":2},"history":[]}'
+        self.limits = []
         self.cli = os.path.join(t, "bitpin-bot")
 
-    def __call__(self, argv, timeout, env=None, cwd=None):
+    def __call__(self, argv, timeout, env=None, cwd=None, limit=None):
         self.calls.append((list(argv), dict(env or {})))
+        self.limits.append(limit)
         a = list(argv)
         if a[:2] == ["systemctl", "show"]:
             st = self.states.get(a[2], "inactive")
@@ -79,6 +82,8 @@ class FakeRun(object):
                 return 0, "RESULT: OK"
         if a[0] == "journalctl":
             return 0, "line 1\nline 2\n"
+        if a[0] == "runuser" and "perf-worker" in a:
+            return 0, self.perf_out + "\n"
         if a[0] == "runuser" and "state-worker" in a:
             return 0, '{"equity": {"irt": 4000000}, "positions": [], "state_error": null}\n'
         if a[0] == "runuser":
@@ -146,7 +151,7 @@ class TestProtocol(Base):
         self.assertEqual(sorted(ph.COMMANDS), sorted([
             "status", "config_get", "secrets_status", "health", "check", "logs", "confirm_show", "models", "vpn_get",
             "vpn_test", "audit_notify", "config_put", "settings_set", "model_set", "secret_set", "apply_live",
-            "service", "panel_password_set", "panel_totp_set", "vpn_put"]))
+            "service", "panel_password_set", "panel_totp_set", "vpn_put", "performance"]))
 
     def test_serve_reads_one_bounded_json_line(self):
         out = io.BytesIO()
@@ -391,6 +396,78 @@ class TestPrivilegeSeparation(Base):
         ev = [f for f in os.listdir(os.path.join(self.t, "notify")) if f.startswith(ph.EVENT_PREFIX)]
         self.assertEqual(len(ev), 1)
         self.assertEqual(os.stat(os.path.join(self.t, "notify", ev[0])).st_mode & 0o777, 0o644)
+
+
+class TestPerformance(Base):
+    """v3.6: the P&L report of a time range, read like the bot state: by a worker running as the user bitpin,
+    with public candles only (tests/test_performance.py checks the numbers)."""
+
+    def setUp(self):
+        super(TestPerformance, self).setUp()
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import test_performance as tp                      # the synthetic world of the report's own tests
+        self.tp = tp
+        with open(os.path.join(self.paths.state_dir, "kimi_runner.jsonl"), "w", encoding="utf-8") as f:
+            for rec in tp.world_records():
+                f.write(json.dumps(rec) + "\n")
+        with open(os.path.join(self.paths.state_dir, "kimi_equity.json"), "w", encoding="utf-8") as f:
+            json.dump({"equity_start_irt": tp.START}, f)
+        self.now = tp.cycle(29) + 600
+        self.h.clock = lambda: self.now
+        self.fetched = []
+
+        def fetch(symbol, res, start, end):
+            self.fetched.append((symbol, res))
+            return tp.make_bars(tp.PRICE[symbol.split("_")[0]], start, end, now=self.now)
+        self.h.fetch_bars = fetch
+
+    def test_the_range_is_checked(self):
+        now = int(self.now)
+        for a in ({}, {"from": "1", "to": now}, {"from": now - 10, "to": float(now)}, {"from": True, "to": now},
+                  {"from": now, "to": now - 10}, {"from": now - 10, "to": now + 7200}, {"from": 1000, "to": now},
+                  {"from": now - 401 * 86400, "to": now}):
+            self.assertFalse(self.call("performance", **a)["ok"], a)
+        self.assertEqual(self.fetched, [])
+
+    def test_the_report_of_a_range(self):
+        data = self.ok("performance", **{"from": int(self.tp.T0), "to": int(self.now)})
+        self.assertEqual(data["totals"]["trades"], 4)
+        self.assertEqual(len(data["history"]), 4)
+        self.assertEqual(sorted(set(self.fetched)), [("BTC_IRT", "60"), ("USDT_IRT", "60")])
+        self.assertAlmostEqual(sum(a["pnl_irt"] for a in data["assets"]), data["rebuilt_value_to_irt"] - self.tp.START,
+                               places=3)
+        json.dumps(data)
+
+    def test_production_reads_as_bitpin_with_a_larger_output_limit(self):
+        self.paths.state_in_process = False
+        data = self.ok("performance", **{"from": int(self.now) - 86400, "to": int(self.now)})
+        self.assertEqual(data, {"totals": {"trades": 2}, "history": []})
+        argv = [c[0] for c in self.run_fake.calls if c[0][0] == "runuser" and "perf-worker" in c[0]][-1]
+        self.assertEqual(argv[:4], ["runuser", "-u", "bitpin", "--"])
+        self.assertEqual(argv[argv.index("--state-dir") + 1], self.paths.state_dir)
+        self.assertEqual(argv[argv.index("--from") + 1:argv.index("--from") + 4],
+                         [str(int(self.now) - 86400), "--to", str(int(self.now))])
+        self.assertEqual(self.run_fake.limits[-1], ph.PERF_MAX_OUTPUT)
+        self.run_fake.perf_out = "Traceback: boom"
+        self.assertIn("the performance report failed", self.err("performance", **{"from": int(self.now) - 86400,
+                                                                                    "to": int(self.now)}))
+
+    def test_the_worker_prints_one_compact_json_line(self):
+        from unittest import mock
+        out = io.StringIO()
+        with mock.patch("bitpin.data.fetch_bars", self.h.fetch_bars), mock.patch("time.time", lambda: self.now):
+            with contextlib.redirect_stdout(out):
+                rc = ph.main(["perf-worker", "--state-dir", self.paths.state_dir, "--from", str(int(self.tp.T0)),
+                              "--to", str(int(self.now))])
+        self.assertEqual(rc, 0)
+        lines = out.getvalue().strip().splitlines()
+        self.assertEqual(len(lines), 1)
+        self.assertNotIn(", ", lines[0][:200])
+        self.assertEqual(json.loads(lines[0])["totals"]["trades"], 4)
+
+    def test_a_long_output_keeps_its_end_up_to_the_limit(self):
+        self.assertEqual(ph.cap("x" * 10, 20), "x" * 10)
+        self.assertTrue(ph.cap("a" * 50 + "{}", 20).endswith("a" * 18 + "{}"))
 
 
 class TestPanelLogin(Base):

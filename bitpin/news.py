@@ -282,8 +282,18 @@ FINAL_ANSWER_NUDGE = ("SEARCH LIMIT REACHED: do not call any tool again. Using o
 LENGTH_NUDGE = ("YOUR REPLY WAS CUT OFF before the JSON object was complete. Do not call any tool again. Reply now with "
                 "ONLY the JSON object in the required format - no analysis, no notes, no text before or after it - with "
                 "at most %d short items.")
+# v3.5.3: a complete reply that is not the JSON object (plain text) is asked for ONCE more, the model's own text
+# given back so that it can put what it found into the JSON (on 2026-09-30 kimi-k2.6 answered in prose twice)
+FORMAT_NUDGE = ("YOUR REPLY ABOVE IS NOT THE JSON OBJECT. Do not call any tool again. Using only what you have already "
+                "found, reply now with ONLY the JSON object in the required format - no text before or after it. If you "
+                "found nothing relevant, reply {\"items\": [], \"summary\": \"no significant news found\"}.")
+FORMAT_ECHO_CHARS = 4000                      # at most this much of the prose reply is given back
+# the OpenRouter web plugin has no conversation to give the text back in: the request is repeated with this added
+FORMAT_NUDGE_PLAIN = ("Reply with ONLY the JSON object in the required format - no text before or after it. If you find "
+                      "nothing relevant, reply {\"items\": [], \"summary\": \"no significant news found\"}.")
 FAILED_REPLY_FILE = "news_failed_reply.txt"   # the last reply that could not be read (state_dir, 0600, diagnosis)
 FAILED_REPLY_CHARS = 60000
+EXCERPT_CHARS = 300                           # of an unreadable reply, in the log (the check deletes its temp dir)
 
 
 def _long_date(dt):
@@ -1551,10 +1561,22 @@ def _one_request(op, req, t_end, state, max_bytes=None, idle=None):
     try:
         try:
             resp = op.open(req, timeout=max(0.1, first))
+        except urllib.error.HTTPError:
+            raise
+        except urllib.error.URLError as ue:
+            # v3.5.3: a timeout while the connection was being opened (proxy CONNECT, TLS handshake): the
+            # request was never sent - nothing to bill, nothing arrived
+            if isinstance(ue.reason, (socket.timeout, TimeoutError)):
+                err = socket.timeout("no connection within %.0f s (%s)" % (first, ue.reason))
+                err.no_answer = True
+                raise err
+            raise
         except socket.timeout:
             if idle and t_end - time.monotonic() > 0.05:
-                raise socket.timeout("no answer %.0f s after the request was sent (the connection went silent)"
+                err = socket.timeout("no answer %.0f s after the request was sent (the connection went silent)"
                                      % first)
+                err.no_answer = True      # v3.5.2: nothing at all arrived (the tunnel swallowed the request)
+                raise err
             raise
         with resp as r:
             state["resp"] = r
@@ -2261,11 +2283,12 @@ def build_news_messages(now, context_hint=None, extra_topics="", max_items=10, m
                             "any other site is removed automatically, and your summary with it; when these sites have "
                             "nothing relevant, return fewer items or none." % listed)
         else:
-            search_rule += ("\n- SOURCES: search and cite ONLY these sites (their subdomains count): %s. Put a site "
-                            "filter in your queries, e.g. \"Bitcoin news %s site:%s\" or \"Iran rial %s site:%s\". An "
-                            "item from any other site is removed automatically, and your summary with it; when these "
-                            "sites have nothing relevant, return fewer items or none."
-                            % (listed, month_year, crypto, month_year, other))
+            search_rule += ("\n- SOURCES: cite ONLY articles from these sites (their subdomains count): %s. A site "
+                            "filter can help, e.g. \"Bitcoin news %s site:%s\" or \"Iran rial %s site:%s\"; when a "
+                            "filtered search finds nothing, search without the filter and keep only results from these "
+                            "sites. An item from any other site is removed automatically, and your summary with it; "
+                            "when these sites have nothing relevant, return fewer items or none - always as the JSON "
+                            "object." % (listed, month_year, crypto, month_year, other))
     search_rule += "\n- Base the summary ONLY on the items you list."
     system = "\n".join([
         "You are the news researcher of an automated spot trading account on Bitpin (bitpin.ir), an Iranian crypto "
@@ -2554,6 +2577,10 @@ class NewsResearcher:
         """An error text for logs / cache / prompts: redacted FIRST, then shortened."""
         return _short(self.redact(text if isinstance(text, str) else str(text)), n)
 
+    def _excerpt(self, text):
+        """v3.5.3: the start of a reply that could not be read, for the log: one line, redacted, quoted."""
+        return repr(_short(self.redact(_strip_controls(text if isinstance(text, str) else str(text))), EXCERPT_CHARS))
+
     # ---- persistence
     def _load_cache(self):
         if self.cache_path is None:
@@ -2583,7 +2610,7 @@ class NewsResearcher:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 fh.write(text)
             os.replace(tmp, path)
-            log.warning("news: the unreadable reply was saved to %s", path)
+            log.warning("news: the unreadable reply was saved to %s; it starts: %s", path, self._excerpt(content))
         except OSError as e:
             log.warning("news: cannot write %s: %s", path, e)
 
@@ -3018,6 +3045,7 @@ class NewsResearcher:
         sources = self.cfg["sources"]
         nudged = False
         length_retried = False
+        format_retried = False
         cap_prompt = self.cfg["max_prompt_tokens_per_call"]
         cap_day = self.cfg["max_tokens_per_day"]
         rounds = 0
@@ -3082,6 +3110,9 @@ class NewsResearcher:
                             if not isinstance(stats["usage"].get("search"), dict):
                                 stats["usage"]["search"] = {}
                             _add_usage(stats["usage"]["search"], a["usage"])
+                        sr = a.get("search_result") if isinstance(a, dict) else None
+                        if isinstance(sr, dict) and isinstance(sr.get("query"), str):   # v3.5.3: for the log
+                            stats.setdefault("queries", []).append(_short(_strip_controls(sr["query"]), 120))
                     msgs.append(tool_message(tc))
                 pt = _fnum(u.get("prompt_tokens"))
                 spent = _fnum(stats["usage"].get("total_tokens")) or 0.0
@@ -3111,6 +3142,16 @@ class NewsResearcher:
                             " - asking once more for the JSON object only", int(self.cfg["max_tokens"]), len(content))
                 msgs.append({"role": "user", "content": LENGTH_NUDGE % int(self.cfg["max_items"])})
                 continue
+            if (finish != "length" and not format_retried and extract_first_json_object(content, REPLY_KEYS) is None
+                    and salvage_reply(content) is None):
+                format_retried = True
+                final = True
+                log.warning("news: the reply is not the JSON object (%d chars, finish_reason %s; searches: %s): %s - "
+                            "asking once more for the JSON object", len(content), finish,
+                            "; ".join(stats.get("queries") or []) or "none", self._excerpt(content))
+                msgs.append({"role": "assistant", "content": content[:FORMAT_ECHO_CHARS]})
+                msgs.append({"role": "user", "content": FORMAT_NUDGE})
+                continue
             if (now is not None and not nudged and not final and rounds < max_rounds
                     and not has_recent_news(content, now, sources)):
                 nudged = True
@@ -3134,7 +3175,7 @@ class NewsResearcher:
         deadline = self._mono() + float(self.cfg["deadline_seconds"])
         msgs = [dict(m) for m in messages]
         plugin = web_plugin(self.cfg["max_items"])
-        length_retried = False
+        length_retried = format_retried = False
         sa = self._stream.attempt()
         while True:
             body = {"model": self.model, "messages": msgs, "max_tokens": int(self.cfg["max_tokens"]),
@@ -3181,5 +3222,12 @@ class NewsResearcher:
                             " - asking once more for the JSON object only", int(self.cfg["max_tokens"]), len(content))
                 msgs[-1] = dict(msgs[-1], content="%s\n%s" % (msgs[-1].get("content") or "",
                                                                LENGTH_NUDGE % int(self.cfg["max_items"])))
+                continue
+            if (finish != "length" and not format_retried and extract_first_json_object(content, REPLY_KEYS) is None
+                    and salvage_reply(content) is None and msgs and msgs[-1].get("role") == "user"):
+                format_retried = True           # v3.5.3: prose instead of the JSON object - asked once more
+                log.warning("news: the reply is not the JSON object (%d chars, finish_reason %s): %s - asking once "
+                            "more for the JSON object", len(content), finish, self._excerpt(content))
+                msgs[-1] = dict(msgs[-1], content="%s\n%s" % (msgs[-1].get("content") or "", FORMAT_NUDGE_PLAIN))
                 continue
             return content, url_citations(msg.get("annotations"))

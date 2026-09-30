@@ -114,8 +114,9 @@ class TestFilter(unittest.TestCase):
 class TestPrompt(unittest.TestCase):
     def test_the_researcher_is_told_to_search_and_cite_only_the_list(self):
         system = build_news_messages(T0, sources=TRUSTED)[0]["content"]
-        self.assertIn("SOURCES: search and cite ONLY these sites (their subdomains count): reuters.com, apnews.com",
+        self.assertIn("SOURCES: cite ONLY articles from these sites (their subdomains count): reuters.com, apnews.com",
                       system)
+        self.assertIn("when a filtered search finds nothing, search without the filter", system)   # v3.5.3
         self.assertIn("site:coindesk.com", system)
         self.assertIn("Base the summary ONLY on the items you list.", system)
         plugin = build_news_messages(T0, sources=TRUSTED, provider="openrouter")[0]["content"]
@@ -140,7 +141,7 @@ class TestResearchWithTrustedSources(tn.NewsTestBase):
         self.assertTrue(b.ok, b.error)
         self.assertEqual(len(b.items), 2)
         self.assertEqual(len(tr.requests), 2)                       # a trusted recent item: no second search
-        self.assertIn("SOURCES: search and cite ONLY these sites", tr.requests[0]["body"]["messages"][0]["content"])
+        self.assertIn("SOURCES: cite ONLY articles from these sites", tr.requests[0]["body"]["messages"][0]["content"])
         self.assertIn("left out, and the researcher's summary with it", b.text)
 
     def test_only_untrusted_items_get_one_more_search_naming_the_sites(self):

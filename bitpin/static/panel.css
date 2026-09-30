@@ -445,8 +445,11 @@ details.fold[open] > summary { border-bottom: 1px solid var(--border); }
   white-space: nowrap;
 }
 .badge.accent { background: var(--accent-soft); color: var(--accent); }
+.badge.ok { background: var(--ok-soft); color: var(--ok-text); }
 .badge.warn { background: var(--warn-soft); color: var(--warn-text); }
 .badge.err { background: var(--err-soft); color: var(--err-text); }
+.gain { color: var(--ok-text); }
+.loss { color: var(--err-text); }
 
 /* ------------------------------------------------------------------------------------------------ dashboard */
 .kpis {
@@ -613,7 +616,7 @@ label { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 600; colo
 .field { margin: 0 0 16px; min-width: 0; }
 .help { margin: 6px 0 0; color: var(--text-3); font-size: 12.5px; line-height: 1.6; }
 [dir=rtl] .help { line-height: 1.8; }
-input[type=text], input[type=password], input[type=number], input:not([type]), select, textarea {
+input[type=text], input[type=password], input[type=number], input[type=date], input:not([type]), select, textarea {
   display: block;
   width: 100%;
   height: 40px;
@@ -894,6 +897,111 @@ details.more > p {
   font-weight: 700;
 }
 .steps li span { color: var(--text-2); font-size: 13px; }
+
+/* ------------------------------------------------------------------------------------------------ performance (v3.6) */
+.rangebar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 0 0 14px; }
+.rangebar .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.rangebar .seg a { white-space: nowrap; }
+form.range-f { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0; }
+form.range-f label { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+form.range-f input[type=date] { width: auto; height: 32px; padding: 0 8px; font-size: 12.5px; }
+.livebar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 16px; }
+.livebar p { margin: 0; color: var(--text-2); font-size: 12.5px; }
+.livebar bdi, .tbl td bdi[dir=ltr] { white-space: nowrap; }
+.livebar .actions { margin: 0; }
+.pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
+
+/* a chart: the SVG drawing is stretched to its box, the labels around it are HTML (bitpin/panel_web.py line_chart) */
+.chart {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: 240px auto;
+  column-gap: 10px;
+  margin: 0;
+}
+.chart.sm { grid-template-rows: 170px auto; }
+.chart .yl {
+  grid-row: 1;
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  margin: -.75em 0;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: end;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.chart .plot { grid-row: 1; grid-column: 2; min-width: 0; }
+.chart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.chart .xl {
+  grid-row: 2;
+  grid-column: 2;
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding-top: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.chart line, .chart polyline { fill: none; vector-effect: non-scaling-stroke; }
+.chart .g { stroke: var(--border); stroke-width: 1; }
+.chart .g.z { stroke: var(--border-strong); stroke-width: 1.5; }
+.chart .l { stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .h { stroke-width: 1.5; }
+.chart .v { stroke-width: 1; }
+/* one colour per line, the same in the chart and in its legend */
+.chart .s1, .chart .pl { stroke: var(--accent); }
+.chart .s2 { stroke: #06b6d4; }
+.chart .s3 { stroke: var(--text-3); stroke-dasharray: 6 4; }
+.chart .entry { stroke: var(--text-2); stroke-dasharray: 6 4; }
+.chart .stop { stroke: var(--err); }
+.chart .target { stroke: var(--ok); }
+.chart .buy { stroke: var(--info-text); stroke-dasharray: 2 3; }
+.chart .sell { stroke: var(--warn); stroke-dasharray: 2 3; }
+.chart .set { stroke: var(--text-3); stroke-dasharray: 2 4; }
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.legend li { display: inline-flex; align-items: center; gap: 7px; }
+.legend .sw { display: inline-block; flex: none; width: 18px; height: 0; border-top: 2.5px solid var(--text-3); }
+.sw.s1, .sw.pl { border-top-color: var(--accent); }
+.sw.s2 { border-top-color: #06b6d4; }
+.sw.s3 { border-top-style: dashed; }
+.sw.entry { border-top-color: var(--text-2); border-top-style: dashed; }
+.sw.stop { border-top-color: var(--err); }
+.sw.target { border-top-color: var(--ok); }
+.sw.buy { border-top-color: var(--info-text); border-top-style: dotted; }
+.sw.sell { border-top-color: var(--warn); border-top-style: dotted; }
+.sw.set { border-top-style: dotted; }
+.positions { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 16px; }
+.position {
+  min-width: 0;
+  padding: 14px 16px 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.position-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 14px; }
+.position-h code { font-size: 13px; font-weight: 650; }
+.position .facts { margin: 14px 0 0; }
+.position .note { margin: 10px 0 0; color: var(--text-3); font-size: 12px; line-height: 1.6; }
+@media (max-width: 640px) {
+  .chart { grid-template-rows: 190px auto; }
+  .chart.sm { grid-template-rows: 150px auto; }
+  .livebar { flex-direction: column; align-items: flex-start; }
+}
 
 /* ------------------------------------------------------------------------------------------------ narrow screens */
 @media (max-width: 1180px) {

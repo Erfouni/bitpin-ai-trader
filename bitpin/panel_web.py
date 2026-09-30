@@ -30,12 +30,19 @@ Look and languages (v3.2): a sidebar layout styled by bitpin/static/panel.css (s
 /static/panel.css?v=<hash>, the one file the panel reads besides panel.json) with inline SVG icons. Every text
 is English in this file; bitpin/panel_i18n.py has the Persian translations. The language switch
 (GET /lang?to=fa&next=/trade) sets the cookie __Host-bplang; without it the browser's Accept-Language decides.
+
+Performance (v3.6): /performance (profit and loss of a time range in toman and in USDT, per asset, SVG charts of
+the portfolio and of every open position; the page reloads itself every minute through <meta http-equiv=refresh>
+with auto=1, which does not keep the session alive) and /history (+ /history.csv), both from the helper's
+`performance` command (bitpin/performance.py, run as the user bitpin).
 """
 import base64
 import binascii
+import csv
 import hashlib
 import hmac
 import html
+import io
 import json
 import logging
 import math
@@ -93,7 +100,7 @@ HELPER_LONG_TIMEOUT = 300.0
 # 90 s): only the plain reads stay on the short timeout
 HELPER_LONG_COMMANDS = ("apply_live", "vpn_put", "check", "models", "status", "health", "confirm_show", "vpn_test",
                         "logs", "config_put", "settings_set", "model_set", "secret_set", "service",
-                        "panel_password_set", "panel_totp_set")
+                        "panel_password_set", "panel_totp_set", "performance")
 HELPER_MAX_BYTES = 4 * 1024 * 1024
 TEHRAN = timezone(timedelta(hours=3, minutes=30))
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -122,7 +129,8 @@ TEXT_TYPE = "text/plain; charset=utf-8"
 
 APP_NAME = N_("Bitpin AI Trader")
 NAV = (
-    (N_("Overview"), (("/", "dashboard", N_("Dashboard")),)),
+    (N_("Overview"), (("/", "dashboard", N_("Dashboard")), ("/performance", "trend", N_("Performance")),
+                      ("/history", "list", N_("Trade history")))),
     (N_("Trading"), (("/trade", "sliders", N_("Trade settings")), ("/models", "cpu", N_("Models & keys")),
                      ("/apply", "check", N_("Apply settings")))),
     (N_("System"), (("/vpn", "globe", N_("VPN")), ("/logs", "logs", N_("Logs")),
@@ -134,6 +142,18 @@ STATE_LABELS = {"active": N_("Running"), "activating": N_("Starting"), "deactiva
                 "failed": N_("Error"), "not-installed": N_("Not installed")}
 GROUP_ICONS = {"style": "spark", "risk": "shield", "schedule": "clock", "markets": "chart", "ladder": "stairs",
                "exits": "target", "costs": "coins", "news": "news", "budget": "wallet"}
+# v3.6 performance and trade history: the time ranges (the default: since the account's first record), how long a
+# report is reused (the history's pages and the CSV of one range come from one report), the live page's reload
+PERF_RANGES = (("24h", N_("24 hours"), 86400), ("7d", N_("7 days"), 7 * 86400), ("30d", N_("30 days"), 30 * 86400),
+               ("all", N_("Since the start"), None))
+PERF_DEFAULT_RANGE = "all"
+PERF_MAX_DAYS = 400                      # bitpin/performance.py MAX_RANGE_DAYS
+PERF_CACHE_SECONDS = 45
+PERF_CACHE_ENTRIES = 16
+LIVE_REFRESH_SECONDS = 60
+HISTORY_PAGE_ROWS = 50
+SIDE_LABELS = {"buy": N_("Buy"), "sell": N_("Sell")}
+_DIGITS = {ord(a): b for a, b in zip(u"۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")}
 
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,100}$")
 _HOST_RE = re.compile(r"^(?:[a-z0-9_.-]+|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?$")
@@ -692,6 +712,138 @@ def _totp_ok(secret):
         return False
 
 
+# ------------------------------------------------------------------------------------------------ charts (v3.6)
+# A chart is an SVG drawing stretched to its box (preserveAspectRatio="none"; panel.css keeps the strokes' width)
+# with its axis labels in HTML around it: sharp at any width, readable on a phone, no script.
+
+def nice_ticks(lo, hi, n=5):
+    """(bottom, top, ticks, step) of an axis that shows lo..hi in about n round steps."""
+    if not (_is_num(lo) and _is_num(hi)):
+        lo, hi = 0.0, 1.0
+    if hi - lo <= max(abs(lo), abs(hi)) * 1e-9:
+        pad = max(abs(lo), abs(hi)) * 0.01 or 1.0
+        lo, hi = lo - pad, hi + pad
+    raw = (hi - lo) / float(n)
+    mag = 10.0 ** math.floor(math.log10(raw))
+    step = next(m * mag for m in (1, 2, 2.5, 5, 10) if raw <= m * mag * (1 + 1e-9))
+    bottom, top = math.floor(lo / step + 1e-9) * step, math.ceil(hi / step - 1e-9) * step
+    return bottom, top, [bottom + i * step for i in range(int(round((top - bottom) / step)) + 1)], step
+
+
+def tick_text(v, step, pct=False):
+    """An axis label: as many decimals as the step needs; pct: +1.5%."""
+    d = 0
+    while d < 10 and abs(step * 10 ** d - round(step * 10 ** d)) > 1e-6 * step * 10 ** d:
+        d += 1
+    if abs(v) < step * 1e-6:
+        v = 0.0
+    s = "{:,.{}f}".format(v, d)
+    return ("+" if v > 0 else "") + s + "%" if pct else s
+
+
+def time_ticks(t0, t1, n=5):
+    """n Tehran times from t0 to t1, as short as the span allows."""
+    span = max(0.0, t1 - t0)
+    fmt = "%H:%M" if span <= 1.5 * 86400 else ("%m/%d" if span <= 200 * 86400 else "%Y/%m")
+    return [datetime.fromtimestamp(t0 + span * i / float(n - 1), TEHRAN).strftime(fmt) for i in range(n)]
+
+
+def line_chart(series, hlines=(), vlines=(), pct=False, label="", cls=""):
+    """series: [(class, [(time, value)])] drawn in this order; hlines: [(class, value)] across the chart (entry,
+    stop, orders ...); vlines: [(class, time)]. The chart's HTML, or a note when there is nothing to draw."""
+    series = [(c, [(t, v) for t, v in s if _is_num(t) and 0 < t < 1e11 and _is_num(v)]) for c, s in series]
+    pts = [p for _c, s in series for p in s]
+    if len(pts) < 2:
+        return '<p class="muted empty">%s</p>' % te("Not enough data for a chart yet.")
+    t0, t1 = min(t for t, _v in pts), max(t for t, _v in pts)
+    vals = [v for _t, v in pts] + [v for _c, v in hlines if _is_num(v)] + ([0.0] if pct else [])
+    bottom, top, ticks, step = nice_ticks(min(vals), max(vals))
+    w, h = 1000, 300
+
+    def x(t):
+        return (t - t0) / (t1 - t0) * w if t1 > t0 else w / 2.0
+
+    def y(v):
+        return h - (v - bottom) / (top - bottom) * h
+
+    g = ['<line class="g%s" x1="0" y1="%.1f" x2="%d" y2="%.1f"/>' % (" z" if pct and abs(v) < step * 1e-6 else "",
+                                                                      y(v), w, y(v)) for v in ticks]
+    for c, t in vlines:
+        if _is_num(t) and t0 <= t <= t1:
+            g.append('<line class="v %s" x1="%.1f" y1="0" x2="%.1f" y2="%d"/>' % (c, x(t), x(t), h))
+    for c, v in hlines:
+        if _is_num(v):
+            g.append('<line class="h %s" x1="0" y1="%.1f" x2="%d" y2="%.1f"/>' % (c, y(v), w, y(v)))
+    for c, s in series:
+        p = " ".join("%.1f,%.1f" % (x(t), y(v)) for t, v in s)
+        if p:
+            g.append('<polyline class="l %s" points="%s"/>' % (c, p))
+    return ('<figure class="chart%s" dir="ltr"><div class="yl" aria-hidden="true">%s</div><div class="plot"><svg '
+            'viewBox="0 0 %d %d" preserveAspectRatio="none" role="img" aria-label="%s" focusable="false">%s</svg>'
+            '</div><div class="xl" aria-hidden="true">%s</div></figure>') % (
+        " " + cls if cls else "", "".join("<span>%s</span>" % esc(tick_text(v, step, pct)) for v in reversed(ticks)),
+        w, h, esc(label), "".join(g), "".join("<span>%s</span>" % esc(s) for s in time_ticks(t0, t1)))
+
+
+def legend(items):
+    """items: [(class of the line, label HTML)]."""
+    return '<ul class="legend">%s</ul>' % "".join('<li><i class="sw %s"></i><span>%s</span></li>' % (c, l)
+                                                  for c, l in items)
+
+
+def delta_html(v, nd=2):
+    """A change in percent with its arrow, green up / red down."""
+    if not _is_num(v):
+        return dash()
+    cls = "up" if v > 0 else ("down" if v < 0 else "")
+    return '<span class="delta %s">%s%s</span>' % (cls, icon("down" if v < 0 else "up"), ltr("%+.*f%%" % (nd, v)))
+
+
+def signed_num(v, nd=0, unit=""):
+    """+1,234 in green, -1,234 in red, 0 plain (unit: e.g. "%" after the number)."""
+    if not _is_num(v):
+        return dash()
+    if abs(v) < 0.5 * 10 ** -nd:
+        return ltr("{:,.{}f}{}".format(0.0, nd, unit))
+    return '<span class="%s">%s</span>' % ("gain" if v > 0 else "loss", ltr("{:+,.{}f}{}".format(v, nd, unit)))
+
+
+def price_text(v):
+    """A price with the decimals its size needs: 65,000.50 / 142.124 / 2.3457 / 0.00001234."""
+    if not _is_num(v):
+        return ""
+    a = abs(v)
+    nd = 2 if a >= 1000 else 3 if a >= 100 else 4 if a >= 1 else min(10, 3 - int(math.floor(math.log10(a)))) if a else 2
+    return "{:,.{}f}".format(v, nd)
+
+
+def qty_text(v, asset=""):
+    """An amount of an asset: toman without decimals, coins without trailing zeros (0.00012345, not 1.2345e-04)."""
+    if not _is_num(v):
+        return ""
+    if asset == "IRT":
+        return "{:,.0f}".format(v)
+    s = "{:,.8f}".format(v).rstrip("0").rstrip(".")
+    return "0" if s in ("-0", "") else s
+
+
+def _tehran_day(text):
+    """Epoch seconds of 00:00 Tehran time of a YYYY-MM-DD date (Persian digits too), else None."""
+    try:
+        d = datetime.strptime(str(text or "").strip().translate(_DIGITS), "%Y-%m-%d")
+    except ValueError:
+        return None
+    if not 2020 <= d.year <= 2100:
+        return None
+    return d.replace(tzinfo=TEHRAN).timestamp()
+
+
+def csv_cell(v):
+    """A text cell a spreadsheet will not run as a formula."""
+    s = "" if v is None else str(v)
+    return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
+
 class _Req(object):
     __slots__ = ("method", "path", "query", "headers", "cookies", "form", "ip", "now", "host", "sess", "sid")
 
@@ -738,10 +890,13 @@ class PanelApp(object):
         self._login_lock = threading.Lock()        # one credential check at a time
         self._auth_lock = threading.Lock()         # password hash / TOTP secret / last TOTP step
         self._audit_lock = threading.Lock()
+        self._perf_lock = threading.Lock()
+        self._perf_cache = {}                      # (range, from, to) -> (time, report)
         self._get_routes = {
             "/": self._dashboard, "/models": self._models_get, "/settings": self._settings_get,
             "/trade": self._trade_get, "/apply": self._apply_get, "/vpn": self._vpn_get, "/logs": self._logs_get,
-            "/health": self._health_get, "/security": self._security_get,
+            "/health": self._health_get, "/security": self._security_get, "/performance": self._performance_get,
+            "/history": self._history_get, "/history.csv": self._history_csv,
         }
         self._post_routes = {
             "/logout": self._logout, "/service": self._service_post, "/models/list": self._models_list,
@@ -775,15 +930,18 @@ class PanelApp(object):
         return self._resp(303, "", TEXT_TYPE, [("Location", location)] + list(headers or []))
 
     # ------------------------------------------------------------------ layout
-    def _doc(self, title, content, req=None, active=None, sub="", here="/"):
-        """A whole page: the sidebar layout for a logged-in request, else the centred card of the login page."""
+    def _doc(self, title, content, req=None, active=None, sub="", here="/", refresh=None):
+        """A whole page: the sidebar layout for a logged-in request, else the centred card of the login page.
+        refresh: the address the page reloads itself from every LIVE_REFRESH_SECONDS (v3.6, no script)."""
         lang = current()
         head = ('<!doctype html>\n<html lang="%s" dir="%s"><head><meta charset="utf-8">'
                 '<meta name="viewport" content="width=device-width, initial-scale=1">'
-                '<meta name="robots" content="noindex, nofollow"><meta name="color-scheme" content="light dark">'
+                '<meta name="robots" content="noindex, nofollow"><meta name="color-scheme" content="light dark">%s'
                 '<title>%s | %s</title><link rel="icon" href="/static/icon.svg" type="image/svg+xml">'
                 '<link rel="stylesheet" href="/static/panel.css?v=%s"></head>') % (
-            lang, "rtl" if is_rtl(lang) else "ltr", esc(title), te(APP_NAME), esc(self.css_version))
+            lang, "rtl" if is_rtl(lang) else "ltr",
+            ('<meta http-equiv="refresh" content="%d; url=%s">' % (LIVE_REFRESH_SECONDS, esc(refresh))) if refresh else "",
+            esc(title), te(APP_NAME), esc(self.css_version))
         if req is not None and req.sess is not None:
             body = self._shell(req, title, content, active, sub, here)
         else:
@@ -827,17 +985,17 @@ class PanelApp(object):
     def _here(self, req, active=None):
         """Where the language switch comes back to: this page (with its query) when it is a page, else `active`."""
         if req is not None and req.method == "GET" and (req.path in self._get_routes or req.path == "/login"):
-            q = sorted((k, v) for k, v in (req.query or {}).items() if k)
+            q = sorted((k, v) for k, v in (req.query or {}).items() if k and k != "auto")
             return req.path + ("?" + urlencode(q) if q else "")
         return active or "/"
 
-    def _page(self, req, title, body, status=200, headers=None, active=None, sub=""):
+    def _page(self, req, title, body, status=200, headers=None, active=None, sub="", refresh=None):
         flashes = ""
         if req.sess is not None:
             fl = req.sess.pop("flash", None)
             if fl:
                 flashes = "".join(fl)
-        return self._resp(status, self._doc(title, flashes + body, req, active, sub, self._here(req, active)),
+        return self._resp(status, self._doc(title, flashes + body, req, active, sub, self._here(req, active), refresh),
                           HTML_TYPE, headers)
 
     def _form(self, req, action, inner, cls=""):
@@ -1003,7 +1161,10 @@ class PanelApp(object):
         if path == "/login":
             return self._login_post(req) if method == "POST" else self._login_get(req)
         sid = req.cookies.get(SESSION_COOKIE)
-        sess = self.sessions.get(sid, req.now) if sid else None
+        # a live page reloading itself (auto=1, v3.6) does not keep the session alive: the idle expiry still ends
+        # a session nobody uses
+        auto = method == "GET" and q.get("auto") == "1"
+        sess = self.sessions.get(sid, req.now, touch=not auto) if sid else None
         if sess is None:
             return self._redirect("/login", [("Set-Cookie", _cookie(SESSION_COOKIE, "", clear=True))] if sid else None)
         req.sess, req.sid = sess, sid
@@ -1266,10 +1427,9 @@ class PanelApp(object):
                      (tr("Updated %s") % fmt_time(eq.get("time"))) if eq.get("time") else "")]
         if _is_num(irt) and _is_num(start) and start > 0:
             change = (irt / float(start) - 1.0) * 100.0
-            cls = "up" if change > 0 else ("down" if change < 0 else "")
-            value = '<span class="delta %s">%s%s</span>' % (cls, icon("down" if change < 0 else "up"),
-                                                            ltr("%+.2f%%" % change))
-            cards.append(kpi("trend", tr("Profit / loss"), value, "", tr("Started with %s IRT") % fmt_num(start, 0)))
+            cards.append(kpi("trend", tr("Profit / loss"), delta_html(change), "",
+                             tr("Started with %s IRT") % fmt_num(start, 0)
+                             + ' &middot; <a href="/performance">%s</a>' % te("Details")))
         else:
             cards.append(kpi("trend", tr("Profit / loss"), dash()))
         bar, subs = "", []
@@ -2222,6 +2382,322 @@ class PanelApp(object):
             return self._redirect("/vpn")
         self._audit_action(req, "vpn_put", "invalid source")
         return self._vpn_page(req, box("err", te("Invalid request.")), status=400)
+
+    # ------------------------------------------------------------------ performance and trade history (v3.6)
+    def _perf_range(self, req):
+        """(range, t_from, t_to, from text, to text, error) of the query: a preset of PERF_RANGES (default: since
+        the start) or range=custom with the days from / to (YYYY-MM-DD, Tehran time; an empty to = until now)."""
+        q = req.query
+        key = q.get("range", "")
+        if key == "custom":
+            f_text = q.get("from", "").strip().translate(_DIGITS)[:10]
+            t_text = q.get("to", "").strip().translate(_DIGITS)[:10]
+            t0, t1 = _tehran_day(f_text), _tehran_day(t_text) if t_text else None
+            if t0 is None or (t_text and t1 is None):
+                return key, None, None, f_text, t_text, tr("Pick the first day of the range (and its last day, or "
+                                                           "leave that empty for: until now).")
+            end = min(req.now, t1 + 86400) if t1 is not None else req.now
+            if end <= t0:
+                return key, None, None, f_text, t_text, tr("The range must start before it ends, and before now.")
+            if end - t0 > PERF_MAX_DAYS * 86400:
+                return key, None, None, f_text, t_text, tr("A range may be at most %s days.") % PERF_MAX_DAYS
+            return key, int(t0), int(end), f_text, t_text, None
+        spans = dict((k, s) for k, _l, s in PERF_RANGES)
+        if key not in spans:
+            key = PERF_DEFAULT_RANGE
+        return key, int(req.now - (spans[key] or PERF_MAX_DAYS * 86400)), int(req.now), "", "", None
+
+    def _perf_data(self, req, key, f_text, t_text, t_from, t_to):
+        """The report of a range (bitpin/performance.py, run by the helper as the user bitpin), reused for
+        PERF_CACHE_SECONDS: (data, None) or (None, error text)."""
+        ck = (key, f_text, t_text)
+        with self._perf_lock:
+            hit = self._perf_cache.get(ck)
+            if hit is not None and 0 <= req.now - hit[0] < PERF_CACHE_SECONDS:
+                return hit[1], None
+        data, err = self._call(req, "performance", **{"from": t_from, "to": t_to})
+        if err is None:
+            with self._perf_lock:
+                if len(self._perf_cache) >= PERF_CACHE_ENTRIES:
+                    self._perf_cache.clear()
+                self._perf_cache[ck] = (req.now, data)
+        return data, err
+
+    @staticmethod
+    def _range_query(key, f_text, t_text):
+        return [("range", key)] + ([("from", f_text), ("to", t_text)] if key == "custom" else [])
+
+    def _range_bar(self, path, key, f_text, t_text, keep=()):
+        """The time range picker: the presets and a form for a range of days (Tehran dates)."""
+        keep = list(keep)
+        links = "".join('<a href="%s"%s>%s</a>' % (
+            esc(path + "?" + urlencode([("range", k)] + keep)), ' aria-current="true"' if k == key else "", te(label))
+            for k, label, _s in PERF_RANGES)
+        form = ('<form method="get" action="%s" class="range-f">%s%s<label for="rf-from">%s</label><input id="rf-from" '
+                'type="date" name="from" value="%s" class="ltr" required><label for="rf-to">%s</label><input id="rf-to" '
+                'type="date" name="to" value="%s" class="ltr">%s</form>') % (
+            esc(path), hidden("range", "custom"), "".join(hidden(k, v) for k, v in keep), te("From"), esc(f_text),
+            te("To"), esc(t_text), button(tr("Show"), "secondary sm", "search"))
+        return '<div class="rangebar"><nav class="seg" aria-label="%s">%s%s</nav>%s</div>' % (
+            te("Time range"), icon("clock"), links, form)
+
+    def _performance_get(self, req):
+        title, sub = tr("Performance"), tr("Profit and loss in toman and in USDT, per asset, with live charts")
+        key, t_from, t_to, f_text, t_text, error = self._perf_range(req)
+        live_on = req.query.get("live", "") != "0"
+        parts = [self._range_bar("/performance", key, f_text, t_text, [] if live_on else [("live", "0")])]
+        if error:
+            parts.append(box("err", esc(error)))
+            return self._page(req, title, "".join(parts), status=400, active="/performance", sub=sub)
+        rq = self._range_query(key, f_text, t_text)
+        live = t_to >= req.now - 3600                       # the range ends now
+        refresh = "/performance?" + urlencode(rq + [("auto", "1")]) if (live and live_on) else None
+        data, err = self._perf_data(req, key, f_text, t_text, t_from, t_to)
+        if err is not None:
+            parts.append(self._helper_error(err))
+            return self._page(req, title, "".join(parts), active="/performance", sub=sub, refresh=refresh)
+        info = [tr("From %s to %s") % (fmt_time(data.get("from")), fmt_time(data.get("to")))]
+        tools = [link_button("/history?" + urlencode(rq), tr("Trade history"), "ghost sm", "list")]
+        if live:
+            if live_on:
+                info.insert(0, '<span class="pill ok">%s</span> %s' % (te("Live"), te("The page reloads itself every "
+                                                                                        "minute.")))
+            tools.insert(0, link_button("/performance?" + urlencode(rq + ([("live", "0")] if live_on else [])),
+                                        tr("Stop live updates") if live_on else tr("Start live updates"), "ghost sm",
+                                        "stop" if live_on else "play"))
+        parts.append('<div class="livebar"><p>%s</p><div class="actions">%s</div></div>' % (
+            " &middot; ".join(info), "".join(tools)))
+        warns = [w for w in data.get("warnings") or [] if isinstance(w, str)]
+        if warns:
+            parts.append(box("warn", "<strong>%s</strong>%s" % (te("Some data is missing or does not add up:"),
+                                                                ul(warns))))
+        parts.append(self._perf_kpis(data))
+        parts.append(card(te("Portfolio value"), self._equity_chart(data), "trend"))
+        parts.append(card(te("Profit and loss per asset"), self._assets_table(data), "coins"))
+        if data.get("live"):
+            parts.append(self._positions_section(data))
+        else:
+            parts.append(box("info", te("Open positions and their charts are shown for a range that ends now.")))
+        return self._page(req, title, "".join(parts), active="/performance", sub=sub, refresh=refresh)
+
+    def _perf_kpis(self, data):
+        t = data.get("totals") if isinstance(data.get("totals"), dict) else {}
+        subs = []
+        if _is_num(t.get("value_to_usdt")):
+            subs.append(tr("about %s USDT") % fmt_num(t.get("value_to_usdt"), 2))
+        if _is_num(t.get("value_now_irt")):
+            subs.append(tr("now about %s") % fmt_num(t.get("value_now_irt"), 0))
+        cards = [kpi("wallet", tr("Account value"), fmt_num(t.get("value_to_irt"), 0),
+                     tr("IRT") if _is_num(t.get("value_to_irt")) else "", " &middot; ".join(subs)),
+                 kpi("trend", tr("Profit / loss in toman"), delta_html(t.get("pnl_irt_pct")), "",
+                     (tr("%s IRT") % signed_num(t.get("pnl_irt"))) if _is_num(t.get("pnl_irt")) else ""),
+                 kpi("coins", tr("Profit / loss in USDT"), delta_html(t.get("pnl_usdt_pct")), "",
+                     (tr("without the rial's fall: %s USDT") % signed_num(t.get("pnl_usdt"), 2))
+                     if _is_num(t.get("pnl_usdt")) else ""),
+                 kpi("chart", tr("Holding USDT instead"), delta_html(t.get("rial_fall_pct")), "",
+                     (tr("the bot against it: %s percentage points") % signed_num(t.get("vs_usdt_points"), 2))
+                     if _is_num(t.get("vs_usdt_points")) else ""),
+                 kpi("orders", tr("Trades"), fmt_num(t.get("trades")), "",
+                     tr("%s buys &middot; %s sells &middot; fees %s IRT") % (
+                         fmt_num(t.get("buys")), fmt_num(t.get("sells")), fmt_num(t.get("fees_irt"), 0)))]
+        return '<div class="kpis">%s</div>' % "".join(cards)
+
+    @staticmethod
+    def _equity_chart(data):
+        pts = [p for p in data.get("equity") or [] if isinstance(p, list) and len(p) >= 4 and _is_num(p[0])
+               and _is_num(p[1]) and p[1] > 0]
+        if not pts:
+            return '<p class="muted empty">%s</p>' % te("Not enough data for a chart yet.")
+        b_irt = pts[0][1]
+        b_usdt = pts[0][2] if _is_num(pts[0][2]) and pts[0][2] > 0 else None
+
+        def pct(v, base):
+            return (v / base - 1.0) * 100.0 if (_is_num(v) and base) else None
+
+        chart = line_chart([("s3", [(p[0], pct(p[3], b_irt)) for p in pts]),
+                            ("s2", [(p[0], pct(p[2], b_usdt)) for p in pts]),
+                            ("s1", [(p[0], pct(p[1], b_irt)) for p in pts])],
+                           pct=True, label=tr("Change of the account value in percent"))
+        out = chart + legend([("s1", te("In toman")), ("s2", te("In USDT (without the rial's fall)")),
+                              ("s3", te("Holding USDT instead"))])
+        t = data.get("totals") if isinstance(data.get("totals"), dict) else {}
+        if _is_num(t.get("value_now_irt")):
+            out += help_p(te("The last point is an estimate for this minute: the last recorded value moved by the "
+                             "latest prices. The numbers above are the values the bot recorded."))
+        return out
+
+    @staticmethod
+    def _assets_table(data):
+        rows, sums = [], [0.0, 0.0, 0.0, 0.0]
+        for a in data.get("assets") or []:
+            if not isinstance(a, dict):
+                continue
+            name = str(a.get("asset") or "")
+            for i, k in enumerate(("value_to_irt", "value_to_usdt", "pnl_irt", "pnl_usdt")):
+                if _is_num(a.get(k)):
+                    sums[i] += a.get(k)
+            rows.append([te("Toman (cash)") if name == "IRT" else code(name), fmt_num(a.get("trades")),
+                         ltr(qty_text(a.get("qty_to"), name)) if _is_num(a.get("qty_to")) else dash(),
+                         fmt_num(a.get("value_to_irt"), 0), fmt_num(a.get("value_to_usdt"), 2),
+                         signed_num(a.get("pnl_irt")), signed_num(a.get("pnl_usdt"), 2),
+                         signed_num(a.get("pnl_irt_pct"), 2, "%")])
+        if rows:
+            rows.append(["<b>%s</b>" % te("Total"), "", "", fmt_num(sums[0], 0), fmt_num(sums[1], 2),
+                         signed_num(sums[2]), signed_num(sums[3], 2), ""])
+        return table([N_("Asset"), N_("Trades"), N_("Holding now"), N_("Value (IRT)"), N_("Value (USDT)"),
+                      N_("P&L (IRT)"), N_("P&L (USDT)"), N_("P&L %")], rows, num=(1, 2, 3, 4, 5, 6, 7)) + help_p(te(
+            "P&L of an asset = its value at the end - its value at the start - what was paid into it + what came out "
+            "of it: every trade at its own price, the fees count against the asset traded. In USDT, every toman "
+            "amount is divided by the USDT price of the same hour, so the rial's fall is taken out; the toman P&L "
+            "of USDT is what the rial's fall gave. The rows add up to the change of the account rebuilt from the "
+            "bot's trades."))
+
+    def _positions_section(self, data):
+        pos = [p for p in data.get("positions") or [] if isinstance(p, dict)]
+        body = ('<div class="positions">%s</div>' % "".join(self._position_panel(p) for p in pos) if pos else
+                '<p class="muted empty">%s</p>' % te("No open position and no resting order."))
+        return card(te("Open positions and orders"), body, "target")
+
+    @staticmethod
+    def _position_panel(p):
+        asset = str(p.get("asset") or "")
+        now = p.get("price_usdt")
+        line = [(x[0], x[1]) for x in p.get("prices") or [] if isinstance(x, list) and len(x) >= 2]
+        hl = []
+        items = [("pl", (tr("Price now %s") % ltr(price_text(now))) if _is_num(now) else te("Price"))]
+        for cls, key, label in (("entry", "entry_usdt", N_("Entry %s")), ("stop", "stop_usdt", N_("Stop %s")),
+                                ("target", "target_usdt", N_("Target %s"))):
+            v = p.get(key)
+            if _is_num(v):
+                hl.append((cls, v))
+                items.append((cls, tr(label) % ltr(price_text(v))))
+        for o in p.get("orders") or []:
+            if not isinstance(o, dict) or not _is_num(o.get("price_usdt")):
+                continue
+            cls = "buy" if o.get("side") == "buy" else "sell"
+            hl.append((cls, o["price_usdt"]))
+            text = (tr("Buy order %s") if cls == "buy" else tr("Sell order %s")) % ltr(price_text(o["price_usdt"]))
+            if _is_num(o.get("amount")):
+                text += " &middot; " + ltr(qty_text(o.get("amount"), asset))
+            items.append((cls, text))
+        if _is_num(p.get("set_at")):
+            items.append(("set", tr("Plan set %s") % fmt_time(p.get("set_at"))))
+        chart = line_chart([("pl", line)], hl, [("set", p.get("set_at"))], label=tr("Price of %s in USDT") % asset,
+                           cls="sm")
+        ch = p.get("change_pct")
+        badge = (' <span class="badge %s">%s</span>' % ("ok" if ch > 0 else ("err" if ch < 0 else ""),
+                                                        ltr("%+.2f%%" % ch))) if _is_num(ch) else ""
+        rows = [(N_("Amount"), ltr(qty_text(p.get("qty"), asset)) if _is_num(p.get("qty")) else dash()),
+                (N_("Value (IRT)"), fmt_num(p.get("value_irt"), 0)), (N_("Value (USDT)"), fmt_num(p.get("value_usdt"), 2)),
+                (N_("Hold until"), fmt_time(p.get("max_hold_until")))]
+        if p.get("setup"):
+            rows.append((N_("Setup"), ltr(str(p.get("setup")).replace("_", " "))))
+        note = ('<p class="note">%s</p>' % bdi(p.get("note"))) if p.get("note") else ""
+        return '<article class="position"><div class="position-h">%s%s</div>%s%s%s%s</article>' % (
+            code(asset + " / USDT"), badge, chart, legend(items), facts(rows), note)
+
+    def _history_filters(self, req):
+        asset = re.sub(r"[^A-Z0-9]", "", req.query.get("asset", "").upper())[:12]
+        side = req.query.get("side", "")
+        return asset, (side if side in SIDE_LABELS else "")
+
+    @staticmethod
+    def _history_rows(data, asset, side):
+        hist = [h for h in data.get("history") or [] if isinstance(h, dict)]
+        return hist, [h for h in hist if (not asset or str(h.get("asset") or "").upper() == asset)
+                      and (not side or h.get("side") == side)]
+
+    def _history_get(self, req):
+        title, sub = tr("Trade history"), tr("Every buy and sell of the bot, newest first")
+        key, t_from, t_to, f_text, t_text, error = self._perf_range(req)
+        asset, side = self._history_filters(req)
+        try:
+            page = max(1, int(req.query.get("page", "1").strip().translate(_DIGITS) or "1"))
+        except ValueError:
+            page = 1
+        keep = [(k, v) for k, v in (("asset", asset), ("side", side)) if v]
+        parts = [self._range_bar("/history", key, f_text, t_text, keep)]
+        if error:
+            parts.append(box("err", esc(error)))
+            return self._page(req, title, "".join(parts), status=400, active="/history", sub=sub)
+        data, err = self._perf_data(req, key, f_text, t_text, t_from, t_to)
+        if err is not None:
+            parts.append(self._helper_error(err))
+            return self._page(req, title, "".join(parts), active="/history", sub=sub)
+        hist, rows = self._history_rows(data, asset, side)
+        rq = self._range_query(key, f_text, t_text)
+        assets = sorted(set(str(h.get("asset") or "") for h in hist) - {""})
+        form = '<form method="get" action="/history" class="filters">%s%s%s<div class="actions">%s%s</div></form>' % (
+            "".join(hidden(k, v) for k, v in rq),
+            field(te("Asset"), select("asset", [("", tr("All"))] + [(a, a) for a in assets], asset, "h-asset", "ltr"),
+                  for_="h-asset"),
+            field(te("Side"), select("side", [("", tr("All")), ("buy", tr("Buys")), ("sell", tr("Sells"))], side,
+                                     "h-side"), for_="h-side"),
+            button(tr("Filter"), "primary", "search"),
+            link_button("/history.csv?" + urlencode(rq + keep), tr("Download CSV"), "secondary", "save"))
+        pages = max(1, (len(rows) + HISTORY_PAGE_ROWS - 1) // HISTORY_PAGE_ROWS)
+        page = min(page, pages)
+        trs = []
+        for h in rows[(page - 1) * HISTORY_PAGE_ROWS:page * HISTORY_PAGE_ROWS]:
+            s, fee = h.get("side"), h.get("fee")
+            trs.append([fmt_time(h.get("t")), code(h.get("symbol")),
+                        '<span class="badge %s">%s</span>' % ("ok" if s == "buy" else "err",
+                                                              te(SIDE_LABELS[s]) if s in SIDE_LABELS else esc(s)),
+                        ltr(qty_text(h.get("base"), str(h.get("asset") or ""))),
+                        '%s <span class="muted small">%s</span>' % (ltr(price_text(h.get("price"))),
+                                                                    esc(h.get("quote_asset") or "")),
+                        fmt_num(h.get("value_irt"), 0), fmt_num(h.get("value_usdt"), 2),
+                        ('%s <span class="muted small">%s</span>' % (ltr(qty_text(fee, h.get("fee_asset"))),
+                                                                     esc(h.get("fee_asset") or "")))
+                        if _is_num(fee) and fee else dash(),
+                        ltr(h.get("reason")) if h.get("reason") else dash()])
+        buys = sum(1 for h in rows if h.get("side") == "buy")
+        summary = tr("%s trades: %s buys and %s sells.") % (ltr(len(rows)), ltr(buys), ltr(len(rows) - buys))
+        total = data.get("history_total")
+        if _is_num(total) and total > len(hist):
+            summary += " " + tr("Only the newest %s of the range are listed.") % ltr(len(hist))
+        nav = []
+        if page > 1:
+            nav.append(link_button("/history?" + urlencode(rq + keep + [("page", page - 1)]), tr("Newer"),
+                                   "secondary sm"))
+        nav.append('<span class="muted small">%s</span>' % (tr("Page %s of %s") % (ltr(page), ltr(pages))))
+        if page < pages:
+            nav.append(link_button("/history?" + urlencode(rq + keep + [("page", page + 1)]), tr("Older"),
+                                   "secondary sm"))
+        parts.append(card("", form))
+        parts.append(card(te("Trades"), '<p class="muted">%s</p>%s<div class="pager">%s</div>' % (
+            summary, table([N_("Time"), N_("Market"), N_("Side"), N_("Amount"), N_("Price"), N_("Value (IRT)"),
+                            N_("Value (USDT)"), N_("Fee"), N_("Reason")], trs, num=(3, 4, 5, 6, 7)), "".join(nav)),
+            "list"))
+        return self._page(req, title, "".join(parts), active="/history", sub=sub)
+
+    def _history_csv(self, req):
+        key, t_from, t_to, f_text, t_text, error = self._perf_range(req)
+        if error:
+            return self.error_response(400, "Bad Request (range)")
+        asset, side = self._history_filters(req)
+        data, err = self._perf_data(req, key, f_text, t_text, t_from, t_to)
+        if err is not None:
+            return self._page(req, tr("Trade history"), self._helper_error(err), status=502, active="/history")
+        _hist, rows = self._history_rows(data, asset, side)
+
+        def num(v):
+            return ("%.10f" % v).rstrip("0").rstrip(".") if _is_num(v) else ""
+
+        buf = io.StringIO()
+        w = csv.writer(buf, lineterminator="\r\n")
+        w.writerow(["time_utc", "time_tehran", "market", "side", "amount", "price", "quote_asset", "value_irt",
+                    "value_usdt", "fee", "fee_asset", "reason", "route", "order_id"])
+        for h in rows:
+            t = h.get("t")
+            w.writerow([_utc_iso(t), datetime.fromtimestamp(t, TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
+                        if (_is_num(t) and 0 < t < 1e11) else "", csv_cell(h.get("symbol")), csv_cell(h.get("side")), num(h.get("base")),
+                        num(h.get("price")), csv_cell(h.get("quote_asset")), num(h.get("value_irt")),
+                        num(h.get("value_usdt")), num(h.get("fee")), csv_cell(h.get("fee_asset")),
+                        csv_cell(h.get("reason")), csv_cell(h.get("route")), csv_cell(h.get("order_id"))])
+        name = "bitpin-trades-%s.csv" % datetime.fromtimestamp(req.now, TEHRAN).strftime("%Y%m%d-%H%M")
+        return self._resp(200, u"﻿" + buf.getvalue(), "text/csv; charset=utf-8",
+                          [("Content-Disposition", 'attachment; filename="%s"' % name)])
 
     # ------------------------------------------------------------------ logs
     def _logs_get(self, req):

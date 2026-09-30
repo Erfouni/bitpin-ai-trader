@@ -159,6 +159,9 @@ TRANSPORT_OVERRUN_SECONDS = 1.0     # a request's timeout is cut to (time left -
 # a timeout (it counts against max_timeout_retries) and its estimated tokens are charged to the daily
 # budget, which otherwise only counts the usage of replies that arrived.
 LOST_REPLY_SECONDS = 30.0
+# v3.5.2: a STREAMED POST that got no answer at all (not even a status line) is retried up to this many
+# more times on top of max_timeout_retries, inside the deadline (still charged as a lost reply)
+SILENT_EXTRA_RETRIES = 3
 CHARS_PER_TOKEN = 3.5               # rough prompt-size estimate for a reply that never arrived
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 FINAL_ANSWER_NUDGE = ("SEARCH LIMIT REACHED: do not call any tool again. Using the market context and the search "
@@ -553,6 +556,7 @@ def make_llm_transport(proxy=None, opener=None, max_bytes=STREAM_MAX_RESPONSE_BY
         except (http.client.HTTPException, OSError) as e:   # socket.timeout / URLError / ConnectionError are OSErrors
             te = _as_transport_error(e, via, secrets)
             te.after_headers = bool(getattr(e, "after_headers", False))
+            te.no_answer = bool(getattr(e, "no_answer", False))      # v3.5.2: not one byte came back
             te.partial_body = getattr(e, "partial_body", None)      # what arrived before the cut (a stream)
             raise te
 
@@ -1033,8 +1037,19 @@ class LLMClient:
                     if partial is None:
                         partial = getattr(e, "partial_body", None)
                     self._charge_lost_reply(body, data, waited, e, partial if stream else None)
-                retry = attempt <= retries
-                if retry and lost:
+                # v3.5.2: a streamed request that got NO answer at all (not even a status line within
+                # STREAM_HEADERS_SECONDS) was most likely swallowed by the tunnel before Moonshot saw it
+                # (on the server the first large request after a quiet spell often hangs, the next one
+                # passes): it gets up to SILENT_EXTRA_RETRIES retries of its own, inside the deadline
+                silent = lost and stream and bool(getattr(e, "no_answer", False) or getattr(e0, "no_answer", False))
+                spare = silent and timeouts is not None and len(timeouts) > 1 and timeouts[1] < SILENT_EXTRA_RETRIES
+                retry = attempt <= retries or spare
+                if retry and lost and spare:
+                    timeouts[1] += 1
+                    log.warning("LLM POST %s: no answer at all after %.0f s (the connection went silent, most likely "
+                                "never processed): extra retry %d/%d", path, waited, timeouts[1],
+                                SILENT_EXTRA_RETRIES)
+                elif retry and lost:
                     # the server may have received (and billed) the request: retry such requests sparingly
                     used = timeouts[0] if timeouts is not None else 0
                     if used >= int(self.cfg["max_timeout_retries"]):
@@ -1250,7 +1265,7 @@ class LLMClient:
         max_call = self.cfg.get("max_tokens_per_call")
         final = False             # tools withdrawn: the model has to answer now
         final_keeps_tools = False  # the API refused the final request without 'tools'
-        timeouts = [0]
+        timeouts = [0, 0]         # [timed-out POSTs retried, silent POSTs retried (SILENT_EXTRA_RETRIES)]
         sa = self._stream.attempt()   # the streaming level of this call (StreamPolicy)
         streamed_any = estimated = False
         reasoning_parts = []          # reasoning_content of every round, for res["reasoning"] only

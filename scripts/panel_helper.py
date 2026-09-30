@@ -81,6 +81,7 @@ log = logging.getLogger("bitpin.panel_helper")
 
 MAX_REQUEST = 4 * 1024 * 1024
 MAX_OUTPUT = 200 * 1024
+PERF_MAX_OUTPUT = 3 * 1024 * 1024       # v3.6: the performance report (with its trade history) is one JSON line
 LIVE_PHRASE = "I ACCEPT THE RISK"          # scripts/run_bot.py LIVE_PHRASE (a test keeps them equal)
 SECRET_NAMES = ("KIMI_API_KEY", "OPENROUTER_API_KEY", "LLM_API_KEY", "KIMI_HTTPS_PROXY", "BITPIN_API_KEY",
                 "BITPIN_SECRET_KEY")
@@ -160,8 +161,9 @@ class Paths(object):
 
 
 # --------------------------------------------------------------------------- small tools
-def run_command(argv, timeout, env=None, cwd=None):
-    """(exit status, combined output) of a command; never raises (a timeout is status 124)."""
+def run_command(argv, timeout, env=None, cwd=None, limit=MAX_OUTPUT):
+    """(exit status, the last `limit` characters of the combined output) of a command; never raises (a timeout
+    is status 124)."""
     base = {"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "LANG": "C.UTF-8",
             "TZ": "UTC", "SYSTEMD_PAGER": "", "SYSTEMD_COLORS": "0"}
     if env:
@@ -169,10 +171,10 @@ def run_command(argv, timeout, env=None, cwd=None):
     try:
         p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                            timeout=timeout, env=base, cwd=cwd)
-        return p.returncode, cap(p.stdout.decode("utf-8", "replace"))
+        return p.returncode, cap(p.stdout.decode("utf-8", "replace"), limit)
     except subprocess.TimeoutExpired as e:
         out = (e.output or b"").decode("utf-8", "replace") if isinstance(e.output, bytes) else ""
-        return 124, cap(out + "\n(timed out after %d s)" % timeout)
+        return 124, cap(out + "\n(timed out after %d s)" % timeout, limit)
     except OSError as e:
         return 127, "cannot run %s: %s" % (os.path.basename(argv[0]), e.strerror or e)
 
@@ -399,6 +401,7 @@ class Helper(object):
         self.actor = actor or {}
         self._ap = None
         self._rb = None
+        self.fetch_bars = None          # v3.6: the candles of the performance report (the tests set a fake)
 
     # ---- plumbing
     def handle(self, request):
@@ -566,6 +569,34 @@ class Helper(object):
         except (IndexError, ValueError):
             pass
         return dict(EMPTY_STATE, state_error="the state worker failed (exit %d): %s" % (rc, out.strip()[-200:]))
+
+    def cmd_performance(self, a):
+        """v3.6: the P&L report, trade history and chart series of (from, to] (bitpin.performance), read by a
+        worker running as the user bitpin (like bot_state), with PUBLIC Bitpin candles for the prices."""
+        from bitpin import performance as perf
+        now = self.clock()
+        t_from, t_to = a.get("from"), a.get("to")
+        for v in (t_from, t_to):
+            if isinstance(v, bool) or not isinstance(v, int):
+                raise HelperError("from and to must be whole epoch seconds")
+        if not 1500000000 <= t_from < t_to <= now + 3600:
+            raise HelperError("the range must start before it ends and end by now")
+        if t_to - t_from > perf.MAX_RANGE_DAYS * 86400:
+            raise HelperError("the range may be at most %d days" % perf.MAX_RANGE_DAYS)
+        if self.p.state_in_process:
+            return perf.collect(self.p.state_dir, t_from, t_to, now, fetch=self.fetch_bars)
+        argv = ["runuser", "-u", self.p.bot_user, "--", self.p.python, os.path.join(self.p.app_dir, "scripts",
+                "panel_helper.py"), "perf-worker", "--state-dir", self.p.state_dir, "--from", str(t_from),
+                "--to", str(t_to)]
+        rc, out = self.run(argv, 110, cwd=self.p.app_dir, limit=PERF_MAX_OUTPUT)
+        last = [ln for ln in out.splitlines() if ln.startswith("{")]
+        try:
+            data = json.loads(last[-1])
+        except (IndexError, ValueError):
+            data = None
+        if not isinstance(data, dict):
+            raise HelperError("the performance report failed (exit %d): %s" % (rc, out.strip()[-200:]))
+        return data
 
     def cmd_config_get(self, a):
         return {"config": read_text(self.p.config), "kimi": read_text(self.p.kimi)}
@@ -1072,6 +1103,7 @@ def clean_actor(actor):
 # name -> (mutating: takes the change lock, function)
 COMMANDS = {
     "status": (False, Helper.cmd_status),
+    "performance": (False, Helper.cmd_performance),
     "config_get": (False, Helper.cmd_config_get),
     "secrets_status": (False, Helper.cmd_secrets_status),
     "health": (False, Helper.cmd_health),
@@ -1156,6 +1188,20 @@ def state_worker(argv):
     return 0
 
 
+def perf_worker(argv):
+    """Run as user bitpin: print bitpin.performance.collect() as one JSON line (v3.6)."""
+    import argparse
+    ap = argparse.ArgumentParser(prog="panel_helper.py perf-worker")
+    ap.add_argument("--state-dir", required=True)
+    ap.add_argument("--from", dest="t_from", type=int, required=True)
+    ap.add_argument("--to", dest="t_to", type=int, required=True)
+    args = ap.parse_args(argv)
+    from bitpin import performance as perf
+    print(json.dumps(perf.collect(args.state_dir, args.t_from, args.t_to, time.time()), default=str,
+                     separators=(",", ":")))
+    return 0
+
+
 def models_worker(argv):
     """Run as user bitpin (the key in the environment, never on the command line): print one JSON line."""
     import argparse
@@ -1200,6 +1246,8 @@ def main(argv=None):
         return models_worker(argv[1:])
     if argv[:1] == ["state-worker"]:
         return state_worker(argv[1:])
+    if argv[:1] == ["perf-worker"]:
+        return perf_worker(argv[1:])
     if argv:
         print(__doc__.strip())
         return 2

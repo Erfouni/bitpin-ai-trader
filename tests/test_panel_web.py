@@ -6,8 +6,10 @@ CSRF / Origin / Host checks, every page, hostile strings, the audit log, secrets
 logged, the trade settings form; the helper client runs over a fake socket. No network: one test starts the real
 HTTPS server on 127.0.0.1, and only when an openssl binary can make a throwaway certificate."""
 import copy
+import csv
 import http.client
 import importlib.util
+import io
 import json
 import logging
 import os
@@ -25,9 +27,12 @@ from urllib.parse import urlencode
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from bitpin import panel_settings as ps  # noqa: E402
 from bitpin import panel_web as pw  # noqa: E402
+from bitpin import performance as perf  # noqa: E402
+import test_performance as tp  # noqa: E402  (the synthetic world of the P&L report)
 from bitpin.panel_auth import hash_password, totp, verify_password  # noqa: E402
 from bitpin.panel_web import HelperClient, HelperError, PanelApp  # noqa: E402
 
@@ -46,7 +51,8 @@ CSP = "default-src 'self'; frame-ancestors 'none'; form-action 'self'; base-uri 
 REQUIRED_HEADERS = {"Strict-Transport-Security": "max-age=31536000", "Content-Security-Policy": CSP,
                     "X-Frame-Options": "DENY", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin",
                     "Cache-Control": "no-store"}
-PAGES = ("/", "/models", "/settings", "/trade", "/apply", "/vpn", "/logs", "/health", "/security")
+PAGES = ("/", "/models", "/settings", "/trade", "/apply", "/vpn", "/logs", "/health", "/security", "/performance",
+         "/history")
 BANNER = u"تنظیمات ذخیره‌شده هنوز اعمال نشده"
 
 
@@ -114,9 +120,16 @@ def vpn_put(a):
             "rolled_back": False, "diff": "--- a\n+++ b\n-\"id\": \"****\"\n+\"id\": \"1111...5555\"\n"}
 
 
+def perf_report(a):
+    """bitpin/performance.py's report of the synthetic world of tests/test_performance.py, at the panel's T0."""
+    return perf.report(tp.world_records(21), tp.START, tp.world_prices(T0), a["from"], a["to"], T0,
+                       perf.resting_orders(tp.ORDERS_DOC))
+
+
 def default_responses():
     return {
         "status": lambda a: status_data(),
+        "performance": perf_report,
         "config_get": {"config": CONFIG_TEXT, "kimi": KIMI_TEXT},
         "secrets_status": dict((n, {"set": n in ("KIMI_API_KEY", "BITPIN_API_KEY", "BITPIN_SECRET_KEY"),
                                     "length": 32 if n in ("KIMI_API_KEY", "BITPIN_API_KEY", "BITPIN_SECRET_KEY") else 0})
@@ -893,7 +906,7 @@ class TestPages(PanelCase):
 
     def test_helper_failures_render_a_persian_error_box_never_a_trace(self):
         self.login()
-        for cmd in ("status", "config_get", "secrets_status", "confirm_show", "vpn_get", "health"):
+        for cmd in ("status", "config_get", "secrets_status", "confirm_show", "vpn_get", "health", "performance"):
             self.helper.fail[cmd] = "cannot connect to the helper socket /run/bitpin-panel/helper.sock"
         for path in PAGES + ("/logs?unit=bitpin-bot",):
             path, _, q = path.partition("?")
@@ -957,6 +970,233 @@ class TestPages(PanelCase):
         self.c.post("/service", {"unit": "bitpin-bot", "action": "restart", "back": "/logs"})
         self.assertEscaped(self.c.get("/logs").text, "flash")
         self.assertEscaped(self.c.get("/security").text, "/security audit table")
+
+
+# ----------------------------------------------------------------------------------------------- performance (v3.6)
+
+class TestPerformancePages(PanelCase):
+    """The P&L report, its live charts and the trade history: a range of time, per asset, per position."""
+
+    def perf_calls(self):
+        return [c[1] for c in self.helper.calls_of("performance")]
+
+    def history_report(self, n=120):
+        rep = perf_report({"from": int(T0) - 86400, "to": int(T0)})
+        base = rep["history"][0]
+        rep["history"] = [dict(base, t=T0 - 60 * i, side="buy" if i % 3 else "sell", asset="BTC" if i % 2 else "USDT",
+                               symbol="BTC_IRT" if i % 2 else "USDT_IRT", order_id="id%d" % i) for i in range(n)]
+        rep["history_total"] = n
+        return rep
+
+    def test_the_performance_page(self):
+        self.login()
+        r = self.c.get("/performance")
+        self.assertEqual(r.status, 200)
+        t = r.text
+        self.assertEqual(self.perf_calls(), [{"from": int(T0) - 400 * 86400, "to": int(T0)}])
+        for s in (u"عملکرد", u"ارزش سبد", u"سود / زیان به تومان", u"سود / زیان به تتر", u"اگر فقط تتر نگه می‌داشتیم",
+                  u"سود و زیان هر دارایی", u"تومان (نقد)", u"جمع", u"موقعیت‌های باز و سفارش‌ها", "BTC / USDT",
+                  u"سفارش فروش", u"سفارش خرید", u"حد ضرر", "trend continuation", "A test plan &lt;b&gt;", u"زنده",
+                  '<polyline class="l s1"', '<polyline class="l s2"', '<polyline class="l s3"',
+                  '<polyline class="l pl"', 'class="h stop"', 'class="h target"', 'class="h entry"', 'class="h sell"',
+                  'class="h buy"', 'class="v set"', 'preserveAspectRatio="none"', '<figure class="chart" dir="ltr">',
+                  '<span class="gain">', '<a href="/performance" aria-current="page">',
+                  u"نقطهٔ آخر تخمینی برای همین دقیقه است"):
+            self.assertIn(s, t, s)
+        self.assertIn('<meta http-equiv="refresh" content="60; url=/performance?range=all&amp;auto=1">', t)
+        self.assertNotIn("auto%3D1", t)                              # the language switch comes back without it
+        self.assertEqual(t.count('<article class="position">'), 2)   # BTC held, ETH only an order
+        self.assertIn(u"هنوز دادهٔ کافی برای نمودار نیست.", t)      # no ETH candles in this world
+
+    def test_the_numbers_on_the_page_are_the_report(self):
+        self.login()
+        c = Client(self.app, lang="en")
+        self.login(c)
+        t = c.get("/performance", "range=24h").text
+        rep = perf_report({"from": int(T0) - 86400, "to": int(T0)})
+        tot = rep["totals"]
+        for s in ("%+.2f%%" % tot["pnl_irt_pct"], "%+.2f%%" % tot["pnl_usdt_pct"], "%+.2f%%" % tot["rial_fall_pct"],
+                  "{:,.0f}".format(tot["value_to_irt"]), "Profit and loss per asset", "Holding USDT instead",
+                  "Toman (cash)", "Live", "Stop live updates"):
+            self.assertIn(s, t, s)
+        rows = dict((a["asset"], a) for a in rep["assets"])
+        self.assertIn("{:+,.0f}".format(rows["USDT"]["pnl_irt"]), t)
+        self.assertIn("{:+,.2f}".format(rows["IRT"]["pnl_usdt"]), t)
+
+    def test_the_ranges(self):
+        self.login()
+        now = int(T0)
+        for q, want in (("range=24h", now - 86400), ("range=7d", now - 7 * 86400), ("range=30d", now - 30 * 86400),
+                        ("range=bogus", now - 400 * 86400)):
+            self.app._perf_cache.clear()
+            self.assertEqual(self.c.get("/performance", q).status, 200, q)
+            self.assertEqual(self.perf_calls()[-1], {"from": want, "to": now}, q)
+        # days in Tehran time (Persian digits too): from 00:00 of the first day to the end of the last one
+        day0 = pw._tehran_day("2026-09-20")
+        t = self.c.get("/performance", urlencode([("range", "custom"), ("from", "2026-09-20"),
+                                                  ("to", u"۲۰۲۶-۰۹-۲۱")])).text
+        self.assertEqual(self.perf_calls()[-1], {"from": int(day0), "to": int(day0 + 2 * 86400)})
+        self.assertNotIn('http-equiv="refresh"', t)                 # a range in the past does not change
+        self.assertIn(u"موقعیت‌های باز و نمودارهایشان فقط", t)
+        self.assertIn('value="2026-09-21"', t)
+        self.c.get("/performance", "range=custom&from=2026-09-20")      # no last day: until now
+        self.assertEqual(self.perf_calls()[-1], {"from": int(day0), "to": now})
+        n = len(self.perf_calls())
+        for q in ([("range", "custom")], [("range", "custom"), ("from", "2026-02-30")],
+                  [("range", "custom"), ("from", "2026-09-21"), ("to", "2026-09-20")],
+                  [("range", "custom"), ("from", "2026-12-01")],
+                  [("range", "custom"), ("from", "2025-01-01"), ("to", "2026-09-21")],
+                  [("range", "custom"), ("from", "2026-09-20"), ("to", "not a day")]):
+            for path in ("/performance", "/history"):
+                r = self.c.get(path, urlencode(q))
+                self.assertEqual(r.status, 400, (path, q))
+                self.assertIn('class="box err"', r.text, q)
+            self.assertEqual(self.c.get("/history.csv", urlencode(q)).status, 400, q)
+        self.assertEqual(len(self.perf_calls()), n)                  # a bad range never reaches the helper
+
+    def test_live_updates_can_be_stopped(self):
+        self.login()
+        t = self.c.get("/performance", "range=7d").text
+        self.assertIn('content="60; url=/performance?range=7d&amp;auto=1"', t)
+        self.assertIn('href="/performance?range=7d&amp;live=0"', t)
+        t = self.c.get("/performance", "range=7d&live=0").text
+        self.assertNotIn('http-equiv="refresh"', t)
+        self.assertIn('href="/performance?range=7d"', t)             # start them again
+        self.assertIn('href="/performance?range=24h&amp;live=0"', t)  # the other ranges keep them off
+        self.assertIn('<input type="hidden" name="live" value="0">', t)
+
+    def test_a_page_that_reloads_itself_does_not_keep_the_session_alive(self):
+        self.login()
+        for _ in range(3):
+            self.now[0] += 600
+            self.assertEqual(self.c.get("/performance", "range=all&auto=1").status, 200)
+        self.now[0] += 1201                                          # 30 minutes after the owner's last request
+        r = self.c.get("/performance", "range=all&auto=1")
+        self.assertEqual((r.status, r.header("Location")), (303, "/login"))
+        self.login()                                                 # the owner's own requests do keep it
+        for _ in range(3):
+            self.now[0] += 1500
+            self.assertEqual(self.c.get("/performance").status, 200)
+
+    def test_a_report_is_reused_for_a_while_but_never_an_error(self):
+        self.login()
+        self.c.get("/performance")
+        self.c.get("/history")                                       # the same range: the same report
+        self.now[0] += 30
+        self.c.get("/history", "page=2")
+        self.c.get("/history.csv")
+        self.assertEqual(len(self.perf_calls()), 1)
+        self.now[0] += 20
+        self.c.get("/performance")
+        self.assertEqual(len(self.perf_calls()), 2)
+        self.helper.fail["performance"] = "the report failed"
+        self.now[0] += 60
+        t = self.c.get("/performance").text
+        self.assertIn('class="box err"', t)
+        self.assertIn('http-equiv="refresh"', t)                     # a live page tries again by itself
+        self.helper.fail.clear()
+        self.assertNotIn('class="box err"', self.c.get("/performance").text)
+        self.assertEqual(len(self.perf_calls()), 4)
+
+    def test_the_history_pages_and_filters(self):
+        self.login()
+        self.helper.responses["performance"] = self.history_report()
+        t = self.c.get("/history").text
+        self.assertEqual(t.count("<tr>"), 1 + 50)
+        self.assertIn(u"<bdi dir=\"ltr\">120</bdi> معامله: <bdi dir=\"ltr\">80</bdi> خرید و <bdi dir=\"ltr\">40</bdi> فروش.", t)
+        self.assertIn('href="/history?range=all&amp;page=2"', t)
+        self.assertNotIn("page=0", t)
+        t = self.c.get("/history", "page=2").text
+        self.assertIn('href="/history?range=all&amp;page=1"', t)
+        self.assertIn('href="/history?range=all&amp;page=3"', t)
+        self.assertEqual(self.c.get("/history", "page=3").text.count("<tr>"), 1 + 20)
+        self.assertEqual(self.c.get("/history", "page=99").text.count("<tr>"), 1 + 20)     # the last page
+        self.assertEqual(self.c.get("/history", "page=x").text.count("<tr>"), 1 + 50)
+        t = self.c.get("/history", "asset=btc&side=sell").text
+        self.assertEqual(t.count("<tr>"), 1 + 20)
+        self.assertIn('<option value="BTC" selected>BTC</option>', t)
+        self.assertIn('<option value="sell" selected>', t)
+        self.assertIn('href="/history.csv?range=all&amp;asset=BTC&amp;side=sell"', t)
+        self.assertIn(u"<span class=\"badge err\">فروش</span>", t)
+        self.assertEqual(self.c.get("/history", "side=bogus").text.count("<tr>"), 1 + 50)
+        self.assertNotIn(u"فقط", self.c.get("/history").text)
+        rep = self.history_report()
+        rep["history_total"] = 5000
+        self.helper.responses["performance"] = rep
+        self.app._perf_cache.clear()
+        self.assertIn(u"فقط <bdi dir=\"ltr\">120</bdi> معاملهٔ جدیدتر", self.c.get("/history").text)
+
+    def test_the_csv_download(self):
+        self.login()
+        rep = self.history_report(10)
+        rep["history"][1].update(reason="=cmd|' /C calc'!A0", order_id="+1", route="@x")
+        self.helper.responses["performance"] = rep
+        r = self.c.get("/history.csv", "range=all&side=sell")
+        self.assertEqual(r.status, 200)
+        self.assertEqual(r.header("Content-Type"), "text/csv; charset=utf-8")
+        self.assertRegex(r.header("Content-Disposition"), r'^attachment; filename="bitpin-trades-\d{8}-\d{4}\.csv"$')
+        self.assertEqual(r.header("X-Content-Type-Options"), "nosniff")
+        text = r.body.decode("utf-8")
+        self.assertTrue(text.startswith(u"﻿"))                  # a spreadsheet reads it as UTF-8
+        rows = list(csv.reader(io.StringIO(text[1:])))
+        self.assertEqual(rows[0], ["time_utc", "time_tehran", "market", "side", "amount", "price", "quote_asset",
+                                   "value_irt", "value_usdt", "fee", "fee_asset", "reason", "route", "order_id"])
+        self.assertEqual([x[3] for x in rows[1:]], ["sell"] * 4)      # i = 0, 3, 6, 9
+        all_rows = list(csv.reader(io.StringIO(self.c.get("/history.csv").body.decode("utf-8")[1:])))
+        self.assertEqual(len(all_rows), 11)
+        risky = [x for x in all_rows if x[-1] == "'+1"][0]
+        self.assertEqual((risky[11], risky[12]), ("'=cmd|' /C calc'!A0", "'@x"))
+        self.assertRegex(all_rows[1][0], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
+        self.assertNotIn("e-", all_rows[1][4])                       # plain decimals, not 1e-05
+
+    def test_hostile_strings_are_escaped(self):
+        self.login()
+        rep = perf_report({"from": int(T0) - 86400, "to": int(T0)})
+        rep["warnings"] = [HOSTILE]
+        rep["assets"][0]["asset"] = HOSTILE
+        rep["positions"][0].update(asset=HOSTILE, note=HOSTILE, setup=HOSTILE)
+        for h in rep["history"]:
+            h.update(symbol=HOSTILE, reason=HOSTILE, quote_asset=HOSTILE, fee_asset=HOSTILE, asset=HOSTILE)
+        self.helper.responses["performance"] = rep
+        self.assertEscaped(self.c.get("/performance").text, "/performance")
+        self.assertEscaped(self.c.get("/history").text, "/history")
+        self.assertEscaped(self.c.get("/performance", urlencode([("range", "custom"), ("from", HOSTILE)])).text,
+                           "a hostile range")
+
+    def test_odd_reports_still_render(self):
+        self.login()
+        for rep in ({}, {"totals": None, "assets": None, "equity": [[1, None]], "positions": [None, {}],
+                         "history": [None, {"t": "x", "side": None}, {"t": 1e300, "side": "buy", "price": 1e300}],
+                         "warnings": [None, 5], "live": True},
+                    {"equity": [[T0, 5.0, None, None], [T0 + 60, 6.0, None, None]], "totals": {"trades": "x"}},
+                    {"equity": [[1e300, 5.0, 1.0, 5.0], [T0, 6.0, 1.0, 6.0], [T0 + 60, 7.0, 1.0, 7.0]], "live": True,
+                     "positions": [{"asset": "BTC", "prices": [[1e300, 5.0], [T0, 1.0], [T0 + 9, 2.0]],
+                                    "set_at": 1e300, "max_hold_until": 1e300}]}):
+            self.helper.responses["performance"] = rep
+            self.app._perf_cache.clear()
+            for path in ("/performance", "/history", "/history.csv"):
+                r = self.c.get(path)
+                self.assertEqual(r.status, 200, (path, rep))
+                self.assertNotIn("Traceback", r.text)
+
+    def test_the_chart_helpers(self):
+        self.assertEqual(pw.nice_ticks(-1.3, 11.2)[:2], (-2.5, 12.5))
+        b, t, ticks, step = pw.nice_ticks(61234.5, 83000.0)
+        self.assertEqual((b, t, step), (60000.0, 85000.0, 5000.0))
+        self.assertEqual([pw.tick_text(v, step) for v in ticks][:2], ["60,000", "65,000"])
+        self.assertEqual(pw.tick_text(-2.5, 2.5, pct=True), "-2.5%")
+        self.assertEqual(pw.tick_text(1e-12, 2.5, pct=True), "0.0%")
+        b, t, ticks, step = pw.nice_ticks(5.0, 5.0)                             # a flat line still gets an axis
+        self.assertTrue(b < 5.0 < t and len(ticks) >= 3)
+        self.assertEqual((pw.price_text(65000.504), pw.price_text(142.1236), pw.price_text(2.34567),
+                          pw.price_text(0.00001234)), ("65,000.50", "142.124", "2.3457", "0.00001234"))
+        self.assertEqual((pw.qty_text(0.00012345), pw.qty_text(3612345.4, "IRT"), pw.qty_text(-1e-13)),
+                         ("0.00012345", "3,612,345", "0"))
+        self.assertIn("muted empty", pw.line_chart([("s1", [(1.0, 2.0)])]))    # one point is no line
+        one_time = pw.line_chart([("s1", [(5.0, 1.0), (5.0, 2.0)])])           # a single moment: no division by 0
+        self.assertIn("<polyline", one_time)
+        self.assertIsNone(pw._tehran_day("2026-9-31"))
+        self.assertEqual(pw.csv_cell(None), "")
 
 
 # ----------------------------------------------------------------------------------------------- secrets

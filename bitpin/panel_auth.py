@@ -455,8 +455,9 @@ class SessionStore(object):
             self._sessions[_sid_key(sid)] = sess
         return sid
 
-    def get(self, sid, now):
-        """The live session of `sid` (its last_seen touched) or None (unknown or expired: then removed)."""
+    def get(self, sid, now, touch=True):
+        """The live session of `sid` (its last_seen touched, unless touch is False: a page that reloads itself
+        is not the owner at the keyboard) or None (unknown or expired: then removed)."""
         if not isinstance(sid, str) or not sid or len(sid) > 128:
             return None
         k = _sid_key(sid)
@@ -467,7 +468,8 @@ class SessionStore(object):
             if self._expired(sess, now):
                 del self._sessions[k]
                 return None
-            sess["last_seen"] = now
+            if touch:
+                sess["last_seen"] = now
             return sess
 
     def destroy(self, sid):
