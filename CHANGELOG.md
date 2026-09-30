@@ -4,6 +4,61 @@
 
 ---
 
+## 3.6.4 — خبر: فرصت جست‌وجو پیش از خواستن JSON (2026-09-30)
+
+- آزمون واقعی ۳٫۶٫۳ روی سرور: مدل خبر بعد از اولین جست‌وجو فقط نوشت «باید دقیق‌تر جست‌وجو کنم» و متوقف شد. نسخهٔ ۳٫۶٫۳ همین
+  یک جمله را با درخواست تمیز به JSON تبدیل کرد و نتیجه خلاصه‌ای خالی بود («خبر مهمی نبود») که روز آرامی را نشان می‌داد، نه
+  تحقیقی ناتمام را.
+- حالا جوابی که JSON نیست، تا وقتی دور جست‌وجو باقی است، یک بار با «اگر چیزی کم است همین حالا جست‌وجو کن و بعد فقط شیء JSON
+  را بفرست» جواب می‌گیرد و ابزار جست‌وجو هنوز در دسترس است. بعد از آن، مثل قبل، یک بار دیگر بدون ابزار JSON خواسته می‌شود.
+- درخواست تمیز JSON فقط برای جوابی است که دست‌کم یک لینک منبع دارد، یعنی واقعاً گزارش خبر است. هر خبر بدون لینک منبع به
+  هر حال حذف می‌شود.
+- رفتار معامله‌ای و تنظیمات عوض نشده‌اند و تأیید تازه لازم نیست.
+- English: `bitpin/news.py`: SEARCH_NOW_NUDGE - a complete reply that is not the JSON object, while search rounds are
+  left and the tool is not withdrawn, is answered once with the model's text given back and "call the search tool
+  now if something is missing, then reply with only the JSON object", the tool still offered; FORMAT_NUDGE (the tool
+  withdrawn) follows as before. `_restructure()` only for a reply with at least one link (`_LINK_RE`), in the format
+  retry and in the length retry. Tests: `tests/test_news_format.py`, `tests/test_news_json.py`,
+  `tests/test_news_sources.py`, `tests/test_news.py`.
+
+## 3.6.3 — خبر روی Moonshot: جواب خالی یعنی «حالت JSON پذیرفته نشد» (2026-09-30)
+
+- آزمون واقعی ۳٫۶٫۲ روی سرور نشان داد که Moonshot «حالت JSON» را کنار ابزار جست‌وجوی داخلی خودش (`$web_search`) با خطای
+  HTTP 400 رد نمی‌کند، بلکه جواب خالی با `finish_reason: unexpected_state` می‌دهد. نسخهٔ ۳٫۶٫۲ این را شکست تحقیق خبر حساب
+  می‌کرد. حالا جواب خالی به درخواستی با حالت JSON یعنی «رد شد»: همان درخواست بدون حالت JSON (و با ابزار جست‌وجو) دوباره
+  فرستاده می‌شود و این برای بقیهٔ عمر سرویس به خاطر سپرده می‌شود.
+- اگر جواب مدل متن آزاد باشد، یا پیش از کامل شدن شیء JSON قطع شود، آن متن در یک درخواست تمیز و جدا به شیء JSON با ساختار
+  ثابت تبدیل می‌شود: فقط قواعد تحقیق خبر و همان متن به‌عنوان یادداشت، با حالت JSON، بدون ابزار و بدون تاریخچهٔ جست‌وجو. اگر
+  API این را هم نپذیرد، مثل قبل یک بار دیگر در همان گفت‌وگو خواسته می‌شود.
+- رفتار معامله‌ای و تنظیمات عوض نشده‌اند و تأیید تازه لازم نیست.
+- English: `bitpin/news.py`: an empty reply (any finish_reason but length) to a request with JSON mode counts as a
+  refusal like an HTTP 400 - Moonshot answers JSON mode next to its builtin $web_search with an empty reply and
+  finish_reason "unexpected_state" (kimi-check, 2026-09-30 13:44 UTC) - so `_json_with_tools` (or `_json_mode`) goes
+  off and the same request is sent again. `NewsResearcher._restructure()`: a prose reply (the format retry) or a reply
+  cut by max_tokens before its JSON object (the length retry) is turned into the JSON object by a clean request: the
+  research system prompt plus RESTRUCTURE_PROMPT with the reply as notes (at most RESTRUCTURE_NOTES_CHARS), JSON mode,
+  no tools and no tool history; when that is refused too (HTTP 400 or an empty reply) JSON mode goes off and the old
+  nudge inside the conversation follows. Tests: `tests/test_news_format.py`, `tests/test_news_sources.py`.
+
+## 3.6.2 — خبر فقط به‌صورت JSON و نجات جواب‌های قطع‌شده (2026-09-30)
+
+- مدل خبر (kimi-k2.6) گاهی به‌جای شیء JSON متن آزاد و خیلی طولانی می‌نوشت (۲۹ سپتامبر: ۸۰۰۰ توکن). جوابی به این درازی چند
+  دقیقه جریان دارد و تونل آن را وسط راه قطع می‌کرد (۳۰ سپتامبر: دو بار پشت سر هم). حالا بعد از اولین جست‌وجو، و در هر درخواست
+  بدون ابزار جست‌وجو، «حالت JSON» خود API (`response_format: json_object`) خواسته می‌شود: جواب فقط می‌تواند همان شیء JSON با
+  ساختار ثابت باشد، پس کوتاه و خواناست. اگر API این حالت را نپذیرد، همان درخواست بدون آن فرستاده می‌شود و این برای بقیهٔ عمر
+  سرویس به خاطر سپرده می‌شود.
+- جوابی که تونل وسط راه قطع کند ولی شیء JSON کامل، یا دست‌کم ۳ خبر کاملِ آن، پیش از قطع رسیده باشد، همان استفاده می‌شود و
+  درخواست پولی دوباره فرستاده نمی‌شود.
+- لاگ هر قطعی مدت درخواست و حجم رسیده را هم می‌گوید تا رفتار تونل سنجیده شود.
+- رفتار معامله‌ای و تنظیمات عوض نشده‌اند و تأیید تازه لازم نیست.
+- English: `bitpin/news.py`: JSON_MODE (`response_format: {"type": "json_object"}`) on every tool-loop request after the
+  first search round and on every request without the tool; an HTTP 400 on such a request turns it off for the
+  requests with the tool (`_json_with_tools`) or for all (`_json_mode`) and sends the request again.
+  `partial_stream_reply()` reads what a cut stream delivered; `NewsResearcher._salvage_cut()` uses a cut stream whose
+  content holds the whole reply object or at least SALVAGE_CUT_MIN_ITEMS (3) complete items (never a cut tool round),
+  with its usage estimated from what arrived; network and stream errors in the log carry the seconds and bytes.
+  Tests: `tests/test_news_json.py`, `tests/test_news.py`.
+
 ## 3.6.1 — پیش‌بینی و تحلیل هر موقعیت در پنل (2026-09-30)
 
 - نمودار هر موقعیت باز حالا **آینده** را هم نشان می‌دهد: ناحیهٔ کمرنگ از «الان» تا پایان مهلت نگهداری برنامه.

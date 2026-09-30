@@ -38,6 +38,7 @@ CUT = ("Let me look at the results first. " * 20 + '{"items": [' +
        json.dumps(item("Bitcoin ETF inflows rise", "https://www.coindesk.com/markets/etf/")) +
        ', {"headline": "Iran rial slides as talks st')
 RAMBLING = "I searched and found many things about the market. " * 300
+RAMBLING_LINKED = "I searched and found many things, see https://www.reuters.com/markets/ about the market. " * 200
 
 
 class TestSourceList(unittest.TestCase):
@@ -170,7 +171,22 @@ class TestCutReply(tn.NewsTestBase):
         self.assertTrue(b.ok, b.error)
         self.assertEqual((len(tr.requests), len(b.items)), (2, 2))
 
-    def test_a_cut_reply_without_any_item_is_asked_for_once_more(self):
+    def test_a_cut_report_with_links_is_put_into_the_json_object_by_a_clean_request(self):
+        r, tr = self.researcher([tn.tool_round(tn.call(1, tn.ARGS1)), (200, tn.completion(RAMBLING_LINKED, "length")),
+                                 (200, tn.completion(tn.GOOD))], sources=None)
+        b = r.research(now=T0)
+        self.assertTrue(b.ok, b.error)
+        self.assertEqual(len(tr.requests), 3)
+        last = tr.requests[2]["body"]
+        self.assertNotIn("tools", last)                               # the search tool is withdrawn
+        self.assertEqual(last["response_format"], {"type": "json_object"})
+        self.assertEqual([m["role"] for m in last["messages"]], ["system", "user"])   # no tool history (v3.6.3)
+        notes = last["messages"][1]["content"]
+        self.assertIn(RAMBLING_LINKED[:40], notes)                    # the cut text, as the notes
+        self.assertLess(len(notes), news_mod.RESTRUCTURE_NOTES_CHARS + 1000)
+        self.assertEqual(len(b.items), 2)
+
+    def test_a_cut_reply_without_any_link_is_asked_for_once_more_in_the_conversation(self):
         r, tr = self.researcher([tn.tool_round(tn.call(1, tn.ARGS1)), (200, tn.completion(RAMBLING, "length")),
                                  (200, tn.completion(tn.GOOD))], sources=None)
         b = r.research(now=T0)
@@ -178,6 +194,21 @@ class TestCutReply(tn.NewsTestBase):
         self.assertEqual(len(tr.requests), 3)
         last = tr.requests[2]["body"]
         self.assertNotIn("tools", last)                               # the search tool is withdrawn
+        self.assertEqual(last["response_format"], {"type": "json_object"})
+        self.assertEqual(last["messages"][-1], {"role": "user", "content": LENGTH_NUDGE % 10})
+        self.assertNotIn(RAMBLING[:40], json.dumps(last["messages"]))  # the cut-off text is not sent back
+        self.assertEqual(len(b.items), 2)
+
+    def test_without_json_mode_a_cut_reply_is_asked_for_once_more_in_the_conversation(self):
+        r, tr = self.researcher([tn.tool_round(tn.call(1, tn.ARGS1)), (200, tn.completion(RAMBLING, "length")),
+                                 (200, tn.completion(tn.GOOD))], sources=None)
+        r._json_mode = False                                          # an API that refused JSON mode before
+        b = r.research(now=T0)
+        self.assertTrue(b.ok, b.error)
+        self.assertEqual(len(tr.requests), 3)
+        last = tr.requests[2]["body"]
+        self.assertNotIn("tools", last)                               # the search tool is withdrawn
+        self.assertNotIn("response_format", last)
         self.assertEqual(last["messages"][-1], {"role": "user", "content": LENGTH_NUDGE % 10})
         self.assertNotIn(RAMBLING[:40], json.dumps(last["messages"]))  # the cut-off text is not sent back
         self.assertEqual(len(b.items), 2)

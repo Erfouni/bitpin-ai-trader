@@ -231,13 +231,17 @@ class TestToolLoop(NewsTestBase):
         self.assertIn("still calls tools", b.error)
 
     def test_final_request_refused_without_tools_is_retried_with_the_tool(self):
+        # v3.6.2: the final request also asks for JSON mode: a first refusal drops JSON mode, a second offers the tool
         r, tr = self.researcher([tool_round(call(1, ARGS1)),
+                                 (400, {"error": {"message": "tool messages need tools"}}),
                                  (400, {"error": {"message": "tool messages need tools"}}),
                                  (200, completion(GOOD))], max_tool_rounds=1)
         b = r.research(T0)
         self.assertTrue(b.ok, b.error)
         self.assertNotIn("tools", tr.requests[1]["body"])
-        self.assertEqual(tr.requests[2]["body"]["tools"], [WEB_SEARCH_TOOL])
+        self.assertEqual(tr.requests[1]["body"]["response_format"], {"type": "json_object"})
+        self.assertNotIn("response_format", tr.requests[2]["body"])
+        self.assertEqual(tr.requests[3]["body"]["tools"], [WEB_SEARCH_TOOL])
 
     def test_temperature_and_model_are_configurable(self):
         r, tr = self.researcher([(200, completion(GOOD))], temperature=0.6, model="kimi-k2.7-code",
@@ -1074,14 +1078,15 @@ class TestRobustness(NewsTestBase):
     def test_deeply_nested_reply_uses_the_stale_brief_and_cools_down(self):
         deep = '{"items": ' + "[" * 200000 + "]" * 200000 + "}"
         r, tr = self.researcher([(200, completion(GOOD)), (200, completion(deep)), (200, completion(deep)),
-                                 (200, completion(GOOD))], cache_minutes=0)       # v3.5.3: asked once more
+                                 (200, completion(deep)), (200, completion(GOOD))],
+                                cache_minutes=0)       # v3.6.4: a chance to search, then asked once more
         self.assertTrue(r.research(T0).ok)
         b = r.research(T0 + 5 * MIN)
         self.assertTrue(b.ok and b.stale and b.cached, b.error)
         self.assertIn("no JSON object", b.error)
         b3 = r.research(T0 + 6 * MIN)                  # inside the cool-down: no new call
         self.assertTrue(b3.stale)
-        self.assertEqual(len(tr.requests), 3)
+        self.assertEqual(len(tr.requests), 4)
         with open(os.path.join(self.dir, CACHE_FILE), encoding="utf-8") as f:
             self.assertIn("no JSON object", json.load(f)["last_error"])
 
@@ -1600,15 +1605,35 @@ class TestNewsStreaming(NewsTestBase):
         self.assertGreater(b.usage["total_tokens"], 0)
         self.assertEqual(r.tokens_used(T0), b.usage["total_tokens"])
 
+    def test_a_cut_stream_whose_json_had_arrived_is_used_as_it_is(self):
+        # v3.6.2: the tunnel cut the stream after the whole JSON object had arrived - no second, paid request
+        r, tr = self.researcher([(200, streamed_answer()[:-60])])
+        with self.assertLogs("bitpin.news", level="WARNING") as cm:
+            b = r.research(T0)
+        self.assertTrue(b.ok, b.error)
+        self.assertEqual((len(tr.requests), len(self.clock.sleeps)), (1, 0))
+        self.assertIn("Fed holds rates", b.text)
+        self.assertGreater(b.usage["total_tokens"], 0)
+        self.assertEqual(r.tokens_used(T0), b.usage["total_tokens"])
+        self.assertIn("the whole JSON object", "\n".join(cm.output))
+        drop = http.client.IncompleteRead(b"x")
+        drop.after_headers = True
+        drop.partial_body = streamed_answer()[:-60]                         # what the default transport keeps
+        r2, tr2 = self.researcher([drop], state_dir=None)
+        self.assertTrue(r2.research(T0).ok)
+        self.assertEqual(len(tr2.requests), 1)
+
     def test_a_cut_stream_is_retried_and_its_tokens_are_charged(self):
-        cut = streamed_answer()[:-60]
-        r, tr = self.researcher([(200, cut), (200, streamed_answer(usage={"total_tokens": 900}))])
-        b = r.research(T0)
+        head = sse(sse_chunk(content=GOOD[:40]), done=False)                # the JSON object had only begun
+        r, tr = self.researcher([(200, head), (200, streamed_answer(usage={"total_tokens": 900}))])
+        with self.assertLogs("bitpin.news", level="WARNING") as cm:
+            b = r.research(T0)
         self.assertTrue(b.ok, b.error)
         self.assertEqual(len(tr.requests), 2)
         self.assertEqual(len(self.clock.sleeps), 1)
         self.assertGreater(b.usage["total_tokens"], 900 + 8000)          # the cut reply: prompt + max_tokens
         self.assertEqual(r.tokens_used(T0), b.usage["total_tokens"])
+        self.assertRegex("\n".join(cm.output), r"after \d+ s, \d+ bytes")    # v3.6.2: the cut, measured
         drop = http.client.IncompleteRead(b"x")
         drop.after_headers = True                                         # the default transport marks this
         r2, _ = self.researcher([drop, (200, completion(GOOD))], state_dir=None)
