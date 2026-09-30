@@ -1,0 +1,60 @@
+# --- credentials and live configs: NEVER commit (they live only on the server, /etc/bitpin-bot) ---
+api.txt
+*keys*.txt
+*.key
+*.pem
+.env
+*.env
+!*.env.example
+config.json
+kimi.json
+news.json
+notify.json
+bitpin_token.json
+# written on a server by the panel helper / apply_profile.py (keys, password hash, TOTP secret, VPN)
+panel.json
+xray-config.json
+device_key
+*.before-panel
+*.before-profile
+*.crt
+*.p12
+*.ovpn
+wg*.conf
+id_rsa*
+id_ed25519*
+
+# --- bot state / kill switch / backups ---
+state/
+STOP
+*.lock
+*.bak-*
+LIVE_CONFIRMED
+/*.log
+
+# --- market data caches (regenerate with scripts/fetch_data.py) ---
+data/*.csv
+research/**/*.csv
+research/**/*.npy
+research/**/*.npz
+research/**/*.pkl
+research/**/*.gz
+research/**/cache/
+
+# --- build artefacts / python caches / editors ---
+*.tar.gz
+*.tgz
+*.zip
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.idea/
+.vscode/
+.claude/
+scratch/
+research/**/data/
+research/**/plans.json

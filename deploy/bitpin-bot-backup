@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# bitpin-bot-backup [KEEP] - the daily state backup of bitpin-bot-backup.service (root; also
+# "sudo bitpin-bot backup"). Writes $BACKUP_DIR/state-<UTC date>.tgz (mode 0600 root:root, written to a
+# temp name first, then renamed: a crash never leaves a half archive under the final name) with:
+#   /var/lib/bitpin-bot          decisions, runner records, events, order journal, risk / runner state,
+#                                logs - WITHOUT bitpin_token.json (the refresh token can trade for ~30
+#                                days; a fresh login costs one of ~150 a month) and without *.tmp
+#   /var/lib/bitpin-bot-notify   the notifier's state (cursors, sent ids: a restore does not re-send)
+#   /etc/bitpin-bot/{config,kimi,notify}.json   the settings (never the .env secrets files)
+# and keeps only the newest KEEP archives (default 14; the year review's "14 daily"). A second run on the
+# same day overwrites that day's archive. Expected size 5-15 MB. Restore: docs/DEPLOY_FA.md (stop the
+# unit, untar, chown -R bitpin:bitpin, chmod 0700, confirm-live --check, start).
+set -u
+umask 077
+
+STATE_DIR="${STATE_DIR:-/var/lib/bitpin-bot}"
+NOTIFY_STATE_DIR="${NOTIFY_STATE_DIR:-/var/lib/bitpin-bot-notify}"
+ETC_DIR="${ETC_DIR:-/etc/bitpin-bot}"
+BACKUP_DIR="${BACKUP_DIR:-/var/backups/bitpin-bot}"
+KEEP="${1:-${KEEP:-14}}"
+case "$KEEP" in ''|*[!0-9]*) KEEP=14 ;; esac
+
+day="$(date -u +%Y-%m-%d)"
+out="$BACKUP_DIR/state-$day.tgz"
+tmp="$BACKUP_DIR/.state-$day.tgz.tmp"
+
+mkdir -p "$BACKUP_DIR" || { echo "bitpin-bot-backup: cannot create $BACKUP_DIR" >&2; exit 1; }
+chmod 0700 "$BACKUP_DIR" 2>/dev/null || true
+
+# only what exists (a server without the notifier, a fresh install without kimi.json): tar must not fail
+members=()
+for p in "$STATE_DIR" "$NOTIFY_STATE_DIR" "$ETC_DIR/config.json" "$ETC_DIR/kimi.json" "$ETC_DIR/notify.json"; do
+    [ -e "$p" ] && members+=("$p")
+done
+if [ "${#members[@]}" -eq 0 ]; then
+    echo "bitpin-bot-backup: nothing to back up ($STATE_DIR missing)" >&2
+    exit 1
+fi
+rm -f "$tmp"
+# --ignore-failed-read: a file the bot replaces while tar reads it (atomic rename) must not fail the whole
+# backup; the exit status 1 of GNU tar ("file changed as we read it") is accepted, anything else is not
+tar --ignore-failed-read --warning=no-file-changed --exclude='bitpin_token.json' --exclude='*.tmp' \
+    --exclude='*.corrupt-*' -czf "$tmp" -- "${members[@]}" 2>/dev/null
+rc=$?
+if [ "$rc" -gt 1 ] || [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    echo "bitpin-bot-backup: tar failed (status $rc)" >&2
+    exit 1
+fi
+chmod 0600 "$tmp"
+mv -f "$tmp" "$out"
+size="$(du -k "$out" 2>/dev/null | cut -f1)"
+echo "bitpin-bot-backup: wrote $out (${size:-?} KB)"
+
+# keep the newest KEEP archives (names sort by date)
+n=0
+for f in $(ls -1 "$BACKUP_DIR"/state-*.tgz 2>/dev/null | sort -r); do
+    n=$((n + 1))
+    if [ "$n" -gt "$KEEP" ]; then
+        rm -f "$f" && echo "bitpin-bot-backup: removed old $f"
+    fi
+done
+exit 0

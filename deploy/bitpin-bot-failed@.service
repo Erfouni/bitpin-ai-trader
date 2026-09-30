@@ -1,0 +1,57 @@
+# /etc/systemd/system/bitpin-bot-failed@.service - installed by deploy/install.sh / update.sh (release v3).
+# Started by systemd through "OnFailure=bitpin-bot-failed@%n.service" in bitpin-bot.service (and the paper
+# unit): the instance name (%i) is the unit that FAILED. With Restart=always and StartLimitIntervalSec=0 a
+# service enters the failed state ONLY when its exit status is in RestartPreventExitStatus - for the bot
+# that is 78, "configuration / confirmation / credential problem, retrying cannot help" (a crash or an
+# outage is restarted forever and never lands here). Without this unit a bot that exited 78 at 03:00 stayed
+# silent until the owner ran 'sudo bitpin-bot health' by hand.
+#
+# What it does: deploy/bitpin-bot-failed writes ONE small JSON file (unit, exit status, result, time) into
+# the Telegram notifier's own state directory (/var/lib/bitpin-bot-notify/unit_failure.json). The notifier
+# (bitpin-bot-notify, read-only towards the bot) reads it at its next check, sends the Persian alert and
+# deletes it - the /stop relay pattern in the other direction. No network here, no Telegram token, nothing
+# of the bot's directory is touched. It runs as user bitpin, the owner of the notifier's 0700 directory:
+# no root and no capability (a root script inside a directory another user controls could be steered
+# through links; v3 security review). Test it the way systemd runs it:
+#   sudo systemctl start bitpin-bot-failed@test.service
+[Unit]
+Description=Bitpin bot - report a failed unit (%i) to the Telegram notifier
+Documentation=file:/opt/bitpin-bot/docs/TELEGRAM_FA.md
+
+[Service]
+Type=oneshot
+User=bitpin
+Group=bitpin
+CapabilityBoundingSet=
+AmbientCapabilities=
+TimeoutStartSec=30
+WorkingDirectory=/opt/bitpin-bot
+Environment=TZ=UTC LANG=C.UTF-8
+ExecStart=/bin/bash /opt/bitpin-bot/deploy/bitpin-bot-failed %i
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bitpin-bot-failed
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ReadWritePaths=/var/lib/bitpin-bot-notify
+InaccessiblePaths=-/etc/bitpin-bot/bitpin-bot.env -/etc/bitpin-bot/notify.env -/var/lib/bitpin-bot
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

@@ -1,0 +1,32 @@
+# One request of the management panel (release v3.1): started by bitpin-bot-panel-helper.socket per
+# connection. Runs as root because it edits /etc/bitpin-bot (settings, keys, panel login), the owner's
+# /opt/xray/config.json and runs systemctl / confirm-live - but only the commands of
+# scripts/panel_helper.py COMMANDS, each argument checked again there. Logs (the command and its
+# result, never a value): sudo journalctl -u 'bitpin-bot-panel-helper@*'
+[Unit]
+Description=Bitpin bot management panel: root helper (one request)
+Documentation=file:///opt/bitpin-bot/docs/PANEL_FA.md
+CollectMode=inactive-or-failed
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/bitpin-bot/scripts/panel_helper.py
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+Environment=TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+WorkingDirectory=/opt/bitpin-bot
+# apply_live (stop, confirm-live, start, health) is the longest request
+RuntimeMaxSec=330
+# security review F3: it validates settings with the bot's own code as root - bounded like the bot's units, so a
+# hostile input can never take the server (and its other services) down
+MemoryMax=768M
+TasksMax=64
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+# what the commands write (a missing directory is skipped): settings / keys / panel login, the lock file,
+# backups, confirm-live's LIVE_CONFIRMED (as user bitpin), the notifier's relay files, the owner's VPN
+ReadWritePaths=/etc/bitpin-bot /etc/bitpin-bot-panel /run/bitpin-panel -/var/backups/bitpin-bot -/var/lib/bitpin-bot -/var/lib/bitpin-bot-notify -/opt/xray

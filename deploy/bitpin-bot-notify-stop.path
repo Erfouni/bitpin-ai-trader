@@ -1,0 +1,12 @@
+# /etc/systemd/system/bitpin-bot-notify-stop.path - relays a CONFIRMED Telegram /stop into the bot's STOP
+# kill switch (see bitpin-bot-notify-stop.service). Enable: sudo systemctl enable --now bitpin-bot-notify-stop.path
+[Unit]
+Description=Bitpin bot - watch for a confirmed Telegram /stop request
+Documentation=file:/opt/bitpin-bot/docs/TELEGRAM_FA.md
+
+[Path]
+PathExists=/var/lib/bitpin-bot-notify/stop_request.json
+Unit=bitpin-bot-notify-stop.service
+
+[Install]
+WantedBy=paths.target

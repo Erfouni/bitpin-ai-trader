@@ -1,0 +1,4925 @@
+[
+ {
+  "symbol": "USDT_IRT",
+  "quote_volume": 99022984051727.81,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XRP_IRT",
+  "quote_volume": 10326255954424.844,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BTC_IRT",
+  "quote_volume": 9326530956864.768,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 8,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SOL_IRT",
+  "quote_volume": 6664964873568.481,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ETH_IRT",
+  "quote_volume": 6572824441612.016,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 5,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DOGE_IRT",
+  "quote_volume": 4805539355035.514,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PAXG_IRT",
+  "quote_volume": 4315387430423.387,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 5,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DASH_IRT",
+  "quote_volume": 4073963807218.7734,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZEC_IRT",
+  "quote_volume": 3965998239459.275,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SHIB_IRT",
+  "quote_volume": 3732162265055.2715,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 4,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PEPE_IRT",
+  "quote_volume": 3648899094789.777,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 4,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ADA_IRT",
+  "quote_volume": 3611230842208.23,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TRX_IRT",
+  "quote_volume": 3377118304329.75,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BNB_IRT",
+  "quote_volume": 2632850134328.738,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SUI_IRT",
+  "quote_volume": 1899949412685.3,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "USOON_IRT",
+  "quote_volume": 1797836818674.8252,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LINK_IRT",
+  "quote_volume": 1744429523083.6406,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NEAR_IRT",
+  "quote_volume": 1707243093163.567,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ARB_IRT",
+  "quote_volume": 1688872757754.8152,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XAUT_IRT",
+  "quote_volume": 1234521416944.0667,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 5,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XLM_IRT",
+  "quote_volume": 976219500510.1,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HYPE_IRT",
+  "quote_volume": 949169590845.264,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AVAX_IRT",
+  "quote_volume": 840739276182.9843,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GRAM_IRT",
+  "quote_volume": 838343506685.22,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ETC_IRT",
+  "quote_volume": 834695816978.8892,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 6,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "UNI_IRT",
+  "quote_volume": 795449651250.4915,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DOT_IRT",
+  "quote_volume": 765769968494.8875,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AAVE_IRT",
+  "quote_volume": 685541457744.2507,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LTC_IRT",
+  "quote_volume": 646462793398.29,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "INJ_IRT",
+  "quote_volume": 579794977540.0107,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PUMP_IRT",
+  "quote_volume": 550229601373.2001,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ASTER_IRT",
+  "quote_volume": 451402750226.7,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "USDC_IRT",
+  "quote_volume": 445540333430.3,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "COPXON_IRT",
+  "quote_volume": 395655459921.08,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "OP_IRT",
+  "quote_volume": 348374169363.3573,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WLD_IRT",
+  "quote_volume": 348162053990.9265,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FLOKI_IRT",
+  "quote_volume": 345577685493.603,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 3,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FIL_IRT",
+  "quote_volume": 318844636313.3639,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "S_IRT",
+  "quote_volume": 264422073045.29,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DEXE_IRT",
+  "quote_volume": 260525511677.5272,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SLVON_IRT",
+  "quote_volume": 259880158749.434,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BCH_IRT",
+  "quote_volume": 247427184294.2644,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GOOGLX_IRT",
+  "quote_volume": 230524141132.017,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AMZNX_IRT",
+  "quote_volume": 206907082015.2893,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ONE_IRT",
+  "quote_volume": 197957791117.48337,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 2,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HOODX_IRT",
+  "quote_volume": 161251157709.154,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "POL_IRT",
+  "quote_volume": 134166081223.8491,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NVDAX_IRT",
+  "quote_volume": 133013863940.6504,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AAPLX_IRT",
+  "quote_volume": 123469248882.3751,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CRV_IRT",
+  "quote_volume": 123195150757.2064,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "METAX_IRT",
+  "quote_volume": 120996716416.9625,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CAKE_IRT",
+  "quote_volume": 119187906725.8854,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XVS_IRT",
+  "quote_volume": 111060624237.471,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HMSTR_IRT",
+  "quote_volume": 107706717633.6773,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 2,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ENA_IRT",
+  "quote_volume": 101536161503.64,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SEI_IRT",
+  "quote_volume": 99757430359.672,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BONK_IRT",
+  "quote_volume": 98480767929.51306,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 4,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JASMY_IRT",
+  "quote_volume": 97459787064.67865,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LAB_IRT",
+  "quote_volume": 94213093743.03,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WIN_IRT",
+  "quote_volume": 93621376584.45758,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 3,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DOGS_IRT",
+  "quote_volume": 93605001625.31801,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 3,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MNT_IRT",
+  "quote_volume": 82406595765.9426,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FORM_IRT",
+  "quote_volume": 82380481165.22,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ALGO_IRT",
+  "quote_volume": 81823803868.7217,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "COTI_IRT",
+  "quote_volume": 78070049537.47,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CRCLX_IRT",
+  "quote_volume": 77960989117.713,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TWT_IRT",
+  "quote_volume": 74683694901.06,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SYRUP_IRT",
+  "quote_volume": 70509344318.25,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NOT_IRT",
+  "quote_volume": 64790386453.4486,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 4,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AKE_IRT",
+  "quote_volume": 63888634950.0,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HBAR_IRT",
+  "quote_volume": 61795027543.011,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ARKM_IRT",
+  "quote_volume": 61599900392.0773,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BAT_IRT",
+  "quote_volume": 59622072567.08,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BABYDOGE_IRT",
+  "quote_volume": 54156735972.41822,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 8,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "G_IRT",
+  "quote_volume": 50593546054.054,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GALA_IRT",
+  "quote_volume": 50138571469.766,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PENGU_IRT",
+  "quote_volume": 45624245970.9,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WIF_IRT",
+  "quote_volume": 43188511641.7146,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LPT_IRT",
+  "quote_volume": 42969309789.92,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SAND_IRT",
+  "quote_volume": 41841207509.4004,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JST_IRT",
+  "quote_volume": 39198442366.99,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BTTC_IRT",
+  "quote_volume": 37484101953.65165,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 5,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LDO_IRT",
+  "quote_volume": 37122794558.6801,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CATI_IRT",
+  "quote_volume": 36725830876.69,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LSK_IRT",
+  "quote_volume": 36433666364.2012,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CVC_IRT",
+  "quote_volume": 36150994646.92,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "YFI_IRT",
+  "quote_volume": 35764336965.11337,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 6,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "STRK_IRT",
+  "quote_volume": 35018237929.93,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CVX_IRT",
+  "quote_volume": 34811381954.8756,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JOE_IRT",
+  "quote_volume": 33886630256.45,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ONDO_IRT",
+  "quote_volume": 32977400096.3186,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SLP_IRT",
+  "quote_volume": 32887144053.33,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 2,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ATOM_IRT",
+  "quote_volume": 31846995083.966,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "METIS_IRT",
+  "quote_volume": 31561782318.933,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LUNA_IRT",
+  "quote_volume": 31260560182.8997,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZRO_IRT",
+  "quote_volume": 29951514429.26,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SNX_IRT",
+  "quote_volume": 28618072459.69,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FDUSD_IRT",
+  "quote_volume": 28260103113.16,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TRB_IRT",
+  "quote_volume": 27551027824.1492,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CHZ_IRT",
+  "quote_volume": 27228283759.0225,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "USD1_IRT",
+  "quote_volume": 26956725836.35,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CELR_IRT",
+  "quote_volume": 25828854997.5029,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MASK_IRT",
+  "quote_volume": 25170518013.9761,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "COOKIE_IRT",
+  "quote_volume": 24917307184.8,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BNT_IRT",
+  "quote_volume": 24401747410.53,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RENDER_IRT",
+  "quote_volume": 24032686598.940002,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "API3_IRT",
+  "quote_volume": 22957923260.0,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "EGLD_IRT",
+  "quote_volume": 22770667628.6726,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ANKR_IRT",
+  "quote_volume": 22149888622.3263,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GMX_IRT",
+  "quote_volume": 21304413175.06,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XMR_IRT",
+  "quote_volume": 21053338345.1773,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ETHFI_IRT",
+  "quote_volume": 20675824835.28,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FET_IRT",
+  "quote_volume": 19895429083.1471,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "THETA_IRT",
+  "quote_volume": 18378351065.8223,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TNSR_IRT",
+  "quote_volume": 18302821933.11,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GRT_IRT",
+  "quote_volume": 17660923671.0954,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RAY_IRT",
+  "quote_volume": 17609037573.1815,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AEVO_IRT",
+  "quote_volume": 16560946200.26,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NMR_IRT",
+  "quote_volume": 16042498640.707,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XTZ_IRT",
+  "quote_volume": 15927493109.98,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "VET_IRT",
+  "quote_volume": 15869680768.11,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CYBER_IRT",
+  "quote_volume": 15280040481.31,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CASHCAT_IRT",
+  "quote_volume": 14963615256.69,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BAND_IRT",
+  "quote_volume": 14606926525.4213,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SUSHI_IRT",
+  "quote_volume": 14541198965.8638,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MORPHO_IRT",
+  "quote_volume": 14436233530.34,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PENDLE_IRT",
+  "quote_volume": 14230870935.9,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "COAI_IRT",
+  "quote_volume": 14101169065.52,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TURBO_IRT",
+  "quote_volume": 13737688238.8,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "COMP_IRT",
+  "quote_volume": 13535029777.238,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SYN_IRT",
+  "quote_volume": 13512434865.32,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MOODENG_IRT",
+  "quote_volume": 13347723692.85,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZIL_IRT",
+  "quote_volume": 13031216075.77424,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CC_IRT",
+  "quote_volume": 12820259048.7,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AXS_IRT",
+  "quote_volume": 12576112665.9051,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "APT_IRT",
+  "quote_volume": 12529297281.99,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BLUR_IRT",
+  "quote_volume": 12368338492.9235,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DYDX_IRT",
+  "quote_volume": 12233469557.1614,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ENJ_IRT",
+  "quote_volume": 11325957177.9027,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "IMX_IRT",
+  "quote_volume": 11221653783.8016,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ICP_IRT",
+  "quote_volume": 11159440627.8164,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "UAI_IRT",
+  "quote_volume": 11070874783.2,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "T_IRT",
+  "quote_volume": 10598897704.26977,
+  "active_days": 56,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "VIRTUAL_IRT",
+  "quote_volume": 9971604690.07,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GMT_IRT",
+  "quote_volume": 9921195965.9473,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LRC_IRT",
+  "quote_volume": 9731935434.15,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TUT_IRT",
+  "quote_volume": 9667612302.0,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TAC_IRT",
+  "quote_volume": 9569719857.25,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HEMI_IRT",
+  "quote_volume": 9557527981.4,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CGPT_IRT",
+  "quote_volume": 9372383457.07,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MANA_IRT",
+  "quote_volume": 9156839138.0317,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MON_IRT",
+  "quote_volume": 9076858360.8,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MUBARAK_IRT",
+  "quote_volume": 8821829150.79,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RSR_IRT",
+  "quote_volume": 8732541536.04441,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PNUT_IRT",
+  "quote_volume": 8724010413.28,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SUPER_IRT",
+  "quote_volume": 8132072685.33,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "QNT_IRT",
+  "quote_volume": 7783769563.7698,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PONS_IRT",
+  "quote_volume": 7764088462.900001,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NEIROCTO_IRT",
+  "quote_volume": 7712087699.31,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 2,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MOVE_IRT",
+  "quote_volume": 7573995694.79,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MEME_IRT",
+  "quote_volume": 7483889112.416197,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 2,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BEAT_IRT",
+  "quote_volume": 7296507067.14,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "EDU_IRT",
+  "quote_volume": 7119268465.2,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SKL_IRT",
+  "quote_volume": 7097669269.2890005,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CAP_IRT",
+  "quote_volume": 7010406334.53,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "COINX_IRT",
+  "quote_volume": 6727724169.249,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CYS_IRT",
+  "quote_volume": 6451925252.6,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XDC_IRT",
+  "quote_volume": 6301648806.8,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZRX_IRT",
+  "quote_volume": 6080752313.5665,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HNT_IRT",
+  "quote_volume": 5827267975.6445,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "APE_IRT",
+  "quote_volume": 5716889246.8184,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SAFE_IRT",
+  "quote_volume": 5674202504.02,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ENS_IRT",
+  "quote_volume": 5472881945.9187,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "A_IRT",
+  "quote_volume": 5185479918.39,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "USELESS_IRT",
+  "quote_volume": 5015186670.400001,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "1INCH_IRT",
+  "quote_volume": 4917547847.18,
+  "active_days": 59,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TAO_IRT",
+  "quote_volume": 4871451266.8584,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GLM_IRT",
+  "quote_volume": 4673362198.677,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HOT_IRT",
+  "quote_volume": 4452196753.8025,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 2,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MAGIC_IRT",
+  "quote_volume": 4183265083.613,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZK_IRT",
+  "quote_volume": 3855558273.63,
+  "active_days": 59,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SAGA_IRT",
+  "quote_volume": 3574866831.6,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SSV_IRT",
+  "quote_volume": 3516901415.25,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "UMA_IRT",
+  "quote_volume": 3454857797.5299997,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HOME_IRT",
+  "quote_volume": 3259284312.63,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GPS_IRT",
+  "quote_volume": 3242280502.7999997,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GRASS_IRT",
+  "quote_volume": 3139708575.21,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "EIGEN_IRT",
+  "quote_volume": 2981888298.67,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "W_IRT",
+  "quote_volume": 2944642436.42,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SIREN_IRT",
+  "quote_volume": 2885229000.3999996,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AIXBT_IRT",
+  "quote_volume": 2715224080.95,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZAMA_IRT",
+  "quote_volume": 2714453838.2,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LUNC_IRT",
+  "quote_volume": 2689416133.8020697,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 3,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AVA_IRT",
+  "quote_volume": 2647983223.36,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NIL_IRT",
+  "quote_volume": 2489879948.7999997,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZETA_IRT",
+  "quote_volume": 2305572857.2588,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ATH_IRT",
+  "quote_volume": 2276557377.29,
+  "active_days": 60,
+  "bars": 60,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FF_IRT",
+  "quote_volume": 2227293990.6,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BSB_IRT",
+  "quote_volume": 2209230993.97,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HEI_IRT",
+  "quote_volume": 2199658104.95,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ACE_IRT",
+  "quote_volume": 2139274614.17,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FTT_IRT",
+  "quote_volume": 2068402175.804,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "EPIC_IRT",
+  "quote_volume": 1957669788.63,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BANK_IRT",
+  "quote_volume": 1781032849.31,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BICO_IRT",
+  "quote_volume": 1775743998.646,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KII_IRT",
+  "quote_volume": 1720252867.5,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SKHYB_IRT",
+  "quote_volume": 1693921302.145,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SKYAI_IRT",
+  "quote_volume": 1691351226.59,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SKR_IRT",
+  "quote_volume": 1689455149.0,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DODO_IRT",
+  "quote_volume": 1566992871.96,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "H_IRT",
+  "quote_volume": 1529554054.9,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BOME_IRT",
+  "quote_volume": 1477653757.0,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MOVR_IRT",
+  "quote_volume": 1427595592.6644,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PORTAL_IRT",
+  "quote_volume": 1421744901.63,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PEOPLE_IRT",
+  "quote_volume": 1343858600.966,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ALICE_IRT",
+  "quote_volume": 1322230461.77,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZORA_IRT",
+  "quote_volume": 1321825041.2,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "F_IRT",
+  "quote_volume": 1220213476.6,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "POPCAT_IRT",
+  "quote_volume": 1206173983.62,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KERNEL_IRT",
+  "quote_volume": 1150659245.44,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DOS_IRT",
+  "quote_volume": 1132684729.56,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LITEB_IRT",
+  "quote_volume": 1108666589.0432,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AR_IRT",
+  "quote_volume": 1106284897.03,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BANANAS31_IRT",
+  "quote_volume": 1101647347.0,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CHIP_IRT",
+  "quote_volume": 1097429087.0,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DENT_IRT",
+  "quote_volume": 1068419261.958803,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 3,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ACT_IRT",
+  "quote_volume": 1064382458.62,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DRIFT_IRT",
+  "quote_volume": 994653905.73,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "UNGON_IRT",
+  "quote_volume": 984870124.28,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GUN_IRT",
+  "quote_volume": 960832159.5,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PIEVERSE_IRT",
+  "quote_volume": 934057232.3000001,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "USDS_IRT",
+  "quote_volume": 929822927.6,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BSV_IRT",
+  "quote_volume": 839861235.039,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "EDEN_IRT",
+  "quote_volume": 832081635.05,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KAVA_IRT",
+  "quote_volume": 813155157.8000001,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BROCCOLI_IRT",
+  "quote_volume": 782366794.55,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AAPLON_IRT",
+  "quote_volume": 774414875.2090001,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PROM_IRT",
+  "quote_volume": 761252142.611,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SOLV_IRT",
+  "quote_volume": 737747454.99,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PHA_IRT",
+  "quote_volume": 726439999.6899999,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SOPH_IRT",
+  "quote_volume": 714936438.72,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DGAI_IRT",
+  "quote_volume": 704223380.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TRIA_IRT",
+  "quote_volume": 689113880.14,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ELON_IRT",
+  "quote_volume": 680447170.210358,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 6,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AKT_IRT",
+  "quote_volume": 679795472.4787999,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ENSO_IRT",
+  "quote_volume": 677756724.03,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KSM_IRT",
+  "quote_volume": 667535264.6187,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PUFFER_IRT",
+  "quote_volume": 660536151.17,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SCR_IRT",
+  "quote_volume": 654941094.92,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TLM_IRT",
+  "quote_volume": 653820414.643,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZBCN_IRT",
+  "quote_volume": 649449253.4,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GLDON_IRT",
+  "quote_volume": 648654658.0488,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KAS_IRT",
+  "quote_volume": 647349159.991,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "VTHO_IRT",
+  "quote_volume": 644920286.3266,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 2,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LA_IRT",
+  "quote_volume": 635439084.4,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ESP_IRT",
+  "quote_volume": 627655173.1,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "QTUM_IRT",
+  "quote_volume": 625924781.8549,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "QNTB_IRT",
+  "quote_volume": 617439660.437,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PIXEL_IRT",
+  "quote_volume": 615699568.976,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SPYON_IRT",
+  "quote_volume": 611873116.3585,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RED_IRT",
+  "quote_volume": 606679196.16,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "STG_IRT",
+  "quote_volume": 604350276.22,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "COW_IRT",
+  "quote_volume": 603334781.78,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "OPG_IRT",
+  "quote_volume": 602130035.1,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "UB_IRT",
+  "quote_volume": 601559259.0,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MINA_IRT",
+  "quote_volume": 593007566.6823,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CBRSB_IRT",
+  "quote_volume": 590971375.644,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NFT_IRT",
+  "quote_volume": 590970362.59165,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 5,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MANTRA_IRT",
+  "quote_volume": 579393478.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DEEP_IRT",
+  "quote_volume": 575362654.0,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XEC_IRT",
+  "quote_volume": 571377196.2742699,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 3,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XAI_IRT",
+  "quote_volume": 562882605.32,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "VVV_IRT",
+  "quote_volume": 560213707.8,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HUMA_IRT",
+  "quote_volume": 556673220.0,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RECALL_IRT",
+  "quote_volume": 555959651.54,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ARPA_IRT",
+  "quote_volume": 549459052.24,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SAPIEN_IRT",
+  "quote_volume": 548234146.2,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HYPER_IRT",
+  "quote_volume": 546513530.0600001,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CRWVB_IRT",
+  "quote_volume": 542707420.56,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BLESS_IRT",
+  "quote_volume": 540414079.49,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MERL_IRT",
+  "quote_volume": 540088982.72,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "OKB_IRT",
+  "quote_volume": 536607153.746,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TLTON_IRT",
+  "quote_volume": 534227508.4,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TAIKO_IRT",
+  "quote_volume": 530867012.25,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "REZ_IRT",
+  "quote_volume": 529029581.81899995,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZKJ_IRT",
+  "quote_volume": 528643409.87,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KMNO_IRT",
+  "quote_volume": 528459436.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CSPR_IRT",
+  "quote_volume": 522356505.59000003,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JUP_IRT",
+  "quote_volume": 505541227.7477,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SKY_IRT",
+  "quote_volume": 504181629.9,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PROS_IRT",
+  "quote_volume": 493209822.12,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WLFI_IRT",
+  "quote_volume": 483898911.3,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CRO_IRT",
+  "quote_volume": 464882683.2673,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZEN_IRT",
+  "quote_volume": 453970632.2634,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PLUME_IRT",
+  "quote_volume": 453700362.0,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XCN_IRT",
+  "quote_volume": 449871446.42977,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WBTC_IRT",
+  "quote_volume": 449492955.199205,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 6,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AGI_IRT",
+  "quote_volume": 449256007.345,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "INIT_IRT",
+  "quote_volume": 444191813.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PIPPIN_IRT",
+  "quote_volume": 429564445.08,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MMT_IRT",
+  "quote_volume": 427777085.34,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GRVT_IRT",
+  "quote_volume": 426741480.12,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SPX_IRT",
+  "quote_volume": 425964822.26,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "0G_IRT",
+  "quote_volume": 425112945.53000003,
+  "active_days": 16,
+  "bars": 16,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XPL_IRT",
+  "quote_volume": 423068288.9,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CPOOL_IRT",
+  "quote_volume": 413478545.74,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NIGHT_IRT",
+  "quote_volume": 406677932.6,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AVGOON_IRT",
+  "quote_volume": 406440149.3294,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "IOTA_IRT",
+  "quote_volume": 402434500.6575,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NEX_IRT",
+  "quote_volume": 401385044.2185,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 4,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TIA_IRT",
+  "quote_volume": 400535624.59999996,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DOOD_IRT",
+  "quote_volume": 400045552.15000004,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "EDGE_IRT",
+  "quote_volume": 394398862.9,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MET_IRT",
+  "quote_volume": 393277060.28000003,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BASED_IRT",
+  "quote_volume": 392249680.59999996,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BILL_IRT",
+  "quote_volume": 387745810.7,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LINEA_IRT",
+  "quote_volume": 387200256.61800003,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "C98_IRT",
+  "quote_volume": 385416264.41999996,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JTO_IRT",
+  "quote_volume": 385147845.24,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DIA_IRT",
+  "quote_volume": 377377665.041,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ROSE_IRT",
+  "quote_volume": 377223600.1456,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GMEON_IRT",
+  "quote_volume": 373449550.76,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BEAMX_IRT",
+  "quote_volume": 370263961.028,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KGEN_IRT",
+  "quote_volume": 369631748.40000004,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BABY_IRT",
+  "quote_volume": 367104866.4,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PEAQ_IRT",
+  "quote_volume": 366282023.40000004,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AVNT_IRT",
+  "quote_volume": 365261201.7,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "INTCON_IRT",
+  "quote_volume": 364063548.959,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "QQQON_IRT",
+  "quote_volume": 358340170.1089,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RARE_IRT",
+  "quote_volume": 356975708.83,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BRETT_IRT",
+  "quote_volume": 353354937.09,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "THE_IRT",
+  "quote_volume": 351880413.64,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MSFTON_IRT",
+  "quote_volume": 351099881.633,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GLMR_IRT",
+  "quote_volume": 350499416.61,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BIO_IRT",
+  "quote_volume": 348326718.8,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZKC_IRT",
+  "quote_volume": 346459115.7,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MOG_IRT",
+  "quote_volume": 343023325.19572,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 5,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "USDE_IRT",
+  "quote_volume": 336631553.77,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PBRON_IRT",
+  "quote_volume": 335581020.62,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CHEEMS_IRT",
+  "quote_volume": 335219435.45312,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 5,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PORTO_IRT",
+  "quote_volume": 335002098.48,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BABAON_IRT",
+  "quote_volume": 334614392.016,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SPK_IRT",
+  "quote_volume": 334093123.75,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FOLKS_IRT",
+  "quote_volume": 332105500.47,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HDX_IRT",
+  "quote_volume": 329044573.325,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ALLO_IRT",
+  "quote_volume": 328318487.43,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TOKEN_IRT",
+  "quote_volume": 328028067.0626,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CHR_IRT",
+  "quote_volume": 327492854.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SAHARA_IRT",
+  "quote_volume": 325635706.18,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "STABLE_IRT",
+  "quote_volume": 324575064.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LLYON_IRT",
+  "quote_volume": 324142657.0022,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MRVLON_IRT",
+  "quote_volume": 324003096.431,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CTK_IRT",
+  "quote_volume": 322297993.19,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ALEO_IRT",
+  "quote_volume": 321959033.89,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ANIME_IRT",
+  "quote_volume": 319671307.293,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MAVIA_IRT",
+  "quote_volume": 319341299.64000005,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JPMON_IRT",
+  "quote_volume": 318647272.561,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WAL_IRT",
+  "quote_volume": 317577755.98,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AGLD_IRT",
+  "quote_volume": 316942455.44,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "STRAX_IRT",
+  "quote_volume": 316682309.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NOM_IRT",
+  "quote_volume": 314330481.2,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ROBO_IRT",
+  "quote_volume": 312815396.0,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FARTCOIN_IRT",
+  "quote_volume": 311795728.93,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "VELO_IRT",
+  "quote_volume": 310824337.28581,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PEPON_IRT",
+  "quote_volume": 310034264.554,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KITE_IRT",
+  "quote_volume": 307964909.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DUSK_IRT",
+  "quote_volume": 306831235.29550004,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CHILLGUY_IRT",
+  "quote_volume": 305808506.29,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TOSHI_IRT",
+  "quote_volume": 304479102.3,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 2,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZIG_IRT",
+  "quote_volume": 304028579.13,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NFLXON_IRT",
+  "quote_volume": 303387187.9893,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AERO_IRT",
+  "quote_volume": 302826545.9,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "QCOMB_IRT",
+  "quote_volume": 302731785.334,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SNDKB_IRT",
+  "quote_volume": 302200267.8039,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SNT_IRT",
+  "quote_volume": 300901999.1,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BGB_IRT",
+  "quote_volume": 299640495.2,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BAS_IRT",
+  "quote_volume": 299606951.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GENIUS_IRT",
+  "quote_volume": 299487826.78,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HOLO_IRT",
+  "quote_volume": 298469063.8,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "POWR_IRT",
+  "quote_volume": 297071351.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BREV_IRT",
+  "quote_volume": 296414269.40000004,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TSMON_IRT",
+  "quote_volume": 296387880.8001,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ORDI_IRT",
+  "quote_volume": 295812434.402,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "IO_IRT",
+  "quote_volume": 295472034.54,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "EUL_IRT",
+  "quote_volume": 294057460.7687,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FLR_IRT",
+  "quote_volume": 293970080.449,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MUB_IRT",
+  "quote_volume": 293813879.5758,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "B_IRT",
+  "quote_volume": 293673538.66,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ARMON_IRT",
+  "quote_volume": 293559583.494,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PROVE_IRT",
+  "quote_volume": 291408561.15,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PARTI_IRT",
+  "quote_volume": 291104283.17,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DAO_IRT",
+  "quote_volume": 290044741.19,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RUNE_IRT",
+  "quote_volume": 289177944.1359,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "IOTX_IRT",
+  "quote_volume": 288791180.99300003,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CTR_IRT",
+  "quote_volume": 287779616.0,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RAIN_IRT",
+  "quote_volume": 286557706.66,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WILD_IRT",
+  "quote_volume": 286442418.3655,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "COSTON_IRT",
+  "quote_volume": 286336629.5945,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CSCOON_IRT",
+  "quote_volume": 285805077.415,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SPELL_IRT",
+  "quote_volume": 285688899.727,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 2,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ACU_IRT",
+  "quote_volume": 285320747.5,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DYM_IRT",
+  "quote_volume": 284929050.24,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TOWNS_IRT",
+  "quote_volume": 284326564.152,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SENT_IRT",
+  "quote_volume": 283817573.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RIF_IRT",
+  "quote_volume": 282784784.0,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BIGTIME_IRT",
+  "quote_volume": 281250778.15297997,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SOMI_IRT",
+  "quote_volume": 281152909.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ACH_IRT",
+  "quote_volume": 280102866.54399997,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MAON_IRT",
+  "quote_volume": 280046784.1118,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JCT_IRT",
+  "quote_volume": 280003200.8,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MEGA_IRT",
+  "quote_volume": 279682317.9,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HFT_IRT",
+  "quote_volume": 279525674.72,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GTC_IRT",
+  "quote_volume": 278249319.74,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AUCTION_IRT",
+  "quote_volume": 277862463.3421,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FLUID_IRT",
+  "quote_volume": 277692588.27,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SIGN_IRT",
+  "quote_volume": 274855266.7,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CELO_IRT",
+  "quote_volume": 274464519.60649997,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WAXP_IRT",
+  "quote_volume": 273636232.444,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ADI_IRT",
+  "quote_volume": 273544702.28000003,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "2Z_IRT",
+  "quote_volume": 273185142.4,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RE_IRT",
+  "quote_volume": 272411483.74,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LUMIA_IRT",
+  "quote_volume": 271852003.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PYTH_IRT",
+  "quote_volume": 270829189.37,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "POLYX_IRT",
+  "quote_volume": 269162597.1311,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SLX_IRT",
+  "quote_volume": 269079816.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WET_IRT",
+  "quote_volume": 267993600.2,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KAITO_IRT",
+  "quote_volume": 267718718.10000002,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ARX_IRT",
+  "quote_volume": 266834858.87,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AMP_IRT",
+  "quote_volume": 266710900.0631,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 2,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ASMLON_IRT",
+  "quote_volume": 266529061.2663,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KAT_IRT",
+  "quote_volume": 266407159.8,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BIRB_IRT",
+  "quote_volume": 266197377.60000002,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ORDER_IRT",
+  "quote_volume": 265939994.10000002,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ASR_IRT",
+  "quote_volume": 265879341.44,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BB_IRT",
+  "quote_volume": 265724362.1,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ONT_IRT",
+  "quote_volume": 262973413.6,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KOON_IRT",
+  "quote_volume": 262593343.384,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ORCA_IRT",
+  "quote_volume": 262494082.1,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MX_IRT",
+  "quote_volume": 262382839.47,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TEL_IRT",
+  "quote_volume": 261712962.6,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RPL_IRT",
+  "quote_volume": 261068718.52,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "IEFAON_IRT",
+  "quote_volume": 260019761.09,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CFG_IRT",
+  "quote_volume": 259650139.22180003,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AZTEC_IRT",
+  "quote_volume": 259386321.4,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CFX_IRT",
+  "quote_volume": 259130636.187,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "OPN_IRT",
+  "quote_volume": 256861700.8,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZKP_IRT",
+  "quote_volume": 256721128.1,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RVN_IRT",
+  "quote_volume": 254392072.51,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "USUAL_IRT",
+  "quote_volume": 254347159.74,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ORCLB_IRT",
+  "quote_volume": 254297948.328,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NBISB_IRT",
+  "quote_volume": 254104489.958,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "XAN_IRT",
+  "quote_volume": 253583406.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LIGHTER_IRT",
+  "quote_volume": 253381548.31,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BARD_IRT",
+  "quote_volume": 252933195.98,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BIDUON_IRT",
+  "quote_volume": 252870678.71600002,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BERA_IRT",
+  "quote_volume": 252336178.27,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ERA_IRT",
+  "quote_volume": 251835844.82999998,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PROMPT_IRT",
+  "quote_volume": 251805821.5,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "APEX_IRT",
+  "quote_volume": 250769598.64,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SUN_IRT",
+  "quote_volume": 248296098.36,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "VANA_IRT",
+  "quote_volume": 247444578.95,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AXTIB_IRT",
+  "quote_volume": 246832577.388,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TREE_IRT",
+  "quote_volume": 245975846.53,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AI_IRT",
+  "quote_volume": 244969571.2,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FHE_IRT",
+  "quote_volume": 244608845.04,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SFP_IRT",
+  "quote_volume": 244565484.63,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ME_IRT",
+  "quote_volume": 244322474.9,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MIRA_IRT",
+  "quote_volume": 243748209.2,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AIGENSYN_IRT",
+  "quote_volume": 243452994.69,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KAIA_IRT",
+  "quote_volume": 243101576.4,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SMHB_IRT",
+  "quote_volume": 243025028.5534,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RESOLV_IRT",
+  "quote_volume": 242812136.44,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PLTRON_IRT",
+  "quote_volume": 242631557.667,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AUDIO_IRT",
+  "quote_volume": 242256551.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DOLO_IRT",
+  "quote_volume": 241855878.55,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HAEDAL_IRT",
+  "quote_volume": 241740159.2,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RLC_IRT",
+  "quote_volume": 241563475.3767,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SBUXON_IRT",
+  "quote_volume": 239747556.567,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PONKE_IRT",
+  "quote_volume": 239437713.54,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GOAT_IRT",
+  "quote_volume": 239339437.2,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SOSO_IRT",
+  "quote_volume": 238653866.3,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ABBVX_IRT",
+  "quote_volume": 234330867.573,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SXT_IRT",
+  "quote_volume": 233631551.1,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ICNT_IRT",
+  "quote_volume": 233579181.29999998,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ABTON_IRT",
+  "quote_volume": 233474284.208,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BAON_IRT",
+  "quote_volume": 233373657.851,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KNC_IRT",
+  "quote_volume": 233176519.62669998,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "IBMON_IRT",
+  "quote_volume": 232593141.98000002,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "UBERON_IRT",
+  "quote_volume": 232299490.991,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "YB_IRT",
+  "quote_volume": 232270642.28,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LAZIO_IRT",
+  "quote_volume": 232185681.34,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JUV_IRT",
+  "quote_volume": 231401386.46,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ADBEON_IRT",
+  "quote_volume": 226282953.956,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ATM_IRT",
+  "quote_volume": 225919308.67000002,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BEL_IRT",
+  "quote_volume": 225316960.69,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WCT_IRT",
+  "quote_volume": 224462276.7,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "RAD_IRT",
+  "quote_volume": 224285095.38,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "IRYS_IRT",
+  "quote_volume": 224273496.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GLWB_IRT",
+  "quote_volume": 222746781.797,
+  "active_days": 10,
+  "bars": 10,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "EURI_IRT",
+  "quote_volume": 222548511.35,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BANANA_IRT",
+  "quote_volume": 221831880.842,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NXPC_IRT",
+  "quote_volume": 220907880.3,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MEW_IRT",
+  "quote_volume": 220896298.23,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 2,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MBG_IRT",
+  "quote_volume": 219564732.1,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "JELLYJELLY_IRT",
+  "quote_volume": 215946183.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "KCS_IRT",
+  "quote_volume": 215480743.32900003,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "QI_IRT",
+  "quote_volume": 214294093.75294998,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "OPEN_IRT",
+  "quote_volume": 213650478.8,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LAYER_IRT",
+  "quote_volume": 213253308.15,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MCDON_IRT",
+  "quote_volume": 212368725.273,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ID_IRT",
+  "quote_volume": 212358185.69,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ALT_IRT",
+  "quote_volume": 211925481.62,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DATA_IRT",
+  "quote_volume": 211605501.49,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "BDX_IRT",
+  "quote_volume": 211447138.3968,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TURTLE_IRT",
+  "quote_volume": 210549816.8,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MANTA_IRT",
+  "quote_volume": 209735454.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TAI_IRT",
+  "quote_volume": 209547082.46,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ACNON_IRT",
+  "quote_volume": 209471220.48000002,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LQTY_IRT",
+  "quote_volume": 208645636.28,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TAKE_IRT",
+  "quote_volume": 207418183.4,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PGON_IRT",
+  "quote_volume": 206849408.085,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DRAMB_IRT",
+  "quote_volume": 205124797.198,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NEWT_IRT",
+  "quote_volume": 203657830.79999998,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "WDCB_IRT",
+  "quote_volume": 202896695.1072,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "YGG_IRT",
+  "quote_volume": 202676694.2,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "VRTON_IRT",
+  "quote_volume": 202193277.00800002,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FUEL_IRT",
+  "quote_volume": 200365293.89999998,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "GIGGLE_IRT",
+  "quote_volume": 199610096.25599998,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AT_IRT",
+  "quote_volume": 199254033.14,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "STBL_IRT",
+  "quote_volume": 198632976.64000002,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CVXON_IRT",
+  "quote_volume": 198185628.225,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "DBR_IRT",
+  "quote_volume": 197570102.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "MSTRON_IRT",
+  "quote_volume": 197194501.747,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "HSK_IRT",
+  "quote_volume": 196326009.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "SQD_IRT",
+  "quote_volume": 196070079.66,
+  "active_days": 9,
+  "bars": 9,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FLUX_IRT",
+  "quote_volume": 195341000.6919,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "FRAX_IRT",
+  "quote_volume": 195217047.28,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AMDON_IRT",
+  "quote_volume": 193448527.4822,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "LISTA_IRT",
+  "quote_volume": 192466836.16,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "TRUST_IRT",
+  "quote_volume": 189309695.5,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "CTC_IRT",
+  "quote_volume": 188162637.9318,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 4,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ACN_IRT",
+  "quote_volume": 186625507.6,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 1,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "NEXO_IRT",
+  "quote_volume": 185169017.49,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "AGGON_IRT",
+  "quote_volume": 181918182.174,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 3,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "PSG_IRT",
+  "quote_volume": 181449025.41,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 2,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "ZBT_IRT",
+  "quote_volume": 177053299.9,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 1,
+  "quote_amount_precision": 0
+ },
+ {
+  "symbol": "VSN_IRT",
+  "quote_volume": 171728290.0,
+  "active_days": 8,
+  "bars": 8,
+  "price_precision": 0,
+  "base_amount_precision": 0,
+  "quote_amount_precision": 0
+ }
+]

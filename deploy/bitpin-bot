@@ -1,0 +1,484 @@
+#!/usr/bin/env bash
+# bitpin-bot - run the bot's tools by hand on the server, as the service user "bitpin" and with the
+# same environment as the service (keys and KIMI_HTTPS_PROXY from /etc/bitpin-bot/bitpin-bot.env).
+# Installed by install.sh as /usr/local/bin/bitpin-bot. Always use it with sudo.
+#
+#   sudo bitpin-bot check [--auth]     server check: config.json + kimi.json validated like the bot
+#                                      reads them, public IP(s) for the whitelist, Bitpin (always
+#                                      direct) + Moonshot reachability, Kimi models, clock
+#                                      (--auth: 1 Bitpin login). RESULT: OK = the bot can start
+#   sudo bitpin-bot kimi-check [--decide|--news]  Kimi only, with the bot's own clients: key set?,
+#                                      route (KIMI_HTTPS_PROXY or direct), model ids. --decide also
+#                                      makes ONE real stage-2 decision call with the shipped settings
+#                                      and checks the reply; --news adds ONE real news research call
+#                                      (stage 1, ~20-50k tokens) on top of it. No trading
+#   sudo bitpin-bot set-model --decision-model ID [--news-model ID] [--base-url URL [--any-host]]
+#                          [--thinking] [--list] [--test] [--dry-run]
+#                                      switch the Kimi model(s) in /etc/bitpin-bot/kimi.json (as root):
+#                                      only the model keys change (a thinking model also gets temperature
+#                                      null + a large max_tokens), the result is validated like 'check',
+#                                      the old file is copied to /var/backups/bitpin-bot first. --list shows
+#                                      the model ids of the key; --test makes one tiny real call per new
+#                                      model before writing. Best with the live bot STOPPED (it warns while
+#                                      it runs: an automatic restart before confirm-live leaves it stopped).
+#                                      Then: check, confirm-live, start
+#   sudo bitpin-bot status             balances + one-time confirmation of the toman (IRT) balance
+#                                      (only while the live bot is stopped)
+#   sudo bitpin-bot confirm-live       one-time interactive live confirmation (bot stopped)
+#   sudo bitpin-bot confirm-live --check   does the confirmation still match config.json + kimi.json?
+#   sudo bitpin-bot confirm-live --show    the confirmation summary only (read-only, also while the bot runs)
+#   sudo bitpin-bot health             is the bot running? last exit, restarts, STOP file, last
+#                                      Kimi decision. Exit status 1 = needs attention
+#   sudo bitpin-bot stop [--paper]     create the STOP kill-switch file: the RUNNING bot cancels its
+#                                      crash-ladder bids and exits (stays stopped); target sells stay
+#   sudo bitpin-bot resume [--paper]   remove the STOP file (then: sudo systemctl start bitpin-bot)
+#   sudo bitpin-bot logs [--paper]     follow the service log (Ctrl+C to quit)
+#   sudo bitpin-bot decisions [--paper] [N]   show the last N (default 5) Kimi decisions
+#   sudo bitpin-bot ladder [--paper] [--equity-irt N]   read-only: the crash-ladder bids the bot keeps /
+#                                      would keep now (public data, no keys; also while the bot runs)
+#   sudo bitpin-bot cancel-resting [--paper] [--tag ladder|target]   cancel the bot's OWN resting limit
+#                                      orders on Bitpin (ladder bids, target sells); bot stopped first
+#                                      (systemctl stop / a crashed bot do NOT cancel them; STOP
+#                                      cancels only the bids, and only while the bot runs)
+#   sudo bitpin-bot run ARGS...        any run_bot.py command, e.g.: sudo bitpin-bot run live --help
+#   Telegram notifier (optional; guide: /opt/bitpin-bot/docs/TELEGRAM_FA.md):
+#   sudo bitpin-bot notify-setup       shows the Telegram bot's name and the chat ids that sent /start
+#                                      (put yours into TELEGRAM_CHAT_ID in /etc/bitpin-bot/notify.env)
+#   sudo bitpin-bot notify-test        sends one test message to every TELEGRAM_CHAT_ID
+#   sudo bitpin-bot notify-status      notifier state: queued messages, last error, active alerts (no secrets)
+#   sudo bitpin-bot notify-logs        follow the notifier's log (Ctrl+C to quit)
+#   sudo bitpin-bot backup             write /var/backups/bitpin-bot/state-<date>.tgz now (the daily timer's job)
+#   Management panel (v3.1, optional; guide: /opt/bitpin-bot/docs/PANEL_FA.md):
+#   sudo bitpin-bot panel-setup [--port N]   set up the HTTPS panel: username, strong password, authenticator
+#                                      code, self-signed certificate; starts it (open the port yourself)
+#   sudo bitpin-bot panel-password [--username]   a new panel password; open sessions end
+#   sudo bitpin-bot panel-totp [--off] the panel's authenticator code on (a new key) or off
+#   sudo bitpin-bot panel-status       panel address, certificate fingerprint, 2FA, services
+set -euo pipefail
+
+APP_DIR=/opt/bitpin-bot
+ETC_DIR=/etc/bitpin-bot
+ENV_FILE=$ETC_DIR/bitpin-bot.env
+STATE_DIR=/var/lib/bitpin-bot
+PAPER_STATE_DIR=/var/lib/bitpin-bot-paper
+PYTHON=/usr/bin/python3
+APP_USER=bitpin
+RUN_BOT=$APP_DIR/scripts/run_bot.py
+NOTIFY_ENV_FILE=$ETC_DIR/notify.env
+NOTIFY=$APP_DIR/scripts/notify_bot.py
+
+usage() {
+    awk 'NR > 1 && /^#/ { sub(/^# ?/, ""); print; next } NR > 1 { exit }' "$(readlink -f "${BASH_SOURCE[0]}")"
+}
+
+# Parse a systemd EnvironmentFile (NAME=value lines) without executing it and export the values.
+load_env_file() {  # FILE
+    local line key val
+    [ -r "$1" ] || { echo "cannot read $1 (run install.sh first)" >&2; exit 1; }
+    while IFS= read -r line || [ -n "$line" ]; do
+        line="${line%$'\r'}"
+        line="${line#"${line%%[![:space:]]*}"}"
+        case "$line" in ''|'#'*|';'*) continue ;; esac
+        case "$line" in *=*) ;; *) continue ;; esac
+        key="${line%%=*}"
+        val="${line#*=}"
+        key="${key%"${key##*[![:space:]]}"}"
+        [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+        val="${val#"${val%%[![:space:]]*}"}"
+        val="${val%"${val##*[![:space:]]}"}"
+        if [ "${#val}" -ge 2 ]; then
+            case "$val" in
+                \"*\") val="${val:1:${#val}-2}" ;;
+                \'*\') val="${val:1:${#val}-2}" ;;
+            esac
+        fi
+        export "$key=$val"
+    done < "$1"
+}
+load_env() { load_env_file "$ENV_FILE"; }
+
+# exec a command as the service user with the service environment, from the code directory
+as_bot() {
+    load_env
+    export TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+    umask 077
+    cd "$APP_DIR"
+    exec runuser -u "$APP_USER" -- "$@"
+}
+
+# exec a notifier command as the service user with ONLY the notifier's environment: the trading keys
+# (bitpin-bot.env) are never loaded, and whatever the calling shell exported is dropped first
+as_notify() {
+    [ -r "$NOTIFY_ENV_FILE" ] || { echo "cannot read $NOTIFY_ENV_FILE (install/update first, then: sudo nano $NOTIFY_ENV_FILE)" >&2; exit 1; }
+    [ -f "$NOTIFY" ] || { echo "$NOTIFY not found: this version has no Telegram notifier" >&2; exit 1; }
+    unset BITPIN_API_KEY BITPIN_SECRET_KEY KIMI_API_KEY KIMI_HTTPS_PROXY TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID TELEGRAM_HTTPS_PROXY
+    load_env_file "$NOTIFY_ENV_FILE"
+    export TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+    umask 077
+    cd "$APP_DIR"
+    exec runuser -u "$APP_USER" -- "$@"
+}
+
+unit_state() {  # UNIT -> active / activating / inactive / failed / ...
+    systemctl show -p ActiveState --value "$1" 2>/dev/null || true
+}
+
+# Minutes since the unit last became active (0 when it cannot be read).
+unit_uptime_minutes() {  # UNIT
+    local usec now
+    usec="$(systemctl show -p ActiveEnterTimestampMonotonic --value "$1" 2>/dev/null || true)"
+    case "${usec:-}" in ''|*[!0-9]*) echo 0; return ;; esac
+    [ "$usec" -gt 0 ] || { echo 0; return; }
+    now="$(cut -d" " -f1 /proc/uptime 2>/dev/null | cut -d. -f1 || echo 0)"
+    case "${now:-}" in ''|*[!0-9]*) echo 0; return ;; esac
+    [ "$now" -gt $(( usec / 1000000 )) ] || { echo 0; return; }
+    echo $(( (now - usec / 1000000) / 60 ))
+}
+
+# status and confirm-live open a second authenticated client on the live state dir (same token and
+# auth-budget files): never next to the running live bot.
+refuse_if_live_running() {  # WHAT
+    case "$(unit_state bitpin-bot)" in
+        active|activating|reloading|deactivating)
+            echo "the live bot (bitpin-bot.service) is running: '$1' would share its login token and budget files." >&2
+            echo "Stop it first:  sudo systemctl stop bitpin-bot   (start it again afterwards)" >&2
+            exit 1 ;;
+    esac
+}
+
+# "MAX_AGE_MINUTES DERISK_HOURS" for health from kimi.json (defaults when it cannot be read): with the
+# daily clock slots a valid decision is expected at least every max_gap_hours (+1 h slack).
+decision_limits() {
+    "$PYTHON" - "$ETC_DIR/kimi.json" <<'PY' 2>/dev/null || echo "360 48"
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8-sig") as f:
+        b = (json.load(f).get("brain") or {})
+except (OSError, ValueError, AttributeError):
+    b = {}
+slots = b.get("decision_times_local") or []
+try:
+    gap = float(b.get("max_gap_hours") or 26)
+except (TypeError, ValueError):
+    gap = 26.0
+try:
+    derisk = (b.get("fallback") or {}).get("derisk_after_hours", 12)
+    derisk = "%g" % float(derisk) if derisk is not None else "never"
+except (TypeError, ValueError, AttributeError):
+    derisk = "12"
+print("%d %s" % ((gap + 1) * 60 if slots else 360, derisk))
+PY
+}
+
+# Informational lines about the bot's own RESTING limit orders (from its order journal, no exchange call).
+resting_lines() {  # STATE_DIR
+    [ -f "$1/live_orders.json" ] || return 0
+    "$PYTHON" - "$1/live_orders.json" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        orders = (json.load(f).get("orders") or {})
+except (OSError, ValueError, AttributeError):
+    sys.exit(0)
+rest = [e for e in orders.values() if isinstance(e, dict) and e.get("kind") == "limit"
+        and e.get("status") in ("resting", "submitting", "unknown")]
+if rest:
+    print("  resting bot orders on Bitpin: %d (%s) - they stay there while the bot is stopped (nothing enforces "
+          "the code exits then; remove them: sudo bitpin-bot cancel-resting); details: "
+          "sudo bitpin-bot ladder" % (len(rest), ", ".join("%s %s %s" % (e.get("tag") or "?", e.get("side"),
+                                                                          e.get("symbol")) for e in rest[:8])))
+PY
+}
+
+health_unit() {  # UNIT STATE_DIR PAPER_FLAG MODE -> prints; returns 1 if the unit needs attention
+    local u="$1" d="$2" flag="$3" mode="${4:-live}"
+    local enabled state result status restarts since age sub uptime limits max_age derisk_h bad=0
+    enabled="$(systemctl is-enabled "$u" 2>/dev/null || true)"
+    state="$(unit_state "$u")"
+    sub="$(systemctl show -p SubState --value "$u" 2>/dev/null || true)"
+    result="$(systemctl show -p Result --value "$u" 2>/dev/null || true)"
+    status="$(systemctl show -p ExecMainStatus --value "$u" 2>/dev/null || true)"
+    restarts="$(systemctl show -p NRestarts --value "$u" 2>/dev/null || true)"
+    since="$(systemctl show -p StateChangeTimestamp --value "$u" 2>/dev/null || true)"
+    echo "$u: enabled=${enabled:-?} state=${state:-?} result=${result:-?} last-exit=${status:-?} restarts=${restarts:-?} since ${since:-?}"
+    if [ -e "$d/STOP" ]; then
+        echo "  STOP kill-switch file present: the bot stays stopped until: sudo bitpin-bot resume$flag"
+    fi
+    case "$state" in
+        failed)
+            bad=1
+            if [ "$status" = "78" ]; then
+                echo "  stopped because of a configuration/credential error (exit 78; it is not restarted)."
+            else
+                echo "  FAILED."
+            fi
+            echo "  see: sudo journalctl -u $u -n 50 --no-pager   then fix and: sudo systemctl start $u" ;;
+        inactive)
+            if [ "$enabled" = "enabled" ] && [ ! -e "$d/STOP" ]; then
+                bad=1
+                echo "  enabled but not running (stopped on purpose: risk halt, or 'systemctl stop'). See: sudo journalctl -u $u -n 50 --no-pager"
+            fi ;;
+        activating)
+            if [ "$sub" = "auto-restart" ]; then
+                # Restart=always with a growing RestartSec parks a unit that dies at every start in
+                # "activating (auto-restart)" for most of the up-to-15-minute wait, so that is the
+                # state a daily check actually observes. It must NOT be reported as healthy.
+                bad=1
+                echo "  RESTART LOOP: the service exits at every start (last exit ${status:-?}, ${restarts:-?} restarts)"
+                echo "  and systemd is waiting (up to 15 min) before the next try. It is NOT trading."
+                echo "  see: sudo journalctl -u $u -n 50 --no-pager   (a common cause is another bot process"
+                echo "  holding $d/bot.lock)"
+            else
+                echo "  (re)starting - a restart loop shows a growing restarts= count: sudo journalctl -u $u -n 50 --no-pager"
+            fi ;;
+    esac
+    if [ -f "$d/kimi_decisions.jsonl" ]; then
+        # minutes since the last VALID Kimi decision (fallbacks and failed attempts do not count),
+        # and what the newest entry was
+        age="$(tail -n 500 "$d/kimi_decisions.jsonl" | "$PYTHON" -c '
+import json, sys, time
+last_ok, newest = None, None
+for line in sys.stdin:
+    try:
+        rec = json.loads(line)
+        dec = rec.get("decision") or {}
+        t = float(dec.get("decided_at") or rec.get("time") or 0)
+    except (ValueError, TypeError, AttributeError):
+        continue
+    newest = dec
+    if dec.get("valid") and not dec.get("fallback"):
+        last_ok = t if last_ok is None else max(last_ok, t)
+if newest is not None and not newest.get("valid"):
+    print("  newest entry: INVALID (%s) %s" % (newest.get("error_kind") or "?", str(newest.get("error") or "")[:160]),
+          file=sys.stderr)
+elif newest is not None and newest.get("fallback"):
+    print("  newest entry: bot fallback (%s)" % newest.get("fallback_reason"), file=sys.stderr)
+print(-1 if last_ok is None else int((time.time() - last_ok) // 60))
+' || echo -1)"
+        if [ "$age" = "-1" ]; then
+            echo "  no VALID Kimi decision in the log yet"
+        else
+            echo "  last VALID Kimi decision ${age} min ago"
+        fi
+        # how old the last valid decision may be: one scheduled decision a day (kimi.json
+        # brain.decision_times_local) -> max_gap_hours + 1 h; the old hourly schedule -> 6 h
+        limits="$(decision_limits)"
+        max_age="${limits%% *}"
+        derisk_h="${limits##* }"
+        case "$max_age" in ''|*[!0-9]*) max_age=360 ;; esac
+        if { [ "$state" = "active" ] || [ "$state" = "activating" ]; } && { [ "$age" = "-1" ] || [ "$age" -gt "${max_age:-360}" ]; }; then
+            bad=1
+            echo "  no valid Kimi decision for more than $(( ${max_age:-360} / 60 )) hours although the bot runs (after ${derisk_h:-48} h"
+            echo "  the bot moves the coins into USDT_IRT, except coins with live code exits). Check Kimi:"
+            echo "  sudo bitpin-bot kimi-check   and: sudo bitpin-bot decisions$flag 3"
+        fi
+    else
+        echo "  no Kimi decision logged yet"
+        # An enabled unit that has been up far longer than one decision interval and has still never
+        # written a decision is broken, not "new": say so instead of leaving bad=0.
+        uptime="$(unit_uptime_minutes "$u")"
+        if [ "$enabled" = "enabled" ] && [ ! -e "$d/STOP" ] && [ "${uptime:-0}" -gt 90 ] && [ -f "$ETC_DIR/kimi.json" ]; then
+            bad=1
+            echo "  the service has been running for ${uptime} min and has never logged a Kimi decision:"
+            echo "  check: sudo bitpin-bot kimi-check --news   and: sudo journalctl -u $u -n 50 --no-pager"
+        fi
+    fi
+    # The daily order budget. A rebalance whose orders do not all fit in it is skipped WHOLE, the
+    # decision is still marked executed, and nothing else on this screen would show it.
+    # Exit 1 (not `|| true`) when the budget is nearly used up, so the documented one-line daily
+    # check - "the last line must be RESULT: OK" - actually catches it. Any other failure of this
+    # helper is swallowed inside the script, so only the warning can set bad.
+    if [ -f "$d/risk_state_$mode.json" ]; then
+        if ! "$PYTHON" - "$d/risk_state_$mode.json" "$ETC_DIR/config.json" <<'PY'
+import json, sys, time
+n, cap = 0, None
+try:
+    with open(sys.argv[1], encoding="utf-8") as f:
+        now = time.time()
+        n = sum(1 for t in (json.load(f).get("orders") or [])
+                if isinstance(t, (int, float)) and not isinstance(t, bool) and now - float(t) < 86400)
+except (OSError, ValueError, TypeError, AttributeError):
+    pass
+try:
+    with open(sys.argv[2], encoding="utf-8") as f:
+        cap = (json.load(f).get("risk") or {}).get("max_orders_per_day")
+    cap = int(cap) if cap else None
+except (OSError, ValueError, TypeError, AttributeError):
+    cap = None
+low = False
+if cap:
+    left = max(0, cap - n)
+    print("  orders in the last 24 h: %d of max_orders_per_day %d (%d left)" % (n, cap, left))
+    if left < 6:
+        low = True
+        print("  WARNING: the daily order budget is nearly used up. A rebalance that does not fit in it is")
+        print("  SKIPPED WHOLE ('rebalance skipped: daily order budget' in the log) and is not retried.")
+        print("  Check the log for 'rebalance skipped'; raise risk.max_orders_per_day in")
+        print("  /etc/bitpin-bot/config.json only if the rate of orders is what you want.")
+else:
+    print("  orders in the last 24 h: %d" % n)
+sys.exit(1 if low else 0)
+PY
+        then
+            bad=1
+        fi
+    fi
+    [ "$mode" = live ] && resting_lines "$d"
+    return "$bad"
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "use sudo: sudo bitpin-bot ${*:-help}" >&2
+    exit 1
+fi
+[ -f "$RUN_BOT" ] || { echo "$RUN_BOT not found (run install.sh first)" >&2; exit 1; }
+
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+sd="$STATE_DIR"
+unit="bitpin-bot"
+if [ "${1:-}" = "--paper" ]; then
+    sd="$PAPER_STATE_DIR"
+    unit="bitpin-bot-paper"
+    shift
+fi
+
+case "$cmd" in
+    check)
+        as_bot "$PYTHON" "$APP_DIR/deploy/check_server.py" --config "$ETC_DIR/config.json" \
+            --kimi-config "$ETC_DIR/kimi.json" "$@" ;;
+    status)
+        refuse_if_live_running status
+        as_bot "$PYTHON" "$RUN_BOT" status --config "$ETC_DIR/config.json" --kimi-config "$ETC_DIR/kimi.json" \
+            --state-dir "$STATE_DIR" "$@" ;;
+    kimi-check)
+        as_bot "$PYTHON" "$RUN_BOT" kimi-check --kimi-config "$ETC_DIR/kimi.json" "$@" ;;
+    set-model)
+        # writes /etc/bitpin-bot/kimi.json (root:bitpin 0640) and /var/backups/bitpin-bot: runs as ROOT, not as
+        # the service user. --list / --test use the service's Kimi key and route (KIMI_API_KEY, KIMI_HTTPS_PROXY
+        # from bitpin-bot.env); the Bitpin keys are dropped first - this command never talks to Bitpin.
+        # While the live service runs, a changed kimi.json no longer matches its live confirmation: any
+        # automatic restart (crash, Restart=, reboot) before confirm-live leaves it stopped (exit 78, no code
+        # exits). run_bot.py then prints a prominent warning (--live-running); safest: stop the bot first.
+        live_flag=""
+        case "$(unit_state bitpin-bot)" in
+            active|activating|reloading) live_flag="--live-running" ;;
+        esac
+        load_env
+        unset BITPIN_API_KEY BITPIN_SECRET_KEY
+        export TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+        umask 077
+        cd "$APP_DIR"
+        # shellcheck disable=SC2086  # live_flag is one word or empty
+        exec "$PYTHON" "$RUN_BOT" set-model --kimi-config "$ETC_DIR/kimi.json" --config "$ETC_DIR/config.json" \
+            --backup-dir /var/backups/bitpin-bot $live_flag "$@" ;;
+    confirm-live)
+        # the same config files as the service's ExecStart, so the confirmation matches what it runs
+        # (--check / --show only read: allowed while the bot runs)
+        case "${1:-}" in
+            --check|--show) ;;
+            *) refuse_if_live_running confirm-live ;;
+        esac
+        as_bot "$PYTHON" "$RUN_BOT" confirm-live --config "$ETC_DIR/config.json" \
+            --kimi-config "$ETC_DIR/kimi.json" --state-dir "$STATE_DIR" "$@" ;;
+    health)
+        rc=0
+        health_unit bitpin-bot "$STATE_DIR" "" live || rc=1
+        health_unit bitpin-bot-paper "$PAPER_STATE_DIR" " --paper" paper || true
+        # information only (never changes the result: trading does not depend on the notifier)
+        if [ -f /etc/systemd/system/bitpin-bot-notify.service ]; then
+            echo "bitpin-bot-notify (Telegram): $(unit_state bitpin-bot-notify.service), enabled=$(systemctl is-enabled bitpin-bot-notify.service 2>/dev/null || true); /stop relay: $(systemctl is-enabled bitpin-bot-notify-stop.path 2>/dev/null || echo not-installed)"
+        fi
+        # v3 ops (information only): the daily backup timer and the newest archive
+        if [ -f /etc/systemd/system/bitpin-bot-backup.timer ]; then
+            last_bk="$(ls -1t /var/backups/bitpin-bot/state-*.tgz 2>/dev/null | head -n 1)"
+            echo "bitpin-bot-backup.timer: enabled=$(systemctl is-enabled bitpin-bot-backup.timer 2>/dev/null || true); newest backup: ${last_bk:-none yet}"
+        fi
+        if [ "$rc" = 0 ]; then echo "RESULT: OK"; else echo "RESULT: the live bot needs attention"; fi
+        exit "$rc" ;;
+    stop|resume)
+        as_bot "$PYTHON" "$RUN_BOT" "$cmd" --state-dir "$sd" "$@" ;;
+    run)
+        # Without --state-dir, build_config falls back to config.json's relative "state", which
+        # resolves against $APP_DIR (root-owned): the command fails with a bare PermissionError, or
+        # quietly works on a state directory that is not the bot's. Pick the right one here.
+        run_sd="$sd"
+        has_sd=0
+        plain=0
+        for a in "$@"; do
+            case "$a" in
+                --state-dir|--state-dir=*) has_sd=1 ;;
+                --help|-h) plain=1 ;;
+            esac
+        done
+        # "run paper ..." / "--mode paper" without the wrapper's own --paper: the PAPER state dir,
+        # never the live one (a paper run must not leave anything in the live bot's state)
+        case " $* " in
+            *" paper "*) run_sd="$PAPER_STATE_DIR" ;;
+        esac
+        if [ "$has_sd" = 0 ] && [ "$plain" = 0 ] && [ $# -gt 0 ]; then
+            echo "note: using --state-dir $run_sd (pass --state-dir yourself for another one)" >&2
+            as_bot "$PYTHON" "$RUN_BOT" "$@" --state-dir "$run_sd"
+        else
+            as_bot "$PYTHON" "$RUN_BOT" "$@"
+        fi ;;
+    ladder)
+        # read-only and public data only: allowed while the bot runs
+        if [ "$sd" = "$PAPER_STATE_DIR" ]; then lmode=paper; else lmode=live; fi
+        as_bot "$PYTHON" "$RUN_BOT" ladder --config "$ETC_DIR/config.json" --kimi-config "$ETC_DIR/kimi.json" \
+            --state-dir "$sd" --mode "$lmode" "$@" ;;
+    cancel-resting)
+        # needs the bot's own journal and (live) its login: never next to a running bot on that state dir
+        if [ "$sd" = "$PAPER_STATE_DIR" ]; then
+            case "$(unit_state bitpin-bot-paper)" in
+                active|activating|reloading|deactivating)
+                    echo "the paper bot is running: stop it first (sudo systemctl stop bitpin-bot-paper)" >&2; exit 1 ;;
+            esac
+            as_bot "$PYTHON" "$RUN_BOT" cancel-resting --mode paper --config "$ETC_DIR/config.json" --state-dir "$sd" "$@"
+        else
+            refuse_if_live_running cancel-resting
+            as_bot "$PYTHON" "$RUN_BOT" cancel-resting --mode live --config "$ETC_DIR/config.json" --state-dir "$sd" "$@"
+        fi ;;
+    notify-setup)
+        as_notify "$PYTHON" "$NOTIFY" setup --config "$ETC_DIR/notify.json" "$@" ;;
+    notify-test)
+        as_notify "$PYTHON" "$NOTIFY" test --config "$ETC_DIR/notify.json" "$@" ;;
+    notify-status)
+        as_notify "$PYTHON" "$NOTIFY" status --config "$ETC_DIR/notify.json" "$@" ;;
+    notify-logs)
+        exec journalctl -u bitpin-bot-notify -n 100 -f ;;
+    backup)
+        [ -f "$APP_DIR/deploy/bitpin-bot-backup" ] || { echo "$APP_DIR/deploy/bitpin-bot-backup not found: this version has no backup script" >&2; exit 1; }
+        exec bash "$APP_DIR/deploy/bitpin-bot-backup" "$@" ;;
+    logs)
+        exec journalctl -u "$unit" -n 100 -f ;;
+    decisions)
+        n="${1:-5}"
+        case "$n" in ''|*[!0-9]*) echo "N must be a number" >&2; exit 2 ;; esac
+        f="$sd/kimi_decisions.jsonl"
+        [ -f "$f" ] || { echo "no decisions yet ($f does not exist)"; exit 0; }
+        tail -n "$n" "$f" | PYTHONIOENCODING=utf-8 "$PYTHON" -c '
+import json, sys
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        print(json.dumps(json.loads(line), indent=2, ensure_ascii=False, sort_keys=True))
+    except ValueError:
+        print(line)
+    print("-" * 60)
+' ;;
+    panel-setup|panel-password|panel-totp|panel-status)
+        # as root: panel-setup creates the user bitpin-panel and /etc/bitpin-bot-panel and starts the units
+        [ -f "$APP_DIR/scripts/panel_setup.py" ] || { echo "this version has no management panel" >&2; exit 1; }
+        export TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+        cd "$APP_DIR"
+        exec "$PYTHON" "$APP_DIR/scripts/panel_setup.py" "${cmd#panel-}" "$@" ;;
+    help|-h|--help)
+        usage ;;
+    *)
+        echo "unknown command: $cmd" >&2
+        usage
+        exit 2 ;;
+esac

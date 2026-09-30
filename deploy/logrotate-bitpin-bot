@@ -1,0 +1,28 @@
+# /etc/logrotate.d/bitpin-bot - installed by deploy/install.sh / update.sh (release v3).
+# The bot appends to /var/lib/bitpin-bot/bot_live.log for the whole run (a year: about 1-3 MB a day at
+# hourly cycles with Kimi logging). Rotated by SIZE with copytruncate: the bot keeps its open file handle
+# (no reopen signal exists), the copy is compressed, the live file is truncated in place - the Telegram
+# notifier's "log modification time" heartbeat is unaffected. 20 MB x 5 = at most ~100 MB uncompressed
+# per bot. The directories are 0700 of user bitpin, so logrotate needs "su" to enter them.
+/var/lib/bitpin-bot/bot_live.log {
+    su bitpin bitpin
+    size 20M
+    rotate 5
+    copytruncate
+    compress
+    delaycompress
+    missingok
+    notifempty
+    nocreate
+}
+/var/lib/bitpin-bot-paper/bot_paper.log {
+    su bitpin bitpin
+    size 20M
+    rotate 5
+    copytruncate
+    compress
+    delaycompress
+    missingok
+    notifempty
+    nocreate
+}

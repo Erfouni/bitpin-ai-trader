@@ -1,0 +1,44 @@
+# /etc/systemd/system/bitpin-bot-backup.service - daily state backup (release v3), started by
+# bitpin-bot-backup.timer (03:10 UTC) and by hand:  sudo bitpin-bot backup
+# Writes /var/backups/bitpin-bot/state-<UTC date>.tgz with the bot's state (decisions, runner records,
+# order journal, risk state, the notifier's state, the three JSON settings files) WITHOUT bitpin_token.json
+# (a fresh login is cheaper than a leaked refresh token) and keeps the newest 14. Root: the directories
+# are 0700 of user bitpin; the archive is 0600 root:root. No network. Restore: docs/DEPLOY_FA.md.
+[Unit]
+Description=Bitpin bot - daily backup of the state directories
+Documentation=file:/opt/bitpin-bot/docs/DEPLOY_FA.md
+
+[Service]
+Type=oneshot
+TimeoutStartSec=300
+Nice=10
+IOSchedulingClass=idle
+WorkingDirectory=/opt/bitpin-bot
+Environment=TZ=UTC LANG=C.UTF-8
+ExecStart=/bin/bash /opt/bitpin-bot/deploy/bitpin-bot-backup
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bitpin-bot-backup
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ReadWritePaths=/var/backups/bitpin-bot
+InaccessiblePaths=-/etc/bitpin-bot/bitpin-bot.env -/etc/bitpin-bot/notify.env
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

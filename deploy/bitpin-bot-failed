@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# bitpin-bot-failed UNIT - run by bitpin-bot-failed@.service (as user bitpin) when UNIT entered systemd's "failed"
+# state, i.e. the bot exited with status 78 (the only status Restart=always does not retry). Writes ONE
+# small JSON relay file into the Telegram notifier's own state directory; the notifier (read-only towards
+# the bot) turns it into the Persian alert and deletes it. No network, no token, nothing of the bot's
+# state directory is read or written. Test it sandboxed, as systemd runs it:
+#   sudo systemctl start bitpin-bot-failed@test.service
+#
+# The file name is a contract with bitpin/notify.py (UNIT_FAILURE_FILE). Written atomically (a temp file
+# in the same directory, then mv) so the notifier never reads a half-written file; the unit's user bitpin
+# is the notifier's user, so the notifier can delete it; mode 0640.
+set -u
+umask 077
+
+NOTIFY_STATE_DIR="${NOTIFY_STATE_DIR:-/var/lib/bitpin-bot-notify}"
+RELAY_FILE="unit_failure.json"
+unit="${1:-bitpin-bot.service}"
+
+# only a unit name: the notifier refuses anything else and would fall back to "bitpin-bot.service"
+case "$unit" in
+    *[!A-Za-z0-9@._-]*|"") unit="bitpin-bot.service" ;;
+esac
+
+status="?"
+result=""
+if command -v systemctl >/dev/null 2>&1; then
+    status="$(systemctl show -p ExecMainStatus --value "$unit" 2>/dev/null || true)"
+    result="$(systemctl show -p Result --value "$unit" 2>/dev/null || true)"
+fi
+case "$status" in
+    ''|*[!0-9]*) status="?" ;;
+esac
+case "$result" in
+    *[!A-Za-z0-9._-]*) result="" ;;
+esac
+# second guard (the units have RestartMode=direct): a unit that systemd is about to restart has not failed
+substate=""
+if command -v systemctl >/dev/null 2>&1; then
+    substate="$(systemctl show -p SubState --value "$unit" 2>/dev/null || true)"
+fi
+if [ "$substate" = "auto-restart" ]; then
+    echo "bitpin-bot-failed: $unit is restarting (exit $status), not failed: nothing relayed"
+    exit 0
+fi
+now="$(date -u +%s)"
+
+if [ ! -d "$NOTIFY_STATE_DIR" ]; then
+    echo "bitpin-bot-failed: $unit failed (exit $status) but $NOTIFY_STATE_DIR does not exist (notifier not installed): nothing relayed" >&2
+    exit 0
+fi
+tmp="$(mktemp "$NOTIFY_STATE_DIR/.unit_failure.XXXXXX")" || exit 0
+if [ "$status" = "?" ]; then st_json="null"; else st_json="$status"; fi
+printf '{"unit": "%s", "exit_status": %s, "result": "%s", "time": %s}\n' "$unit" "$st_json" "$result" "$now" > "$tmp"
+chmod 0640 "$tmp"
+mv -f "$tmp" "$NOTIFY_STATE_DIR/$RELAY_FILE"
+echo "bitpin-bot-failed: $unit failed (exit $status, $result): relayed to $NOTIFY_STATE_DIR/$RELAY_FILE for the Telegram notifier"
+exit 0

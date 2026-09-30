@@ -1,0 +1,113 @@
+{
+  "_README": "Copy to config.json, edit, and pass --config config.json. Keys starting with '_' are comments and are ignored. Unknown keys are rejected (typo protection). Values shown are the built-in defaults, except risk.min_order_irt (100,000 here, sized for a small account), risk.max_orders_per_day (180 here), risk.max_drawdown (0.50 here: the owner accepts risk over the one-year competition; built-in 0.30), risk.min_order_usdt (1.05 here; built-in 0.5) and the ladder's levels_pct [-20] / size_frac 0.25 (built-in [-20, -25] / 0.125). Release v3 (2026-09-26): one-year competition until 2027-09-21T20:30Z, rolling 90-day high-water mark (risk.hwm_window_days), no default stop on new positions (a stop is Kimi's per-position choice). The sections ladder / exits / routing (the crash ladder, code-enforced exits and direct COIN_USDT routing of the daily-schedule version) work only with --brain kimi; their resting orders are real orders that stay on Bitpin while the bot is stopped. On the server this file is /etc/bitpin-bot/config.json (install.sh copies it from this example only if it does not exist). API keys NEVER go in this file: use env vars BITPIN_API_KEY / BITPIN_SECRET_KEY or --keys-file. With --brain kimi the Kimi settings live in kimi.json and strategy / params below are not used; everything else here (fees, rebalance_threshold, max_equity_irt, risk limits, timing) applies to the Kimi brain too. A live service start (--non-interactive) needs a new 'confirm-live' after ANY value in this file or in kimi.json changed.",
+
+  "strategy": "selected",
+  "_strategy": "Strategy mode only (ignored with --brain kimi): name of a Strategy subclass in bitpin/strategies/*.py (auto-discovered). 'selected' = the researched default (currently the hold_usdt baseline: buy USDT_IRT once and hold). --strategy overrides it.",
+  "params": {},
+  "_params": "Strategy parameters as a JSON object, e.g. {\"lookback\": 55}. --params overrides it.",
+
+  "base_url": "https://api.bitpin.org",
+  "state_dir": "state",
+  "_state_dir": "Where tokens, paper account, order journal, risk state, logs and the STOP kill-switch file live. Use a separate dir for paper and live (e.g. state/paper, state/live). --state-dir overrides it. Protect it: bitpin_token.json holds a refresh token that can trade for ~30 days.",
+
+  "irt_asset_code": "IRT",
+  "_irt_asset_code": "Wallet asset code of toman cash. VERIFIED 2026-09-22: IRT = Toman (/v1/mkt/markets/ currency2.title); the account's toman wallet is 'IRT'. 'run_bot.py status' lists the codes found; live trading needs its one-time toman balance confirmation.",
+  "irt_unit_divisor": 1,
+  "_irt_unit_divisor": "Wallet toman balance = raw wallet balance / divisor. Use 10 if the wallet reports rial. Live trading is refused until 'status' has been run and you confirmed the IRT balance for this code+divisor.",
+
+  "fee_rate": 0.0035,
+  "_fee_rate": "Taker fee used by the paper broker and for planning (Bitpin: maker 0.30%, taker 0.35%).",
+  "rebalance_threshold": 0.02,
+  "_rebalance_threshold": "Same as the backtest: weight changes smaller than this are skipped, except full exits.",
+  "cash_buffer_frac": 0.002,
+  "_cash_buffer_frac": "Fraction of available IRT never spent by buys (rounding / fee headroom). 0.2% keeps a 100% target from churning.",
+  "max_equity_irt": null,
+  "_max_equity_irt": "null (default): the bot manages the WHOLE account. Optional budget in IRT (must be > 0). The bot then trades ONLY its own 'sleeve': a ledger in runner_state_<mode>.json that starts with this much IRT and no coins and changes only with the bot's own fills. Coins you already hold are never sold, toman above the budget is never spent, gains are kept (not sold back), losses are NOT refilled from your other toman, and the drawdown breaker measures the sleeve. Raising the budget adds the difference to the sleeve's cash; lowering it is refused if the sleeve has less cash than the cut. Don't trade the strategy's coins by hand in the same account while a capped bot runs. Each bot fill is booked into the sleeve exactly once per order (the sleeve records what it booked per order identifier and is reconciled with the order journal every cycle), also after a crash or Ctrl+C between an order and its booking. A capped bot never assumes that an order of unknown outcome did not execute: it stops trading until the order is found, or until you record its outcome with 'run_bot.py resolve-order'. null = the bot manages the WHOLE toman balance plus ALL units of the strategy's coins (it may sell coins you already hold; the live banner lists them). Coins not traded by the strategy are always ignored.",
+
+  "history_start_ts": 1712313000,
+  "history_csv_seed": true,
+  "_history": "The strategy sees the SAME anchored history as the backtest: data/<SYMBOL>_60.csv (the research cache) is loaded when present (history_csv_seed) and extended with fresh candles; symbols without a CSV are downloaded from history_start_ts (epoch seconds; default = first bar of the research CSVs, 2024-04-05). The start never slides, which matters for strategies with state that begins at the first bar (e.g. hedge_* drifting books / hysteresis). null = start lookback_bars hours before the first cycle (not recommended: the start then moves at every restart).",
+  "lookback_bars": 9000,
+  "_lookback_bars": "Only used when history_start_ts is null: hourly candles to download at startup.",
+  "wake_delay_seconds": 60,
+  "_wake_delay_seconds": "Seconds after each bar close (hourly bars close at hh:30 UTC = hh:00 Tehran) before fetching candles. Keep the computer clock synced: a clock that runs ahead is detected (the bot waits for the exchange's next bar); one that runs behind is detected too (logged as an ERROR; the exchange's candle timeline is used).",
+  "data_retry_seconds": 20,
+  "data_max_wait_seconds": 600,
+  "_data_max_wait_seconds": "If the newest closed candle is not published yet, retry every data_retry_seconds for at most this long, then skip the bar.",
+  "error_backoff_seconds": 60,
+  "error_backoff_max_seconds": 900,
+  "_error_backoff": "The loop never crashes on transient errors: it logs, waits error_backoff_seconds (doubling up to the max) and retries. Wrong credentials (a credential rejection by Bitpin) or an exhausted auth budget stop it; throttling or server errors while renewing the login token are temporary errors: the renewal is retried after a cool-down (1 min, doubling up to 30 min while it keeps failing), so an outage cannot use up the auth budget. Config / credential errors exit with code 78. A state dir used for live trading is bound to that account (account.json): keys of another account are refused.",
+
+  "order_poll_interval_seconds": 1.0,
+  "order_poll_timeout_seconds": 30,
+  "_order_poll": "Live: after submitting a market order, poll it until closed; after the timeout the remainder is cancelled.",
+  "unknown_order_max_age_seconds": 900,
+  "_unknown_order_max_age_seconds": "Live: an order whose submit failed ambiguously is looked up by its identifier (every minute) before any new order; if it never appears within this many seconds it is treated as not placed - except with max_equity_irt, where the bot keeps waiting and asks you to record the outcome with 'run_bot.py resolve-order' (it cannot tell from the shared wallet whether the order executed). 'run_bot.py resolve-order --state-dir DIR' lists such orders.",
+
+  "risk": {
+    "max_drawdown": 0.50,
+    "_max_drawdown": "Circuit breaker (0.50 here, built-in 0.30): drawdown of MANAGED equity (IRT) from its ROLLING high-water mark (hwm_window_days) that halts trading - the sleeve when max_equity_irt is set, else toman + strategy coins. A breach must show on two consecutive wallet reads AND with the coins valued at the current order-book mid (not only at the last hourly close, which on a thin book can be one odd trade); likewise the high-water mark rises only as far as both valuations agree. Without a cap, deposits/withdrawals move equity too: stop the bot, change the balance, run 'run_bot.py risk-reset --mode live', then start it again (risk-reset refuses to run while the bot is running). The high-water mark restarts by itself when max_equity_irt changes. In the one-year competition a halt is not the end of the game: decide, then 'risk-reset' (docs/DEPLOY_FA.md).",
+    "hwm_window_days": 90,
+    "_hwm_window_days": "The high-water mark is the highest managed equity of the LAST this many days (one sample per UTC day in risk_state_<mode>.json hwm_log), not since the start; 0 = all-time (the behaviour before v3). WHY: equity is measured in toman over a one-year competition; with a toman that devalues, a mark set during a spike months ago would sit far above any later equity and an ordinary later crypto drawdown would halt the bot for good. The Telegram notifier shows the drawdown and the distance to the halt in its daily line.",
+    "drawdown_action": "halt",
+    "_drawdown_action": "'halt' = stop trading, keep positions (default). 'flatten' = halt, then sell the managed coins to IRT, retrying every minute until they are below min_order_irt (flatten sells ignore max_price_deviation, max_order_fraction and max_orders_per_day but keep the slippage guard). IRT is devaluing, so this is opt-in.",
+    "max_orders_per_day": 180,
+    "_max_orders_per_day": "Rolling 24h limit on orders actually sent: a guard against a runaway order loop, NOT a trading budget. A rebalance with buys is skipped as a whole if the remaining budget cannot cover all its orders (so it never sells and then leaves the toman idle) - and the decision is marked executed, so it is not retried. With Kimi decisions over up to 38 symbols, 3-8 orders per rebalance are normal (plus code exits), so a low cap (50) can silently stop trading for hours; 180 leaves room while min_order_irt and the slippage guard still bound every single order. The log line to watch for is 'rebalance skipped: daily order budget'; 'sudo bitpin-bot health' prints the orders used.",
+    "min_order_irt": 100000,
+    "_min_order_irt": "Orders below this notional (IRT = toman) are skipped. Bitpin's API publishes no minimum order size; 100,000 toman lets a small account (a few million toman) still rebalance. An order the exchange rejects anyway is logged and skipped (never fatal). Built-in default without this line: 1,000,000. With --brain kimi the brain never plans a change smaller than one such order (+3% headroom): on a small account its smallest step is then larger than rebalance_threshold (100,000 on a 3.6M toman account = 2.9% of equity).",
+    "max_order_fraction": 1.0,
+    "_max_order_fraction": "Largest single order as a fraction of equity; bigger orders are shrunk and the rest waits for the next bar. 1.0 = same as the backtest.",
+    "max_price_deviation": 0.05,
+    "_max_price_deviation": "Skip an order if the order-book mid deviates more than this from the last hourly close.",
+    "max_slippage": 0.01,
+    "_max_slippage": "Estimated slippage vs mid from walking the visible order book (20 levels). Larger orders are shrunk to fit, or skipped if that is below min_order_irt.",
+    "min_order_usdt": 1.05,
+    "_min_order_usdt": "Minimum order notional on the USDT markets (BTC_USDT, ETH_USDT, XRP_USDT, SOL_USDT: crash-ladder bids, target sells, direct routing), in USDT (1.05 here, built-in 0.5): Bitpin rejected smaller USDT orders live (HTTP 4xx, 2026-09), so 1.05 USDT is the smallest order that is sent at all; a ladder bid on a small account can be only a few USDT with size_frac 0.25. An order the exchange rejects (HTTP 4xx) is logged, and that market / side waits 6 hours before the next attempt. If bids are rejected as too small, raise ladder.size_frac (fewer coins alone do NOT make a bid larger).",
+    "max_limit_orders_per_day": 120,
+    "_max_limit_orders_per_day": "Rolling 24 h limit on RESTING limit-order placements (ladder bids and target sells), separate from max_orders_per_day, so re-placing resting orders can never use up the budget that market orders (e.g. a code-enforced stop) need. Normal use: 8 bids + a few re-prices a day. Cancels are counted but never blocked.",
+    "max_limit_distance": 0.5,
+    "_max_limit_distance": "A limit order may not rest further than this fraction from the order-book mid (0.5 = 50%): a unit / fat-finger guard. The ladder's -20% / -25% bids are well inside it."
+  },
+
+  "ladder": {
+    "_section": "THE CRASH LADDER (bitpin/runner.py; research: scratch/freq/final_recommendation.json). Code-placed, USDT-backed maker limit BUY orders that REST on Bitpin at levels_pct below the highest of the last lookback_hours hourly closes (in USDT terms: COIN_IRT close / USDT_IRT close), on COIN_USDT markets, re-placed at every hourly check (day and night). They buy crashes at zero latency, without asking Kimi first; after a fill Kimi is woken in REVIEW mode (keep or exit) and the new position gets code exits (see exits). Kimi switches the ladder on/off or scales it 0..1 per coin at its daily decision (on by default). Needs the Kimi brain (--brain kimi); a strategy run has no ladder. From the endgame cut-off (kimi.json brain.endgame.no_new_entries_at, 2027-09-16 13:00 Tehran) every bid is cancelled; a drawdown halt cancels them too. STOP, seen by the running bot, cancels the bids (the target sells stay); after systemctl stop or a crash the bids STAY on Bitpin: run_bot.py cancel-resting / sudo bitpin-bot cancel-resting. Show the plan without placing anything: sudo bitpin-bot ladder.",
+    "enabled": true,
+    "_enabled": "false = no ladder bids at all (existing ones are cancelled at the next hourly check).",
+    "coins": null,
+    "_coins": "null = kimi.json brain.ladder_coins (BTC, ETH, XRP, SOL: the 4 most liquid USDT books), or a list like [\"BTC\", \"ETH\"]. Each coin needs its COIN_USDT market and its COIN_IRT market in brain.allowed_symbols.",
+    "levels_pct": [-20],
+    "_levels_pct": "Bid levels in % below the 48 h high (1..6 levels; [-20] here, built-in [-20, -25]). Research (TRAIN, 23 clusters): a -20% fill gained about +10% per crash cluster (90% CI +7 to +13), -25% about +8.8%; but there were NO such fills in the recent HOLDOUT: a regime bet. The year review (V2-rank4-lean-config) keeps one level: with two levels on a small account the bids halve and can fall under Bitpin's minimum. -10% / -15% are NOT buys (-15% at the next close averaged -0.2%).",
+    "size_frac": 0.25,
+    "_size_frac": "Size of ONE bid as a fraction of the managed equity, times Kimi's scale for the coin (0.25 here, built-in 0.125): 0.25 x 4 bids (one level, 4 coins) = at most 100% of the account, paid ONLY from USDT (never more than the free USDT; when Kimi's allocation leaves less USDT every bid is scaled down pro rata). About 4 USDT per bid on a 3.6M toman account, above min_order_usdt.",
+    "rearm_pct": 7.5,
+    "_rearm_pct": "A filled level is re-armed (a new bid may be placed) when the coin closes above -this % from its 48 h high again.",
+    "lookback_hours": 48,
+    "_lookback_hours": "The high the levels are measured from: the highest of the last N hourly closes (USDT terms).",
+    "reprice_pct": 0.5,
+    "_reprice_pct": "A resting bid is replaced only when its price moved more than this % (hysteresis: no cancel/re-place for noise). A replacement that the risk manager refuses keeps the old bid.",
+    "resize_pct": 10,
+    "_resize_pct": "... or its size more than this %."
+  },
+
+  "exits": {
+    "_section": "CODE-ENFORCED EXITS of every coin position (brain mode): a STOP only when Kimi sets stop_pct for the position (v3: NO default stop on new positions; a stop is Kimi's per-position choice, clamped to 5..40% below the average entry, checked on every hourly close in USDT terms, sold with a market order into USDT through the cheaper route), a TARGET (a crash-ladder fill by default: half the 48 h drop regained, e.g. +12.5% for a -20% fill; any other position only when Kimi sets target_price), a MAX HOLD (up to 720 h = 30 days, capped by the endgame; then Kimi is woken, nothing is sold) and wake levels. Kimi sets these per coin in its decision (\"exits\"). A position is every coin the bot manages: a ladder fill, a Kimi buy, or a coin already held (priced at the current price on the first run of this version). A coin can have two positions - the allocation's and the crash ladder's - each with its own entry, stop, target and target sell: a ladder fill never changes the allocation's exits, and a stop or target sells only its own position. The fallback's derisk never sells a coin whose exits are live. The stop acts on the hourly CLOSE only (no exchange-side stop order): a crash inside the hour is sold at the next close; a thin book can shrink the sale to the 1% slippage limit (the rest is sold at the next close).",
+    "enabled": true,
+    "_enabled": "false = no code exits (coins are sold only by Kimi's decisions or the fallback).",
+    "target_orders": true,
+    "_target_orders": "true = the target is a resting maker SELL limit on COIN_USDT (catches a wick inside the hour at the 0.30% maker fee; for the ladder / routing coins); false = the target is checked on the hourly close like the stop.",
+    "reprice_pct": 0.5,
+    "_reprice_pct": "A resting target sell is replaced only when the target moved more than this %...",
+    "resize_pct": 10,
+    "_resize_pct": "... or the position size more than this %."
+  },
+
+  "routing": {
+    "_section": "DIRECT COIN_USDT ROUTING (brain mode): a USDT <-> coin leg of a rebalance or a code exit goes through COIN_USDT when markets.best_route says its book is cheaper than COIN_IRT + USDT_IRT: 2 legs of about 0.8-1.1% per round trip instead of about 1.8% through the toman markets (fees 0.30% maker / 0.35% taker on both, verified live 2026-09-23). A thin COIN_USDT book falls back to the toman route. Sells stay first.",
+    "enabled": true,
+    "_enabled": "false = every trade through the toman (IRT) markets, as before.",
+    "coins": ["BTC", "ETH", "XRP", "SOL"],
+    "_coins": "Coins routed through COIN_USDT (null = every coin with a trading COIN_USDT market). The 4 majors have the deepest USDT books (BTC_USDT trades about 2.5x the volume of BTC_IRT)."
+  },
+
+  "_endgame_and_derisk": "Two related settings live in kimi.json (brain section), not here: brain.endgame (no new coin entries and every ladder bid cancelled from 2027-09-16 13:00 Tehran; the decision at 2027-09-20 13:00 is FINAL; the competition ends 2027-09-21T20:30Z; the default end state of coins is USDT_IRT, never toman) and brain.fallback.derisk_after_hours (48: after 48 h without a valid Kimi decision the coins are moved into USDT_IRT, except coins with live code exits)."
+}

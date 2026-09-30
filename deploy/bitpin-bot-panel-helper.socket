@@ -1,0 +1,21 @@
+# The management panel's root helper socket (release v3.1; docs/PANEL_FA.md). Only root and the group
+# bitpin-panel (the panel's web process) may connect; systemd starts one bitpin-bot-panel-helper@.service
+# instance per connection (Accept=yes) with the connection on its stdin / stdout. The helper
+# (scripts/panel_helper.py) serves ONE JSON request from a closed list of commands and exits.
+# Enabled by 'sudo bitpin-bot panel-setup' together with bitpin-bot-panel.service.
+[Unit]
+Description=Bitpin bot management panel: root helper socket
+Documentation=file:///opt/bitpin-bot/docs/PANEL_FA.md
+
+[Socket]
+ListenStream=/run/bitpin-panel/helper.sock
+SocketUser=root
+SocketGroup=bitpin-panel
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+MaxConnections=8
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

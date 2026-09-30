@@ -1,0 +1,102 @@
+# /etc/systemd/system/bitpin-bot.service - installed by deploy/install.sh (replaced by deploy/update.sh).
+# LIVE trading: the Kimi brain decides, REAL orders are sent to Bitpin. install.sh does NOT enable it.
+#
+# Before enabling:
+#   1. keys + KIMI_HTTPS_PROXY in /etc/bitpin-bot/bitpin-bot.env, settings in /etc/bitpin-bot/config.json
+#      + kimi.json (Bitpin is always reached directly; only Kimi uses KIMI_HTTPS_PROXY)
+#   2. sudo bitpin-bot check --auth      (IP whitelist, Bitpin reachability, clock, config files)
+#      sudo bitpin-bot kimi-check --news (Kimi key, route/proxy, both models, one real news research call)
+#   3. sudo bitpin-bot status            (confirm the toman balance once)
+#   4. sudo bitpin-bot confirm-live      (once, interactively; same config files as ExecStart below)
+#   5. sudo systemctl enable --now bitpin-bot
+#
+# Stop now:              sudo systemctl stop bitpin-bot   (disable too, or it starts again at boot)
+# Kill switch:           sudo bitpin-bot stop   (creates /var/lib/bitpin-bot/STOP: the bot exits, stays stopped)
+# Is it healthy?         sudo bitpin-bot health   (exit status 1 = needs attention; check it daily)
+# Your own changes:      sudo systemctl edit bitpin-bot   (a drop-in survives updates; this file does not)
+
+[Unit]
+Description=Bitpin trading bot - LIVE (Kimi brain)
+Documentation=file:/opt/bitpin-bot/docs/DEPLOY_FA.md
+Wants=network-online.target
+After=network-online.target
+# Never give up restarting: an Internet, DNS or Bitpin outage of ANY length (common in Iran) must not
+# leave the bot permanently "failed" for the rest of the competition. Problems that a restart cannot
+# fix (bad config, missing confirm-live, rejected keys) make the bot exit with status 78, which is
+# not restarted (RestartPreventExitStatus below): "sudo bitpin-bot health" shows it - and since v3 the
+# failure reporter below tells the owner in Telegram. RestartMode=direct (below) restarts WITHOUT passing
+# through the failed state, so OnFailure= fires for exit 78 alone, never for a crash / outage restart loop
+# (with the default RestartMode=normal, systemd >= 254 runs OnFailure= at every automatic restart).
+StartLimitIntervalSec=0
+OnFailure=bitpin-bot-failed@%n.service
+
+[Service]
+Type=simple
+User=bitpin
+Group=bitpin
+WorkingDirectory=/opt/bitpin-bot
+EnvironmentFile=/etc/bitpin-bot/bitpin-bot.env
+# The bot works in UTC internally; TZ=UTC makes its log timestamps UTC as well, whatever the server
+# timezone is (Tehran = UTC+03:30).
+Environment=TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+# --i-accept-the-risk --non-interactive: no typed confirmation. The bot refuses to start (exit 78) unless
+# 'sudo bitpin-bot confirm-live' wrote /var/lib/bitpin-bot/LIVE_CONFIRMED for EXACTLY these config files.
+ExecStart=/usr/bin/python3 /opt/bitpin-bot/scripts/run_bot.py live --brain kimi --config /etc/bitpin-bot/config.json --kimi-config /etc/bitpin-bot/kimi.json --state-dir /var/lib/bitpin-bot --i-accept-the-risk --non-interactive
+
+# Restart after any crash, error exit or kill, 60 s later ...
+Restart=always
+RestartMode=direct
+RestartSec=60
+# ... and on systemd >= 254 (Ubuntu 24.04) the delay grows over consecutive failed starts up to 15
+# minutes, so a long outage does not mean a login attempt every minute. Older systemd (Ubuntu 22.04)
+# logs "Unknown key name" for these two lines, ignores them and keeps the 60 s delay.
+RestartSteps=6
+RestartMaxDelaySec=900
+# ... except exit status 0, which the bot only uses when it stopped ON PURPOSE (STOP kill-switch file
+# or risk halt), and 78 (reserved for "configuration/credential error, retrying cannot help").
+RestartPreventExitStatus=0 78
+# "systemctl stop" sends SIGINT: Python raises KeyboardInterrupt, the bot releases its lock and exits
+# with 130; SIGKILL only if it has not exited after TimeoutStopSec.
+KillSignal=SIGINT
+SuccessExitStatus=130
+TimeoutStopSec=90
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bitpin-bot
+UMask=0077
+LimitCORE=0
+
+# Sandboxing: the bot can write only to its state directory, has no capabilities and cannot see /home.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/bitpin-bot
+# the Telegram notifier's secrets are not the trading bot's business (the file is 0600 root:root anyway)
+InaccessiblePaths=-/etc/bitpin-bot/notify.env
+StateDirectory=bitpin-bot
+StateDirectoryMode=0700
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+KeyringMode=private
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

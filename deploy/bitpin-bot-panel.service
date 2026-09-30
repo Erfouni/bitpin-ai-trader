@@ -1,0 +1,65 @@
+# The management panel (release v3.1; docs/PANEL_FA.md): an HTTPS web page for the owner - status,
+# trade settings, the AI model and its key, the VPN, confirm-live and restarts. Reachable from the
+# internet with a strong password (+ an authenticator code); every failed login is counted and locks.
+#
+# It runs as the unprivileged user bitpin-panel: it can read /etc/bitpin-bot-panel (panel.json and the TLS
+# certificate, root:bitpin-panel 0640 - NOT /etc/bitpin-bot, which is root:bitpin 0750) and write only its own state dir (the audit log). It never reads an
+# API key or the bot's state: everything privileged is one request to the root helper over
+# /run/bitpin-panel/helper.sock (bitpin-bot-panel-helper.socket, a closed list of commands).
+#
+# NOT enabled by install.sh / update.sh (it opens a port). Set it up once:  sudo bitpin-bot panel-setup
+# Stop it (the bot keeps trading):          sudo systemctl disable --now bitpin-bot-panel
+[Unit]
+Description=Bitpin bot management panel (HTTPS, unprivileged)
+Documentation=file:///opt/bitpin-bot/docs/PANEL_FA.md
+After=network-online.target bitpin-bot-panel-helper.socket
+Wants=network-online.target bitpin-bot-panel-helper.socket
+ConditionPathExists=/etc/bitpin-bot-panel/panel.json
+
+[Service]
+Type=simple
+User=bitpin-panel
+Group=bitpin-panel
+ExecStart=/usr/bin/python3 /opt/bitpin-bot/scripts/panel_server.py --config /etc/bitpin-bot-panel/panel.json
+Environment=TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+WorkingDirectory=/opt/bitpin-bot
+Restart=on-failure
+RestartSec=10
+# exit 78: panel.json or the certificate is missing / invalid - a restart cannot help (sudo bitpin-bot panel-status)
+RestartPreventExitStatus=78
+# the audit log (audit.jsonl) and nothing else
+StateDirectory=bitpin-bot-panel
+StateDirectoryMode=0700
+UMask=0077
+# at most 64 connections (one thread each)
+MemoryMax=256M
+TasksMax=128
+# port 8443 needs no capability (a port below 1024 would: see docs/PANEL_FA.md)
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+# defense in depth: the panel has no business with the bot's secrets or state (their modes keep it out too)
+InaccessiblePaths=-/var/lib/bitpin-bot -/var/lib/bitpin-bot-paper -/var/lib/bitpin-bot-notify -/etc/bitpin-bot/bitpin-bot.env -/etc/bitpin-bot/notify.env -/var/backups/bitpin-bot -/opt/xray -/root
+
+[Install]
+WantedBy=multi-user.target

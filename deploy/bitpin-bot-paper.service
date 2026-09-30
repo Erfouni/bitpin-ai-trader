@@ -1,0 +1,86 @@
+# /etc/systemd/system/bitpin-bot-paper.service - installed by deploy/install.sh (replaced by update.sh).
+# OPTIONAL dry run: the same Kimi brain trades a PAPER account against the live Bitpin order book.
+# No orders are sent to Bitpin, but every decision (and news brief) is a real (paid) Kimi API call.
+# State lives in /var/lib/bitpin-bot-paper, separate from the live bot.
+#
+# Starting capital (toman) of a NEW paper account: set PAPER_CAPITAL_IRT in
+# /etc/bitpin-bot/bitpin-bot.env (it overrides the placeholder below). Later starts resume the
+# existing paper account; the value only matters the first time.
+#
+#   sudo systemctl start bitpin-bot-paper        sudo journalctl -u bitpin-bot-paper -f
+#   sudo systemctl stop bitpin-bot-paper
+
+[Unit]
+Description=Bitpin trading bot - PAPER dry run (Kimi brain, no real orders)
+Documentation=file:/opt/bitpin-bot/docs/DEPLOY_FA.md
+Wants=network-online.target
+After=network-online.target
+# never give up restarting (see bitpin-bot.service); exit 78 = config error, not restarted
+StartLimitIntervalSec=0
+# exit 78 (config / credential problem, never restarted) is reported to the Telegram notifier (v3)
+OnFailure=bitpin-bot-failed@%n.service
+
+[Service]
+Type=simple
+User=bitpin
+Group=bitpin
+WorkingDirectory=/opt/bitpin-bot
+# paper capital in toman (the env file below may override it)
+Environment=PAPER_CAPITAL_IRT=5000000
+EnvironmentFile=/etc/bitpin-bot/bitpin-bot.env
+# Least privilege: paper trading uses only PUBLIC Bitpin data, so the paper bot never gets the live
+# Bitpin keys (removed after the env file is read) and cannot see the live bot's state directory
+# (its login token is valid for about 30 days). It keeps KIMI_API_KEY and KIMI_HTTPS_PROXY.
+UnsetEnvironment=BITPIN_API_KEY BITPIN_SECRET_KEY
+# bitpin-bot.env itself is 0600 root:root (only systemd reads it, as root, before this service starts),
+# so the paper bot cannot open it to get the keys back; the notifier's secrets are hidden as well
+InaccessiblePaths=-/var/lib/bitpin-bot -/etc/bitpin-bot/notify.env
+Environment=TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+ExecStart=/usr/bin/python3 /opt/bitpin-bot/scripts/run_bot.py paper --brain kimi --config /etc/bitpin-bot/config.json --kimi-config /etc/bitpin-bot/kimi.json --state-dir /var/lib/bitpin-bot-paper --capital-irt ${PAPER_CAPITAL_IRT}
+
+Restart=always
+RestartMode=direct
+RestartSec=60
+RestartSteps=6
+RestartMaxDelaySec=900
+RestartPreventExitStatus=0 78
+KillSignal=SIGINT
+SuccessExitStatus=130
+TimeoutStopSec=90
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bitpin-bot-paper
+UMask=0077
+LimitCORE=0
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadWritePaths=/var/lib/bitpin-bot-paper
+StateDirectory=bitpin-bot-paper
+StateDirectoryMode=0700
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RemoveIPC=yes
+KeyringMode=private
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,47 @@
+# /etc/systemd/system/bitpin-bot-notify-stop.service - started by bitpin-bot-notify-stop.path. Creates
+# /var/lib/bitpin-bot/STOP for a confirmed, fresh Telegram /stop request and deletes the request. No network.
+# Root on purpose: a process of the notifier's user could otherwise reach the bot's directory through
+# /proc/<relay pid>/root while the relay runs (and the notifier triggers the relay). A root process cannot
+# be inspected by the notifier. Only CAP_DAC_OVERRIDE (write into the 0700 dirs of the bitpin user) and
+# CAP_CHOWN (give the created files to their owner) are kept; the CODE (notify_bot.py apply-stop) limits it
+# to creating STOP: O_CREAT|O_EXCL|O_NOFOLLOW, never overwrites, refuses symlinks / FIFOs / large files.
+[Unit]
+Description=Bitpin bot - create the STOP kill switch for a confirmed Telegram /stop
+Documentation=file:/opt/bitpin-bot/docs/TELEGRAM_FA.md
+
+[Service]
+Type=oneshot
+CapabilityBoundingSet=CAP_DAC_OVERRIDE CAP_CHOWN
+AmbientCapabilities=
+TimeoutStartSec=30
+WorkingDirectory=/opt/bitpin-bot
+Environment=TZ=UTC LANG=C.UTF-8 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+ExecStart=/usr/bin/python3 /opt/bitpin-bot/scripts/notify_bot.py apply-stop --config /etc/bitpin-bot/notify.json
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bitpin-bot-notify-stop
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ReadWritePaths=/var/lib/bitpin-bot /var/lib/bitpin-bot-notify
+InaccessiblePaths=-/etc/bitpin-bot/bitpin-bot.env -/etc/bitpin-bot/notify.env
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM

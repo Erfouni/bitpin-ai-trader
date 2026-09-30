@@ -1,0 +1,118 @@
+# /etc/systemd/system/bitpin-bot-notify.service - Telegram notifier of the Bitpin bot (Persian guide:
+# /opt/bitpin-bot/docs/TELEGRAM_FA.md). A SEPARATE service: its code only READS the trading bot's state
+# directory (an allowlist of files), never trades and never calls Bitpin. The trading service does not
+# depend on it: stopping, crashing or misconfiguring the notifier can never affect trading, and the
+# notifier keeps working (and warns) while the trading service is stopped.
+#
+# ISOLATION - read this: the notifier runs as the SAME Linux user as the trading bot (User=bitpin, because
+# the bot's files are readable only by that user). The read-only view and InaccessiblePaths below therefore
+# protect against BUGS, not against code execution inside the notifier: a process of the same user can open
+# /var/lib/bitpin-bot/bitpin_token.json and signal the bot. The bot makes itself non-dumpable as the first
+# statement of run_bot.py (prctl PR_SET_DUMPABLE 0), which closes its /proc/<pid>/environ (the Bitpin keys),
+# /proc/<pid>/mem and /proc/<pid>/root to same-user processes ONCE it runs - but not during the interpreter's
+# own start (milliseconds, reopened at every restart, and a same-user process can make the bot restart), so
+# it is a hardening, NOT a boundary. ProtectProc=invisible hides only OTHER users' processes. Real isolation still needs a separate user for the notifier and a setgid bot state
+# dir whose group can read exactly the allowlisted files (NOT StateDirectory= in the bot's unit: systemd would
+# chown it back at every start): see scratch/notify_integration.md, "Security follow-ups" (untested on a real
+# systemd: staging first). If the notifier cannot read the bot's files it says so in Telegram (an alert, never
+# silence). Until then: keep this code as shipped, never run other programs as user bitpin, and treat a
+# compromise of the notifier like a compromise of the bot.
+#
+# Before enabling:
+#   1. /etc/bitpin-bot/notify.env (0600 root:root): TELEGRAM_BOT_TOKEN, TELEGRAM_HTTPS_PROXY=http://127.0.0.1:1081,
+#      then send /start to the bot and run: sudo bitpin-bot notify-setup   -> put the id into TELEGRAM_CHAT_ID
+#   2. sudo bitpin-bot notify-test        (one test message)
+#   3. sudo systemctl enable --now bitpin-bot-notify
+# Logs: sudo journalctl -u bitpin-bot-notify -f        State: sudo bitpin-bot notify-status
+#
+# /stop from Telegram: this service's code never writes /var/lib/bitpin-bot/STOP itself (the bot's state dir
+# is read-only in its mount namespace). It writes a confirmed request into its own state dir; the relay
+# bitpin-bot-notify-stop.path -> bitpin-bot-notify-stop.service turns it into the STOP file. The relay is
+# root with CAP_DAC_OVERRIDE/CAP_CHOWN and read-write access to both state directories (no network, 30 s
+# limit; a user the notifier cannot inspect) - only its code limits it to creating STOP. Without the relay
+# units /stop answers honestly that it could not stop the bot, and tells you to run: sudo bitpin-bot stop
+
+[Unit]
+Description=Bitpin bot - Telegram notifier (read-only)
+Documentation=file:/opt/bitpin-bot/docs/TELEGRAM_FA.md
+Wants=network-online.target
+After=network-online.target
+# retry forever (a proxy / Internet outage of any length must not leave it "failed")
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=bitpin
+Group=bitpin
+WorkingDirectory=/opt/bitpin-bot
+# ONLY the notifier's own env file: the Bitpin trading keys are never in this process's environment.
+EnvironmentFile=/etc/bitpin-bot/notify.env
+Environment=TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+ExecStart=/usr/bin/python3 /opt/bitpin-bot/scripts/notify_bot.py run --config /etc/bitpin-bot/notify.json
+
+Restart=always
+RestartSec=30
+RestartSteps=6
+RestartMaxDelaySec=600
+# 78 = configuration / secret problem (missing token or chat id, bad notify.json): a restart cannot help.
+RestartPreventExitStatus=78
+KillSignal=SIGINT
+SuccessExitStatus=130
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bitpin-bot-notify
+UMask=0077
+LimitCORE=0
+Nice=5
+MemoryMax=256M
+TasksMax=64
+
+# Files: the trading bot's state is READ-ONLY here; the notifier writes only /var/lib/bitpin-bot-notify.
+# The trading env file (Bitpin keys) is made inaccessible to this process on top of that. (Against bugs;
+# not a security boundary while User=bitpin - see ISOLATION at the top.)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ReadOnlyPaths=/var/lib/bitpin-bot
+StateDirectory=bitpin-bot-notify
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/bitpin-bot-notify
+InaccessiblePaths=-/etc/bitpin-bot/bitpin-bot.env
+# Network: IP connections only to THIS machine (IPAddressAllow=localhost = every TCP/UDP port on 127.0.0.0/8
+# and ::1). The notifier's code uses only the local proxy (127.0.0.1:1081, for Telegram and the optional
+# Kimi translation) - but systemd does not limit it to that port: any other service listening on localhost
+# is reachable too, and the proxy itself forwards anywhere. What systemd does block: direct connections to
+# other machines (no Bitpin, no DNS lookups of outside hosts). Only IPv4/IPv6 sockets can be created: no
+# AF_UNIX (no D-Bus / other local sockets; the journal gets stdout/stderr as an inherited descriptor) and no
+# AF_NETLINK. If your proxy is not on this machine, override IPAddressAllow= with:
+# sudo systemctl edit bitpin-bot-notify   (untested on a real systemd before shipping: if the service fails
+# at start with an address-family error in "journalctl -u bitpin-bot-notify", add AF_UNIX back there.)
+IPAddressDeny=any
+IPAddressAllow=localhost
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+KeyringMode=private
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

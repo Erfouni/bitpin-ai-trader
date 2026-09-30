@@ -1,0 +1,16 @@
+# /etc/systemd/system/bitpin-bot-backup.timer - runs bitpin-bot-backup.service every day at 03:10 UTC
+# (06:40 Tehran: no candle boundary, no Kimi slot, well after the daily 23:30 Tehran Telegram summary).
+# install.sh / update.sh enable it (the ONE thing the installer enables: root-only, no trading, no network);
+# uninstall.sh removes it. Persistent=true: a run missed while the server was off happens at the next boot.
+[Unit]
+Description=Bitpin bot - daily state backup timer
+Documentation=file:/opt/bitpin-bot/docs/DEPLOY_FA.md
+
+[Timer]
+OnCalendar=*-*-* 03:10:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+Unit=bitpin-bot-backup.service
+
+[Install]
+WantedBy=timers.target
