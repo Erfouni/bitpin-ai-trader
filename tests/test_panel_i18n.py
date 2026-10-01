@@ -43,6 +43,17 @@ def panel_texts():
 
 
 class TestCatalog(unittest.TestCase):
+    def test_no_text_is_translated_twice(self):
+        """v3.8: a second entry for the same English text silently replaces the first one (a dict literal)."""
+        with open(i18n.__file__, encoding="utf-8") as f:
+            tree = ast.parse(f.read())
+        keys = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "FA" for t in node.targets):
+                keys = [ast.literal_eval(k) for k in node.value.keys]
+        self.assertGreater(len(keys), 250)
+        self.assertEqual(sorted(k for k in set(keys) if keys.count(k) > 1), [])
+
     def test_every_text_has_a_persian_translation(self):
         texts = panel_texts()
         self.assertGreater(len(texts), 250)

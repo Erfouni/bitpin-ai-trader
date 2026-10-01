@@ -183,7 +183,7 @@ TA_FIELD_LABELS = (("trend", N_("Trend")), ("long", N_("Long trend (EMA200)")), 
                    ("bands", N_("Bollinger")), ("channel", N_("Donchian")), ("volume", N_("Volume")))
 TA_VALUE_LABELS = {
     "trend": {"up": N_("Up"), "down": N_("Down"), "mixed": N_("Mixed")},
-    "long": {"above": N_("Above"), "below": N_("Below")},
+    "long": {"above": N_("Above EMA200"), "below": N_("Below EMA200")},
     "momentum": {"rising": N_("Rising"), "falling": N_("Falling"), "flat": N_("Flat")},
     "rsi": {"overbought": N_("Overbought"), "strong": N_("Strong"), "neutral": N_("Neutral"), "weak": N_("Weak"),
             "oversold": N_("Oversold")},
@@ -2740,8 +2740,8 @@ class PanelApp(object):
 
     def _ta_reading_card(self, data):
         cands = [c for c in (data.get("candidates") or []) if isinstance(c, dict)]
-        head = [N_("Coin"), N_("Kimi's verdict"), N_("Overall reading")] + [lab for _k, lab in TA_FIELD_LABELS] + [
-            N_("Support"), N_("Resistance"), N_("Check")]
+        head = [N_("Coin"), N_("Kimi's verdict"), N_("Overall reading"), N_("Check")] + [
+            lab for _k, lab in TA_FIELD_LABELS] + [N_("Support"), N_("Resistance")]
         rows = []
         for c in cands:
             ta = c.get("ta") if isinstance(c.get("ta"), dict) else {}
@@ -2750,6 +2750,12 @@ class PanelApp(object):
             v = c.get("verdict")
             row = [code(c.get("symbol")), te(VERDICT_LABELS[v]) if v in VERDICT_LABELS else (ltr(v) if v else dash()),
                    ("<b>%s</b>" % ta_label("read", ta["read"])) if ta.get("read") else dash()]
+            if not ta:
+                row.append('<span class="muted">%s</span>' % te("No reading"))
+            elif checks:
+                row.append('<span class="badge warn">%s</span>' % esc(tr("%s differ") % len(checks)))
+            else:
+                row.append('<span class="badge ok">%s</span>' % te("Matches the rules"))
             for key, _lab in TA_FIELD_LABELS + (("support", ""), ("resistance", "")):
                 mine = ta.get(key)
                 if mine is None:
@@ -2763,18 +2769,12 @@ class PanelApp(object):
                         shown, tr("rules: %s") % rule))
                 else:
                     row.append('<span class="ta-ok">%s</span>' % shown)
-            if not ta:
-                row.append('<span class="muted">%s</span>' % te("No reading"))
-            elif checks:
-                row.append('<span class="badge warn">%s</span>' % esc(tr("%s differ") % len(checks)))
-            else:
-                row.append('<span class="badge ok">%s</span>' % te("Matches the rules"))
             rows.append(row)
         if not rows:
             body = '<p class="muted empty">%s</p>' % te("Kimi analysed no coin in this decision (it changed nothing "
                                                        "and no plan was due).")
         else:
-            body = table(head, rows, cls="ta-table")
+            body = table(head, rows, cls="ta-table wrap")
             if not any(isinstance(c.get("ta"), dict) and c.get("ta") for c in cands):
                 body += '<p class="muted small">%s</p>' % te("This decision is older than the technical reading "
                                                             "(version 3.8): only the code's reading is shown below.")
@@ -2797,7 +2797,7 @@ class PanelApp(object):
             if c.get("held"):
                 tags += ' <span class="badge accent">%s</span>' % te("Held")
             if c.get("candidate"):
-                tags += ' <span class="badge">%s</span>' % te("Analysed")
+                tags += ' <span class="badge">%s</span>' % te("In Kimi's analysis")
 
             def lab(key):
                 return ('<small class="lab">%s</small>' % ta_label(key, r[key])) if r.get(key) else ""

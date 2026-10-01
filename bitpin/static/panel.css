@@ -1107,6 +1107,7 @@ dl.an dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 
 /* v3.8: the technical page */
 .ta-table td { white-space: nowrap; vertical-align: top; }
+.ta-table.wrap td { white-space: normal; min-width: 64px; }
 .ta-table small.lab, .ta-table small.rule { display: block; color: var(--text-3); font-size: 11.5px; }
 .ta-table small.rule { color: var(--warn-text); }
 .ta-bad { color: var(--warn-text); font-weight: 650; }

@@ -92,10 +92,10 @@ class TestPage(tpw.PanelCase):
                                     "bands": "lower", "channel": "breakdown", "volume": "low", "support": 2950,
                                     "resistance": 3100, "read": "bearish"},
                                 check=[{"field": "rsi", "model": "neutral", "code": "weak"}]))
-        for s in ("Technical analysis", "Kimi&#x27;s technical reading", "<b>Bearish</b>", "Reject",
+        for s in ("Technical analysis", "Kimi&#x27;s technical reading", "<b>Bearish</b>", "Reject", "Above EMA200",
                   '<span class="ta-bad">Neutral</span><small class="rule">rules: Weak</small>',
                   '<span class="ta-ok">Breakdown</span>', "1 differ", "Indicators of every coin", "BTC_IRT", "Held",
-                  "Analysed", "61.0 / 58.0", "+0.8% / +1.6% / +6.0%", "+0.07%", u"0.86 · 3.1%",
+                  "In Kimi&#x27;s analysis", "61.0 / 58.0", "+0.8% / +1.6% / +6.0%", "+0.07%", u"0.86 · 3.1%",
                   "76,000.00 - 81,000.00", u"1.70×", "78,400.00", u"-2.0% ×3", "+3.0% / +8.0%",
                   "+1.0% / +22.0%", "How the reading works", "70 or more overbought", "kimi-k3", "slot"):
             self.assertIn(s, t, s)

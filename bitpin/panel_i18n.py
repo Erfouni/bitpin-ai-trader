@@ -215,7 +215,7 @@ FA = {
     "30-day range": u"جایگاه در دامنهٔ ۳۰ روزه",
     "7 d / 30 d": u"۷ روز / ۳۰ روز",
     "Held": u"در سبد",
-    "Analysed": u"تحلیل‌شده",
+    "In Kimi's analysis": u"در تحلیل کیمی",
     "Prices and levels in USDT (USDT_IRT in toman), exactly as the bot gave them to Kimi; the small labels are the "
     "code's reading by the fixed rules.":
         u"قیمت‌ها و سطح‌ها به تتر (تتر خودش به تومان)، دقیقاً همان‌طور که ربات به کیمی داد؛ برچسب‌های کوچک خوانش کد با "
@@ -230,8 +230,8 @@ FA = {
     "Up": u"صعودی",
     "Down": u"نزولی",
     "Mixed": u"نامشخص",
-    "Above": u"بالای آن",
-    "Below": u"زیر آن",
+    "Above EMA200": u"بالای EMA200",
+    "Below EMA200": u"زیر EMA200",
     "Rising": u"رو به بالا",
     "Falling": u"رو به پایین",
     "Flat": u"بی‌جهت",
