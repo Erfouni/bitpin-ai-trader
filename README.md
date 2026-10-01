@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.6.4` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.7.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -51,10 +51,11 @@ risk that implies: the model stays the decision maker, and the code adds discipl
   - a crash-ladder bid fills, or a ladder coin falls 15 % (the model may then veto its bids);
   - the competition's final decision is due (2027-09-20).
 - **Two model stages.**
-  - *News research:* a web-search model writes a short, sourced brief of the day's news. Searches carry the date,
-    items older than a week are dropped, and only a list of trusted sites counts: news agencies, crypto media,
-    Iranian economic media and official sources, editable in the panel. The brief is treated as untrusted text:
-    prices and embedded instructions are removed.
+  - *News:* the bot reads the latest headlines of a list of trusted sites from their own feeds (RSS, Atom): news
+    agencies, crypto media, Iranian economic media and official sources, editable in the panel. A model picks the
+    events that matter and summarises them in one JSON request; every item keeps its feed's link and date, and
+    items older than a week are dropped. The brief is treated as untrusted text: prices and embedded instructions
+    are removed.
   - *Decision:* the decision model returns a strict JSON allocation. Every new position comes with an entry plan
     (setup, horizon, invalidation, optional target or stop) and an expected-value analysis after costs.
 - **53 markets:** USDT, 34 liquid coins and 18 tokenized real-world assets (gold, silver, oil, gas, copper miners,
@@ -88,7 +89,7 @@ flowchart LR
     C["Hourly candles"]
   end
   subgraph model["The model: once a day at 19:00 Tehran, plus wake-ups"]
-    N["Stage 1: news research (web search)"]
+    N["Stage 1: news brief (the trusted sources' feeds)"]
     D["Stage 2: allocation, plan and EV analysis (strict JSON)"]
   end
   subgraph code["The code: every hour"]
@@ -239,7 +240,7 @@ The same by hand, in `kimi.json`:
 ```
 
 On OpenRouter the reasoning effort is sent as `reasoning.effort`, usage and cost come back in the stream, and
-HTTP 402 (no credit) is reported like an exhausted Moonshot balance. The news stage uses OpenRouter's web plugin.
+HTTP 402 (no credit) is reported like an exhausted Moonshot balance. In search mode the news stage uses OpenRouter's web plugin; the default feeds mode needs only JSON output.
 Any other OpenAI-compatible service works with `provider: "openai"` and the key `LLM_API_KEY`, which is bound to
 the host it was saved with.
 
@@ -313,7 +314,7 @@ skipped elsewhere. No test touches the network or a real key: exchange and model
 | `runner.py` | the hourly loop: decision schedule, allocation, crash ladder, exits, guards, endgame, kill switch |
 | `brain.py`, `prompt_template.txt` | the model's prompt, the JSON contract and its validation, entry plans, wake-up modes, fallback |
 | `llm.py` | OpenAI-compatible client (Moonshot, OpenRouter, others): streaming, retries, reasoning effort, budgets, model list with prices |
-| `news.py` | stage 1: web research and the sanitised news brief |
+| `news.py`, `news_feeds.py` | stage 1: the trusted sources' feeds (or a web search) and the sanitised news brief |
 | `analysis.py` | the market context: volatility, drawdowns, indicators, support and resistance, beta and correlation, spread and depth, asset classes, the US session |
 | `notify.py` | the Telegram notifier (Persian) |
 | `panel_web.py`, `panel_auth.py`, `panel_settings.py`, `panel_i18n.py`, `static/` | the web panel: pages, login and sessions, the trade settings form, the Persian translations, the stylesheet |

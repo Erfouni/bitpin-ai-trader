@@ -594,6 +594,10 @@ def make_brain(cfg, kcfg, sd, mode, dry_run=False, test_reply=None, test_news=No
         if test_news is not None:
             nmodel = str(((kcfg.get("news") or {}).get("model")) or "kimi-k2.6")
             news_transport = make_test_news_transport(test_news, nmodel)
+            if isinstance(kcfg.get("news"), dict):
+                # v3.7: the hook simulates the web-search mode (one search round, then the canned reply): feeds
+                # mode would read the real feeds of the trusted sites
+                kcfg = dict(kcfg, news=dict(kcfg["news"], mode="search"))
             log.warning("TEST HOOK (paper only): the news brief comes from %s, NOT from Moonshot",
                         "a simulated network failure" if test_news == TEST_HOOK_UNREACHABLE else test_news)
     public = BitpinClient(cfg["base_url"])   # public market data only; never has credentials
@@ -1418,7 +1422,10 @@ def check_news(kcfg, ids, decision_model):
         except (ConfigError, ValueError) as e:
             print("NEWS: config error - %s" % e)
             return EXIT_CONFIG
-        print("  news model    : %s (stage 1, web search; route %s)" % (news.model, news.proxy_display))
+        feeds_mode = news.cfg.get("mode") == "feeds"
+        print("  news model    : %s (stage 1, %s; route %s)" % (
+            news.model, "the trusted sources' feeds, one JSON request" if feeds_mode else "web search",
+            news.proxy_display))
         llm_base = str((kcfg.get("llm") or {}).get("base_url") or "https://api.moonshot.ai/v1").strip().rstrip("/")
         # the ids were listed on the decision model's platform: they say nothing about a news stage elsewhere
         if news.base_url == llm_base and news.model not in ids:
@@ -1427,14 +1434,22 @@ def check_news(kcfg, ids, decision_model):
             print("RESULT: FAILED (news) - the decision model %s works, the news research does not" % decision_model)
             return 1
         b = news.research(time.time(), force=True)
+        fs = b.feeds or {}
+        for f in (fs.get("failed") or [])[:12]:          # v3.7: the feeds that could not be read
+            print("  feed failed   : %s - %s" % (f.get("site"), f.get("error")))
         if not (b.ok and not b.cached and not b.stale):     # force does NOT bypass a budget / missing key
             print("NEWS: FAILED - %s" % news.redact(b.error or "no fresh brief"))
             print("RESULT: FAILED (news) - the decision model %s works, but the bot would decide WITHOUT news "
                   "(retried %d times; if the Kimi proxy dropped the connection, run the check again)"
                   % (decision_model, int(news.cfg["max_retries"])))
             return 1
-        print("NEWS: OK - %d items, %d searches, %s tokens, %.0f s" % (
-            len(b.items), b.searches, (b.usage or {}).get("total_tokens", "?"), b.seconds))
+        if b.mode == "feeds":
+            print("NEWS: OK - %d items from %d headlines (%d of %d feeds read), %s tokens, %.0f s" % (
+                len(b.items), fs.get("headlines", 0), fs.get("ok", 0), fs.get("tried", 0),
+                (b.usage or {}).get("total_tokens", "?"), b.seconds))
+        else:
+            print("NEWS: OK - %d items, %d searches, %s tokens, %.0f s" % (
+                len(b.items), b.searches, (b.usage or {}).get("total_tokens", "?"), b.seconds))
         print(b.prompt_block(time.time(), max_chars=4000))
         print("RESULT: OK - both stages were exercised for real: the decision model %s answered a decision "
               "request in the required format, and the news model %s researched a fresh brief"

@@ -4,6 +4,44 @@
 
 ---
 
+## 3.7.0 — «خبر از فید»: ربات خبر را از فید خود منابع معتبر می‌خواند (2026-10-01)
+
+- جست‌وجوی وب مدل خبر از راه تونل جواب نداد. Moonshot «حالت JSON» را کنار ابزار جست‌وجویش با جواب خالی رد می‌کند. kimi-k2.6
+  بعد از یک جست‌وجو یا چند دقیقه متن پشت سر هم می‌نوشت تا تونل قطعش کند، یا جست‌وجوی بعدی‌اش را فقط به‌صورت متن می‌نوشت. نتیجه:
+  از ۲۷ سپتامبر هیچ خلاصهٔ خبر تازه‌ای نیامد.
+- حالا (`news.mode` = `"feeds"`، پیش‌فرض) خود ربات تیترهای تازهٔ منابع معتبر را از **فید خودشان** (RSS، Atom، نقشهٔ خبری
+  گوگل) می‌خواند. ۲۶ فید از ۱۹ سایت: رویترز، بلومبرگ، بی‌بی‌سی، CNBC، فایننشال تایمز، CoinDesk، The Block، Cointelegraph،
+  Decrypt، ایران اینترنشنال، رادیو فردا، فدرال رزرو، SEC، BLS، دنیای اقتصاد، اقتصادنیوز، تجارت‌نیوز، ایسنا و ایرنا. سایت‌های
+  خارجی از راه تونل و سایت‌های ایرانی مستقیم خوانده می‌شوند؛ آزمون روی سرور: ۲۶ از ۲۶ فید در ۳ ثانیه، ۱۵۰ تیتر.
+- مدل خبر فقط **یک درخواست کوتاه** می‌گیرد: فهرست شماره‌دار تیترهای ۷۲ ساعت اخیر، با حالت JSON و بدون ابزار جست‌وجو. مدل
+  خبرهای مهم را انتخاب و به انگلیسی خلاصه می‌کند و هر خبر را فقط با **شمارهٔ تیتر** نشان می‌دهد. لینک و تاریخ هر خبر از خود فید
+  برداشته می‌شود، نه از مدل؛ خبری که به تیتری از فهرست اشاره نکند کنار گذاشته می‌شود. پس دادهٔ خبر دقیق و ساختاریافته است.
+- اگر هیچ فیدی خوانده نشود، تماسی با مدل گرفته نمی‌شود و تصمیم مثل قبل بدون خبر (یا با آخرین خلاصهٔ سالم) گرفته می‌شود.
+- **پنل:** در «تنظیمات معامله ← اخبار» دو تنظیم تازه هست: «روش تهیه‌ی خبر» (فید منابع معتبر یا جست‌وجوی وب مدل) و «فیدهای
+  اضافه» (نشانی فید سایت‌های دیگر، هر کدام در یک خط). داشبورد کارت تازهٔ **«خلاصه‌ی خبر»** دارد: خبرهای آخرین خلاصه با سایت،
+  زمان و لینک خود مقاله، و اینکه چند فید خوانده شد و کدام‌ها نه.
+- سایت‌های بی‌فید: apnews.com (خواندن را رد می‌کند)، wsj.com (فیدهایش از ۲۰۲۵ متوقف شده)، blockworks.co (کهنه) و بیت‌پین
+  (فیدی ندارد). خبر این سایت‌ها نمی‌آید مگر نشانی فید تازه‌ای در «فیدهای اضافه» بدهید.
+- روش قبلی با `news.mode` = `"search"` هنوز در دسترس است. رفتار معامله‌ای عوض نشده. چون پیش‌فرض کد عوض شده و فایل تنظیمات نه،
+  تأیید تازه (`confirm-live`) لازم نیست.
+- English: new `bitpin/news_feeds.py` - FEED_TABLE (26 feeds of 19 default sources, each with its route: "proxy" =
+  through the news proxy, "direct" for the Iranian sites; the other route once after a network error), parallel
+  fetching within FEED_DEADLINE (60 s, FEED_TIMEOUT 20 s per feed, FEED_MAX_BYTES 3 MB), `parse_feed()` (RSS 2.0,
+  RSS 1.0 / RDF, Atom, Google News sitemaps; bodies with entity declarations or a DTD internal subset are refused;
+  an entry's own title / link / date only - Atom <source>, <author>, sitemap <image:image> and Media RSS skipped),
+  `select_headlines()` (a link on news.sources, a known date in the last FEED_MAX_AGE_HOURS 72, duplicates by link
+  or title once, FEED_PER_SITE 15 per site, then every site in turn up to FEED_MAX_HEADLINES 150),
+  `build_feed_messages()` (numbered headlines, JSON-mode request without tools) and `items_from_refs()` (each item's
+  source_url / link / time_hint from its cited headline; unknown or repeated refs dropped). `bitpin/news.py`:
+  news.mode ("feeds" default | "search") and news.feeds (extra feed URLs, check_feed_urls), `_feeds_call()` /
+  `_feed_request()` / `_default_feed_fetch()` (the hardened API transport per route), NewsBrief.mode and .feeds,
+  item "link" (the article, for the panel; the prompt still shows the host only), the cache's "feeds" (the last
+  attempt), the prompt block's header names the feeds. `scripts/run_bot.py`: kimi-check prints the feeds and the
+  failed ones; the paper test hook simulates search mode. Panel: `news.mode` (choice) and `news.feeds` (new field
+  kind "urls") in the trade form, the dashboard's news card (`scripts/panel_helper.py` news_view, PanelApp.
+  _news_card). `kimi.example.json` / `news.example.json`: mode, feeds. Tests: `tests/test_news_feeds.py`,
+  `tests/test_panel_news.py`; the search-mode tests run with mode "search".
+
 ## 3.6.4 — خبر: فرصت جست‌وجو پیش از خواستن JSON (2026-09-30)
 
 - آزمون واقعی ۳٫۶٫۳ روی سرور: مدل خبر بعد از اولین جست‌وجو فقط نوشت «باید دقیق‌تر جست‌وجو کنم» و متوقف شد. نسخهٔ ۳٫۶٫۳ همین

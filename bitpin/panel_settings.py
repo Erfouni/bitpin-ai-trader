@@ -47,15 +47,17 @@ GROUPS = [
      T("کارمزد بیت‌پین: میکر ۰٫۳۰٪، تیکر ۰٫۳۵٪. معمولاً لازم نیست تغییر کند.",
        "Bitpin's fees: maker 0.30%, taker 0.35%. Usually nothing to change here.")),
     ("news", T("اخبار", "News"),
-     T("مرحله‌ی خبر پیش از تصمیم روزانه، با مدل و کلید جدا (صفحه‌ی مدل‌ها و کلیدها).",
-       "The news step before the daily decision, with its own model and key (Models & keys).")),
+     T("مرحله‌ی خبر پیش از تصمیم روزانه: ربات تیترهای تازه‌ی منابع معتبر را از فیدشان می‌خواند و مدل خبر (صفحه‌ی "
+       "مدل‌ها و کلیدها) خبرهای مهم را انتخاب و خلاصه می‌کند.",
+       "The news step before the daily decision: the bot reads the latest headlines of the trusted sources from their "
+       "feeds and the news model (Models & keys) picks and summarises the important events.")),
     ("budget", T("بودجه‌ی مدل", "Model budget"),
      T("سقف‌های روزانه‌ی تماس و توکن: محافظ هزینه.", "Daily caps on calls and tokens: the cost guard.")),
 ]
 
 KINDS = ("int", "float", "pct", "bool", "choice", "text", "longtext", "symbols", "coins", "coins_or_null",
-         "numbers", "times", "domains")
-LIST_KINDS = ("symbols", "coins", "coins_or_null", "numbers", "times", "domains")
+         "numbers", "times", "domains", "urls")
+LIST_KINDS = ("symbols", "coins", "coins_or_null", "numbers", "times", "domains", "urls")
 
 
 class Field(object):
@@ -263,10 +265,19 @@ FIELDS = [
     Field("config", "cash_buffer_frac", "pct", "costs", T("ذخیره‌ی تومانیِ خرج‌نشده", "IRT cash kept unspent"),
           unit=P, lo=0, hi=10),
     # ------------------------------------------------------------------ news
-    Field("kimi", "news.enabled", "bool", "news", T("جست‌وجوی خبر روشن باشد", "News search on"),
+    Field("kimi", "news.enabled", "bool", "news", T("خبر روشن باشد", "News on"),
           T("خاموش: به کیمی گفته می‌شود خبری در دست نیست.", "Off: Kimi is told that no news is available.")),
+    Field("kimi", "news.mode", "choice", "news", T("روش تهیه‌ی خبر", "How the news is gathered"),
+          T("فید: ربات تیترهای تازه‌ی منابع معتبر را از فید خودشان می‌خواند و مدل فقط خبرهای مهم را انتخاب و خلاصه "
+            "می‌کند؛ لینک و تاریخ هر خبر از خود فید است. جست‌وجو: مدل خودش در وب می‌گردد (روش قبلی که از تونل جواب "
+            "نداد).",
+            "Feeds: the bot reads the latest headlines of the trusted sources from their own feeds and the model only "
+            "picks and summarises the important ones; each item's link and date come from the feed. Search: the model "
+            "searches the web itself (the old way, which did not work through the tunnel)."),
+          choices=[("feeds", T("فید منابع معتبر (پیشنهادی)", "The trusted sources' feeds (recommended)")),
+                   ("search", T("جست‌وجوی وب به دست مدل", "The model's own web search"))]),
     Field("kimi", "news.max_calls_per_day", "int", "news",
-          T("سقف جست‌وجوی خبر در روز", "News searches per day (cap)"), lo=0, hi=48),
+          T("سقف تهیه‌ی خبر در روز", "News briefs per day (cap)"), lo=0, hi=48),
     Field("kimi", "news.after_hold_only", "bool", "news",
           T("بعد از تصمیم «نگه‌دار» خلاصه‌ی خبر قبلی دوباره استفاده شود",
             "Reuse the previous news summary after a HOLD decision"),
@@ -278,14 +289,20 @@ FIELDS = [
           T("۰ یعنی هرگز.", "0 = never."), unit=MINUTES, lo=0, hi=10080),
     Field("kimi", "news.max_items", "int", "news", T("تعداد خبر در خلاصه", "News items in a summary"), lo=1, hi=20),
     Field("kimi", "news.extra_topics", "longtext", "news",
-          T("موضوع‌های اضافه برای جست‌وجوی خبر", "Extra topics for the news search"),
+          T("موضوع‌های اضافه برای خبر", "Extra topics for the news"),
           T("به انگلیسی، حداکثر ۱۰۰۰ نویسه. اینجا دستور معامله ننویسید.",
             "In English, up to 1000 characters. No trading instructions here."), max_len=1000),
     Field("kimi", "news.sources", "domains", "news", T("منابع معتبر خبر", "Trusted news sources"),
           T("فقط خبرِ این سایت‌ها به کیمی می‌رسد (زیردامنه‌ها هم حساب‌اند) و خبر سایت‌های دیگر کنار گذاشته می‌شود. "
-            "هر سایت در یک خط، مثل reuters.com.",
-            "Kimi gets news from these sites only (subdomains count); items from other sites are left out. One site "
-            "per line, e.g. reuters.com."), min_items=1, max_items=100),
+            "در روش فید، فید داخلی همین سایت‌ها خوانده می‌شود. هر سایت در یک خط، مثل reuters.com.",
+            "Kimi gets news from these sites only (subdomains count); items from other sites are left out. In feeds "
+            "mode the built-in feeds of these sites are read. One site per line, e.g. reuters.com."),
+          min_items=1, max_items=100),
+    Field("kimi", "news.feeds", "urls", "news", T("فیدهای اضافه", "Extra feeds"),
+          T("نشانی فید RSS یا Atom سایت‌های دیگر، هر کدام در یک خط (حداکثر ۳۰). خبرشان فقط وقتی می‌آید که آن سایت در "
+            "«منابع معتبر خبر» هم باشد. خالی یعنی فقط فیدهای داخلی.",
+            "RSS or Atom feed URLs of other sites, one per line (at most 30). Their headlines count only when the site "
+            "is also in Trusted news sources. Empty = the built-in feeds only."), nullable=True, max_items=30),
     # ------------------------------------------------------------------ budget
     Field("kimi", "llm.max_calls_per_day", "int", "budget",
           T("سقف تماس با مدل تصمیم در روز", "Decision-model calls per day (cap)"), lo=1, hi=500),
@@ -408,8 +425,8 @@ def display(field, value):
             return str(value)
         if k in ("text", "longtext"):
             return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-        if k == "domains" and isinstance(value, list):
-            return "\n".join(str(x) for x in value)          # a textarea: one site per line
+        if k in ("domains", "urls") and isinstance(value, list):
+            return "\n".join(str(x) for x in value)          # a textarea: one site (one feed) per line
         if k in LIST_KINDS:
             if not isinstance(value, list):
                 return json.dumps(value, ensure_ascii=False)
@@ -501,6 +518,16 @@ def parse_value(field, text):
         if k == "pct":
             return float(d / 100)
         return float(d)
+    if k == "urls":                                       # v3.7: feed URLs, one per line (commas are URL text)
+        from bitpin.news import NewsConfigError, check_feed_urls
+        out = []
+        for x in [u for u in re.split(r"\s+", s) if u]:
+            try:
+                out.extend(check_feed_urls([x]))
+            except NewsConfigError:
+                raise FieldError(u"%s نشانی فید معتبر نیست (مثل https://www.example.com/rss)" % x[:60],
+                                 "%s is not a feed URL (like https://www.example.com/rss)" % x[:60])
+        return _count(field, _dedupe(out))
     items = _split_list(s)
     if k == "numbers":
         out = []
@@ -611,6 +638,15 @@ def check_value(field, value):
         for x in value:
             if not isinstance(x, str) or normalize_source(x) != x:
                 raise ValueError("invalid entry %r" % (str(x)[:40],))
+    elif k == "urls":
+        from bitpin.news import NewsConfigError, check_feed_urls
+        for x in value:
+            try:
+                ok = isinstance(x, str) and check_feed_urls([x]) == [x]
+            except NewsConfigError:
+                ok = False
+            if not ok:
+                raise ValueError("invalid feed URL %r" % (str(x)[:60],))
     else:
         rx = _TIME_RE if k == "times" else (_SYMBOL_RE if k == "symbols" else _COIN_RE)
         for x in value:

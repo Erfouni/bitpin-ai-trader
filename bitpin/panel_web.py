@@ -1531,6 +1531,7 @@ class PanelApp(object):
             self._decision_card(data.get("last_decision")), self._services_card(data, bot),
             self._actions_card(req, bot.get("state"))))
         parts.append(self._positions_card(pos))
+        parts.append(self._news_card(data.get("news")))
         for key, label in (("status_fa", N_("Status, as /status shows it in Telegram")),
                            ("last_decision_fa", N_("Last decision, as /last shows it in Telegram"))):
             if data.get(key):
@@ -1614,6 +1615,60 @@ class PanelApp(object):
         return card(te("Positions"), table([N_("Market"), N_("Kind"), N_("Amount"), N_("Entry (USDT)"),
                                             N_("Stop (USDT)"), N_("Target (USDT)"), N_("Hold until")], rows,
                                            num=(2, 3, 4, 5)), "layers", cls="flush")
+
+    def _news_card(self, nv):
+        """v3.7: the last news brief - how and when it was made, its items with their site, time and a link to the
+        article - the feeds of the last attempt and the last error (scripts/panel_helper.py news_view)."""
+        title = te("News brief")
+        if not isinstance(nv, dict) or not nv:
+            return card(title, '<p class="muted empty">%s</p>' % te("No news brief yet."), "news")
+        out, meta = [], []
+        if nv.get("fetched_at"):
+            meta.append(tr("Made %s") % fmt_time(nv.get("fetched_at")))
+        if nv.get("mode") == "feeds":
+            meta.append(te("From the trusted sources' feeds"))
+        elif nv.get("mode"):
+            meta.append(te("The model's web search"))
+        if nv.get("model"):
+            meta.append(code(nv.get("model")))
+        if meta:
+            out.append('<p class="muted small">%s</p>' % " &middot; ".join(meta))
+        err_at, made = nv.get("last_error_at"), nv.get("fetched_at")
+        if nv.get("last_error") and _is_num(err_at) and (not _is_num(made) or err_at >= made):
+            out.append(box("warn", tr("The last news attempt failed (%s): %s") % (fmt_time(err_at),
+                                                                                  bdi(nv.get("last_error")))))
+        if nv.get("summary"):
+            out.append('<p class="news-sum" dir="ltr" lang="en">%s</p>' % esc(nv.get("summary")))
+        items = [it for it in (nv.get("items") or []) if isinstance(it, dict) and it.get("headline")]
+        if items:
+            lis = []
+            for it in items:
+                head = esc(it.get("headline"))
+                link = it.get("link")
+                if isinstance(link, str) and re.match(r"^https?://[^\s\"'<>]+$", link):
+                    head = '<a href="%s" target="_blank" rel="noopener noreferrer nofollow">%s</a>' % (esc(link), head)
+                when = fmt_time(it.get("time")) if it.get("time") else ""
+                src = " &middot; ".join(x for x in (esc(it.get("site") or ""), when) if x)
+                why = ('<p>%s</p>' % esc(it.get("why"))) if it.get("why") else ""
+                lis.append('<li><b>%s</b> <span class="muted small">%s</span>%s</li>' % (head, src, why))
+            out.append('<ol class="news" dir="ltr" lang="en">%s</ol>' % "".join(lis))
+        elif made:
+            out.append('<p class="muted">%s</p>' % te("The brief has no news items."))
+        fs = nv.get("feeds") if isinstance(nv.get("feeds"), dict) else {}
+        if fs.get("tried"):
+            line = tr("Feeds: %s of %s read, %s headlines") % (fmt_num(fs.get("ok")), fmt_num(fs.get("tried")),
+                                                                fmt_num(fs.get("headlines")))
+            if nv.get("feeds_at"):
+                line += " &middot; " + fmt_time(nv.get("feeds_at"))
+            failed = [f for f in (fs.get("failed") or []) if isinstance(f, dict)]
+            if failed:
+                rows = "".join('<li>%s %s</li>' % (code(f.get("site")), esc(f.get("error"))) for f in failed)
+                out.append('<details class="feeds"><summary>%s &middot; %s</summary><ul class="feeds-failed" dir="ltr">'
+                           '%s</ul></details>' % (line, tr("%s could not be read") % fmt_num(fs.get("failed_count")
+                                                                                            or len(failed)), rows))
+            else:
+                out.append('<p class="muted small">%s</p>' % line)
+        return card(title, "".join(out), "news")
 
     def _services_card(self, data, bot):
         items = []
@@ -2153,7 +2208,7 @@ class PanelApp(object):
                    ' <span>%s%s</span></label>') % (fid, fid, esc(f.key), " checked" if value == "on" else "", label,
                                                    keytag)
         else:
-            if k in ("longtext", "symbols", "domains"):
+            if k in ("longtext", "symbols", "domains", "urls"):
                 cls += " wide"
             if k in ("int", "float", "pct"):
                 unit = tr(f.unit) if f.unit else ""
@@ -2166,9 +2221,10 @@ class PanelApp(object):
             elif k == "longtext":
                 ctl = '<textarea id="%s" name="%s" class="ltr short" dir="ltr" rows="6"%s>\n%s</textarea>' % (
                     fid, esc(f.key), maxlen, esc(value))
-            elif k == "domains":                          # v3.5: the trusted news sites, one per line
-                ctl = ('<textarea id="%s" name="%s" class="ltr short" dir="ltr" rows="8" spellcheck="false" '
-                       'autocomplete="off">\n%s</textarea>') % (fid, esc(f.key), esc(value))
+            elif k in ("domains", "urls"):                # v3.5: the trusted news sites; v3.7: extra feeds
+                ctl = ('<textarea id="%s" name="%s" class="ltr short" dir="ltr" rows="%d" spellcheck="false" '
+                       'autocomplete="off">\n%s</textarea>') % (fid, esc(f.key), 8 if k == "domains" else 4,
+                                                                 esc(value))
             else:
                 ctl = ('<input type="text" id="%s" name="%s" value="%s" class="ltr" dir="ltr" spellcheck="false" '
                        'autocomplete="off"%s>') % (fid, esc(f.key), esc(value), maxlen)

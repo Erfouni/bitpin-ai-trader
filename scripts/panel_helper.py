@@ -47,6 +47,7 @@ if __name__ == "__main__" and sys.platform.startswith("linux"):
 
 import base64  # noqa: E402
 import binascii  # noqa: E402
+import calendar  # noqa: E402
 import copy  # noqa: E402
 import difflib  # noqa: E402
 import importlib.util  # noqa: E402
@@ -99,7 +100,7 @@ EFFORTS = (None, "low", "medium", "high", "max")
 PANEL_EVENTS = ("login_ok", "login_locked")
 EVENT_PREFIX = "panel_event."
 EMPTY_STATE = {"equity": None, "last_decision": None, "positions": [], "resting_orders": None, "spend": None,
-               "status_fa": None, "last_decision_fa": None, "state_error": None}
+               "status_fa": None, "last_decision_fa": None, "state_error": None, "news": None}
 MAX_PENDING_EVENTS = 20
 KEEP_BACKUPS = 30
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -1087,10 +1088,49 @@ def collect_bot_state(state_dir, notify_state_dir, notify_conf, now):
             out["spend"] = dict((k, nt._fnum(sp.get(k))) for k in ("today_usd", "month_usd", "total_usd"))
         out["status_fa"] = strip_html(n.status_text(now))
         out["last_decision_fa"] = strip_html(n.last_text())
+        try:
+            out["news"] = news_view(n._read_json("news_cache"))
+        except Exception as e:  # noqa: BLE001 - the rest of the dashboard does not depend on it
+            log.warning("news cache not readable: %s: %s", type(e).__name__, e)
     except Exception as e:  # noqa: BLE001 - the dashboard still shows the services
         log.warning("bot state not readable: %s: %s", type(e).__name__, e)
         out["state_error"] = "%s: %s" % (type(e).__name__, str(e)[:200])
     return out
+
+
+_ITEM_TIME_RE = re.compile(r"^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}) UTC$")
+
+
+def news_view(nc):
+    """v3.7: the dashboard's news card from news_cache.json (read through the notifier's reader): the last good brief
+    - its time, how it was made (feeds / search), the model, the summary, the items with their site, time and
+    article link - the feeds of the last attempt and the last error. None without a cache. Every text passes the
+    news module's own cleaners (NewsBrief.from_dict, clean_feed_stats)."""
+    from bitpin import news as nm
+    if not isinstance(nc, dict) or not nc:
+        return None
+    b = nm.NewsBrief.from_dict(nc.get("brief"), max_chars=8000, max_items=20) if isinstance(nc.get("brief"),
+                                                                                             dict) else None
+    good = b is not None and b.ok and b.fetched_at is not None
+    items = []
+    for it in (b.items if good else []):
+        t = it.get("time_hint") or ""
+        m = _ITEM_TIME_RE.match(t)
+        if m:                                         # a feed item's exact time: shown as Tehran time
+            try:
+                t = calendar.timegm((int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4)),
+                                     int(m.group(5)), 0, 0, 0, 0))
+            except (ValueError, OverflowError):
+                pass
+        items.append({"headline": it.get("headline") or "", "why": it.get("why_it_matters") or "", "time": t,
+                      "site": nm.source_host(it.get("source_url") or ""), "link": it.get("link") or ""})
+    feeds = nm.clean_feed_stats(nc.get("feeds")) if isinstance(nc.get("feeds"), dict) else \
+        (dict(b.feeds) if good and b.feeds else {})
+    return {"fetched_at": b.fetched_at if good else None, "mode": b.mode if good else None,
+            "model": b.model if good else "", "summary": b.summary if good else "", "items": items,
+            "dropped": b.dropped if good else 0, "feeds": feeds, "feeds_at": nm._fnum(nc.get("feeds_at")),
+            "last_error": nm._clean_text(nc.get("last_error"), 300) if nc.get("last_error") else "",
+            "last_error_at": nm._fnum(nc.get("last_error_at"))}
 
 
 def clean_actor(actor):

@@ -1104,3 +1104,15 @@ dl.an dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 340px) {
   .kpis { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* v3.7: the news card */
+ol.news { margin: 6px 0 0; padding-inline-start: 22px; }
+ol.news li { margin: 8px 0; overflow-wrap: anywhere; }
+ol.news li p { margin: 3px 0 0; color: var(--text-2); }
+ol.news a { color: inherit; text-decoration: underline; text-decoration-color: var(--border-strong); }
+ol.news a:hover { color: var(--accent); }
+.news-sum { margin: 4px 0 8px; }
+details.feeds { margin-top: 8px; color: var(--text-3); font-size: 13px; }
+details.feeds > summary { cursor: pointer; }
+ul.feeds-failed { margin: 6px 0 0; padding-inline-start: 18px; }
+ul.feeds-failed li { margin: 2px 0; overflow-wrap: anywhere; }

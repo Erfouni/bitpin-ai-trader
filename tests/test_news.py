@@ -133,6 +133,7 @@ class NewsTestBase(unittest.TestCase):
 
     def researcher(self, script, env=None, state_dir="default", **cfg):
         cfg.setdefault("sources", [])    # v3.5: any site here; test_news_sources.py covers the trusted list
+        cfg.setdefault("mode", "search")   # v3.7: the model's web search here; test_news_feeds.py covers feeds mode
         tr = FakeTransport(script, self.clock)
         r = NewsResearcher(cfg or None, state_dir=self.dir if state_dir == "default" else state_dir, transport=tr,
                            env=ENV if env is None else env, clock=lambda: T0, monotonic=self.clock,
@@ -553,7 +554,7 @@ class TestParsing(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         clock = Clock()
         tr = FakeTransport([(200, completion("Sure! ```json\n%s\n```" % GOOD))], clock)
-        r = NewsResearcher(None, d, transport=tr, env=ENV, monotonic=clock, sleep=clock.sleep)
+        r = NewsResearcher({"mode": "search"}, d, transport=tr, env=ENV, monotonic=clock, sleep=clock.sleep)
         b = r.research(T0)
         self.assertTrue(b.ok, b.error)
         self.assertEqual(len(b.items), 2)
@@ -636,7 +637,7 @@ class TestParsing(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         clock = Clock()
         tr = FakeTransport([(200, completion(json.dumps({"items": items, "summary": "ok"})))], clock)
-        r = NewsResearcher({"sources": []}, d, transport=tr, env=ENV, monotonic=clock, sleep=clock.sleep)
+        r = NewsResearcher({"sources": [], "mode": "search"}, d, transport=tr, env=ENV, monotonic=clock, sleep=clock.sleep)
         b = r.research(T0)
         self.assertTrue(b.ok)
         self.assertLessEqual(len(b.text), 2500)
@@ -754,7 +755,7 @@ class TestProxyAndSecrets(unittest.TestCase):
         env = dict(self.SYSTEM_PROXIES, KIMI_API_KEY=KEY)
         with mock.patch.dict(os.environ, env):
             os.environ.pop("KIMI_HTTPS_PROXY", None)
-            r = NewsResearcher(None, state_dir=None)          # env=None: reads os.environ
+            r = NewsResearcher({"mode": "search"}, state_dir=None)          # env=None: reads os.environ
             self.assertIsNone(r.proxy)
             self.assertEqual(r.proxy_display, "none (direct)")
             self.assertEqual(_proxies_of(r._transport.opener), {})
@@ -771,12 +772,12 @@ class TestProxyAndSecrets(unittest.TestCase):
         r = NewsResearcher({"proxy": "https://127.0.0.1:8443"}, state_dir=None, env=ENV)
         self.assertEqual(r.proxy, "https://127.0.0.1:8443")
         self.assertEqual(r.proxy_source, "news.proxy")
-        self.assertIsNone(NewsResearcher(None, state_dir=None, env=dict(ENV, KIMI_HTTPS_PROXY=" ")).proxy)
+        self.assertIsNone(NewsResearcher({"mode": "search"}, state_dir=None, env=dict(ENV, KIMI_HTTPS_PROXY=" ")).proxy)
         for bad in ("socks5://127.0.0.1:1080", "http://127.0.0.1", "http://127.0.0.1:1081/path", "ftp://x:1"):
             with self.assertRaises(NewsConfigError):
                 NewsResearcher({"proxy": bad}, state_dir=None, env=ENV)
             with self.assertRaises(NewsConfigError):
-                NewsResearcher(None, state_dir=None, env=dict(ENV, KIMI_HTTPS_PROXY=bad))
+                NewsResearcher({"mode": "search"}, state_dir=None, env=dict(ENV, KIMI_HTTPS_PROXY=bad))
 
     def test_key_and_proxy_credentials_never_logged(self):
         proxy = "http://tunneluser:tunnelPW-98765@127.0.0.1:1081"
@@ -785,7 +786,7 @@ class TestProxyAndSecrets(unittest.TestCase):
         script = [urllib.error.URLError(leak), ConnectionResetError(leak), socket.timeout(leak),
                   http.client.RemoteDisconnected(leak)]
         tr = FakeTransport(script, clock)
-        r = NewsResearcher(None, state_dir=None, transport=tr, env=dict(ENV, KIMI_HTTPS_PROXY=proxy),
+        r = NewsResearcher({"mode": "search"}, state_dir=None, transport=tr, env=dict(ENV, KIMI_HTTPS_PROXY=proxy),
                            monotonic=clock, sleep=clock.sleep)
         with self.assertLogs("bitpin.news", "DEBUG") as logs:
             b1 = r.research(T0)
@@ -803,7 +804,7 @@ class TestProxyAndSecrets(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         clock = Clock()
         tr = FakeTransport([(200, completion(GOOD))], clock)
-        r = NewsResearcher(None, d, transport=tr, env=ENV, monotonic=clock, sleep=clock.sleep)
+        r = NewsResearcher({"mode": "search"}, d, transport=tr, env=ENV, monotonic=clock, sleep=clock.sleep)
         self.assertTrue(r.research(T0).ok)
         for name in (CACHE_FILE, BUDGET_FILE):
             with open(os.path.join(d, name), encoding="utf-8") as f:
@@ -1042,7 +1043,7 @@ class TestSafetyFilter(unittest.TestCase):
         self.addCleanup(shutil.rmtree, d, True)
         clock = Clock()
         reply = json.dumps({"items": [{"headline": c} for c in INJECTIONS[:3]]})
-        r = NewsResearcher({"sources": []}, d, transport=FakeTransport([(200, completion(reply))], clock), env=ENV,
+        r = NewsResearcher({"sources": [], "mode": "search"}, d, transport=FakeTransport([(200, completion(reply))], clock), env=ENV,
                            monotonic=clock, sleep=clock.sleep)
         b = r.research(T0)
         self.assertTrue(b.ok, b.error)
@@ -1238,7 +1239,7 @@ class TestRedactionBoundary(unittest.TestCase):
             clock = Clock()
             msg = "x" * pad + " via " + self.PROXY + " Bearer " + KEY
             tr = FakeTransport([http.client.RemoteDisconnected(msg)], clock)
-            r = NewsResearcher({"max_retries": 0}, state_dir=None, transport=tr,
+            r = NewsResearcher({"max_retries": 0, "mode": "search"}, state_dir=None, transport=tr,
                                env=dict(ENV, KIMI_HTTPS_PROXY=self.PROXY), monotonic=clock, sleep=clock.sleep)
             b = r.research(T0)
             for frag in [pw[i:i + 4] for i in range(len(pw) - 3)] + ["tunneluser", "sk-N", "NEWSTEST", "7890ab"]:
@@ -1660,7 +1661,7 @@ class TestNewsStreaming(NewsTestBase):
             validate_news_config({"stream": 1})
 
     def test_default_transport_allows_large_streams(self):
-        r = NewsResearcher(None, state_dir=None, env=ENV)
+        r = NewsResearcher({"mode": "search"}, state_dir=None, env=ENV)
         self.assertGreaterEqual(r._transport.max_bytes, 64 * 1024 * 1024)
         self.assertEqual(make_news_transport(None, max_bytes=1000).max_bytes, 1000)
 

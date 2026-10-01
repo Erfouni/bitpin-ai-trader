@@ -1050,7 +1050,7 @@ class EndToEndPaperTest(unittest.TestCase):
             return 200, json.dumps({"choices": [{"finish_reason": "stop", "message": {
                 "role": "assistant", "content": reply_text}}],
                 "usage": {"prompt_tokens": 7100, "completion_tokens": 400, "total_tokens": 7500}}).encode("utf-8")
-        return NewsResearcher({"model": "kimi-k2.6", "max_retries": 0}, self.dir, transport=transport,
+        return NewsResearcher({"model": "kimi-k2.6", "max_retries": 0, "mode": "search"}, self.dir, transport=transport,
                               env={"KIMI_API_KEY": KEY}, clock=self.clock, sleep=self.clock.sleep)
 
     def test_news_is_researched_right_before_each_decision(self):
@@ -1700,7 +1700,7 @@ class CliTest(unittest.TestCase):
         k = kimi_config()
         k["llm"] = dict(k["llm"], model="kimi-k3")
         k["brain"]["risk_profile"] = "full"
-        k["news"] = {"model": "kimi-k2.6"}
+        k["news"] = {"model": "kimi-k2.6", "mode": "search"}
         # a bot state dir whose news budget is used up and which holds a cached brief: research(force=True)
         # there would return the OLD brief with ok=True, stale=True and no request (a false OK)
         bot_sd = os.path.join(self.dir, "botstate")
