@@ -285,7 +285,7 @@ FIELDS = [
     Field("kimi", "news.cache_minutes", "int", "news", T("عمر خلاصه‌ی خبر", "Lifetime of a news summary"),
           unit=MINUTES, lo=0, hi=10080),
     Field("kimi", "news.max_stale_minutes", "int", "news",
-          T("استفاده از خلاصه‌ی کهنه وقتی جست‌وجو شکست خورد", "Use an older summary when the search fails"),
+          T("استفاده از خلاصه‌ی کهنه وقتی تهیه‌ی خبر شکست خورد", "Use an older summary when the news fails"),
           T("۰ یعنی هرگز.", "0 = never."), unit=MINUTES, lo=0, hi=10080),
     Field("kimi", "news.max_items", "int", "news", T("تعداد خبر در خلاصه", "News items in a summary"), lo=1, hi=20),
     Field("kimi", "news.extra_topics", "longtext", "news",

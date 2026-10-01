@@ -599,6 +599,24 @@ class Helper(object):
             raise HelperError("the performance report failed (exit %d): %s" % (rc, out.strip()[-200:]))
         return data
 
+    def cmd_technical(self, a):
+        """v3.8: the technical page - bitpin.technical.collect() of the last decision record (the exact indicators
+        Kimi got, its reading and the code's check), read by a worker running as the user bitpin (like bot_state)."""
+        from bitpin import technical as tech
+        if self.p.state_in_process:
+            return tech.collect(self.p.state_dir)
+        argv = ["runuser", "-u", self.p.bot_user, "--", self.p.python, os.path.join(self.p.app_dir, "scripts",
+                "panel_helper.py"), "ta-worker", "--state-dir", self.p.state_dir]
+        rc, out = self.run(argv, 60, cwd=self.p.app_dir, limit=PERF_MAX_OUTPUT)
+        last = [ln for ln in out.splitlines() if ln.startswith("{")]
+        try:
+            data = json.loads(last[-1])
+        except (IndexError, ValueError):
+            data = None
+        if not isinstance(data, dict):
+            raise HelperError("the technical data could not be read (exit %d): %s" % (rc, out.strip()[-200:]))
+        return data
+
     def cmd_config_get(self, a):
         return {"config": read_text(self.p.config), "kimi": read_text(self.p.kimi)}
 
@@ -1144,6 +1162,7 @@ def clean_actor(actor):
 COMMANDS = {
     "status": (False, Helper.cmd_status),
     "performance": (False, Helper.cmd_performance),
+    "technical": (False, Helper.cmd_technical),
     "config_get": (False, Helper.cmd_config_get),
     "secrets_status": (False, Helper.cmd_secrets_status),
     "health": (False, Helper.cmd_health),
@@ -1242,6 +1261,17 @@ def perf_worker(argv):
     return 0
 
 
+def ta_worker(argv):
+    """Run as user bitpin: print bitpin.technical.collect() as one JSON line (v3.8)."""
+    import argparse
+    ap = argparse.ArgumentParser(prog="panel_helper.py ta-worker")
+    ap.add_argument("--state-dir", required=True)
+    args = ap.parse_args(argv)
+    from bitpin import technical as tech
+    print(json.dumps(tech.collect(args.state_dir), default=str, separators=(",", ":")))
+    return 0
+
+
 def models_worker(argv):
     """Run as user bitpin (the key in the environment, never on the command line): print one JSON line."""
     import argparse
@@ -1288,6 +1318,8 @@ def main(argv=None):
         return state_worker(argv[1:])
     if argv[:1] == ["perf-worker"]:
         return perf_worker(argv[1:])
+    if argv[:1] == ["ta-worker"]:
+        return ta_worker(argv[1:])
     if argv:
         print(__doc__.strip())
         return 2

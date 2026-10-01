@@ -224,6 +224,10 @@ def read_analyses(path, limit=MAX_DECISIONS_BYTES):
                 item[k] = _f(c.get(k))
             for k in ("evidence", "bear"):
                 item[k] = _text(rc.get(k)) or _text(c.get(k))
+            if isinstance(c.get("ta"), dict):           # v3.8: the technical reading and the code's check
+                from .technical import parse_ta
+                item["ta"] = parse_ta(c.get("ta"))[0]
+                item["ta_check"] = [x for x in (c.get("ta_check") or []) if isinstance(x, dict)][:12]
             out[asset] = item
     return out
 

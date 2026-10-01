@@ -4,6 +4,33 @@
 
 ---
 
+## 3.8.0 — «خوانش تکنیکال»: تحلیل تکنیکال کیمی با روش ثابت و دادهٔ ساختاریافته (2026-10-02)
+
+- ربات برای هر کوین عددهای دقیق اندیکاتورها را به کیمی می‌داد (فاصله از EMA20/50/200، RSI، MACD، بولینگر، کانال دانچیان،
+  حمایت و مقاومت، حجم). ولی کیمی برداشتش را فقط در یک متن آزاد («شواهد») می‌نوشت که در ذخیره حتی نشانه‌هایی مثل `<` و `=` را
+  از دست می‌داد، و معلوم نبود هر عدد را چطور خوانده است.
+- حالا یک **روش ثابت** در دستور کیمی نوشته شده و کیمی برای هر کوینی که تحلیل می‌کند یک شیء `ta` با فیلدهای ثابت برمی‌گرداند:
+  روند (EMA20 و EMA50)، روند بلند (EMA200)، مومنتوم (هیستوگرام MACD)، RSI (اشباع خرید / قوی / خنثی / ضعیف / اشباع فروش)،
+  جای قیمت در باندهای بولینگر، جای قیمت در کانال دانچیان، حجم، نزدیک‌ترین حمایت و مقاومت، و خوانش کلی (مثبت / منفی / خنثی).
+- **کد همان قاعده‌ها را روی همان عددها اجرا می‌کند** و هر فیلدی را که کیمی متفاوت خوانده نشان می‌دهد. این بررسی فقط برای
+  دیدن است و هیچ تصمیمی را رد نمی‌کند: خوانش تکنیکال وضع نمودار را توصیف می‌کند و به‌تنهایی سیگنال خرید یا فروش نیست
+  (پژوهش ربات نشان داده بود سیگنال‌های مکانیکی از هزینه‌ها جلو نمی‌زنند، B7 و B8).
+- **پنل:** صفحهٔ تازهٔ **«تحلیل تکنیکال»** (`/technical`): خوانش کیمی برای هر کوینِ تحلیل‌شده با علامت فیلدهای متفاوت و
+  مقدار درست، جدول عددهای دقیق همهٔ کوین‌هایی که داده‌ی کامل دارند (همان عددهایی که به کیمی رسید) با برچسب خوانش کد، و توضیح
+  روش. کادر «استراتژی و تحلیل» هر موقعیت در صفحهٔ عملکرد هم ردیف «خوانش تکنیکال» دارد و کارت آخرین تصمیم در داشبورد به این
+  صفحه لینک می‌دهد.
+- هزینه: جواب کیمی برای هر کوینِ تحلیل‌شده حدود ۱۰۰ توکن بلندتر می‌شود. رفتار معامله‌ای کد عوض نشده و تأیید تازه لازم نیست.
+- English: new `bitpin/technical.py` - the fixed rules (`reading()`: trend from ema_dev_pct[0..1], long from [2],
+  momentum from the MACD histogram vs MACD_FLAT 0.02, rsi bands 70/55/45/30, Bollinger place 0.8/0.2, Donchian
+  breakout / halves / breakdown, vol_ratio 1.5/0.7, the nearest sup / res or the channel edges with distance and
+  strength, a descriptive tone), `parse_ta()`, `check_ta()` (levels within LEVEL_TOLERANCE 0.5%), `method_text()` /
+  `schema_text()` rendered into the system prompt ({{TA_METHOD}}, {{TA_SCHEMA}}: a TECHNICAL READING paragraph after
+  PROCEDURE step 4, "ta" after "row" in each candidate) and `collect()` (the last decision record with a context ->
+  the panel's data). `bitpin/brain.py` parse_analysis keeps ta, ta_code, ta_check (and ta_dropped) on every candidate
+  and logs the differences; never a problem, never an adjustment. USER_MESSAGE_TAIL names "ta". Panel: helper command
+  `technical` (ta-worker as bitpin), page `/technical` (navigation: Overview), analysis box row,
+  `performance.read_analyses` carries ta / ta_check. Tests: `tests/test_technical.py`, `tests/test_panel_technical.py`.
+
 ## 3.7.0 — «خبر از فید»: ربات خبر را از فید خود منابع معتبر می‌خواند (2026-10-01)
 
 - جست‌وجوی وب مدل خبر از راه تونل جواب نداد. Moonshot «حالت JSON» را کنار ابزار جست‌وجویش با جواب خالی رد می‌کند. kimi-k2.6

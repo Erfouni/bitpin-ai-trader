@@ -182,6 +182,94 @@ FA = {
     "on Bitpin's order book": u"در دفتر سفارش بیت‌پین",
     "Kimi's last decision": u"آخرین تصمیم کیمی",
     "News brief": u"خلاصه‌ی خبر",
+    "Technical analysis": u"تحلیل تکنیکال",
+    "Technical analysis of this decision": u"تحلیل تکنیکال این تصمیم",
+    "The exact indicators the bot gave Kimi at its last decision, Kimi's reading by the fixed method and the code's "
+    "check": u"عددهای دقیق اندیکاتورهایی که ربات در آخرین تصمیم به کیمی داد، خوانش کیمی با روش ثابت و بررسی کد",
+    "No decision with a market context is recorded yet.": u"هنوز تصمیمی با دادهٔ بازار ثبت نشده است.",
+    "Decision of %s": u"تصمیم %s",
+    "How the reading works": u"خوانش چطور انجام می‌شود",
+    "Kimi reads the same numbers by the same rules in every decision; the code checks each field. The reading "
+    "describes the chart: it is not a buy or sell signal of its own.":
+        u"کیمی در هر تصمیم همین عددها را با همین قاعده‌ها می‌خواند و کد تک‌تک فیلدها را بررسی می‌کند. این خوانش وضع نمودار را "
+        u"توصیف می‌کند و به‌تنهایی سیگنال خرید یا فروش نیست.",
+    "Kimi's technical reading": u"خوانش تکنیکال کیمی",
+    "Coin": u"کوین",
+    "Overall reading": u"خوانش کلی",
+    "Support": u"حمایت",
+    "Resistance": u"مقاومت",
+    "rules: %s": u"طبق قاعده: %s",
+    "No reading": u"بدون خوانش",
+    "%s differ": u"%s مورد متفاوت",
+    "Matches the rules": u"مطابق قاعده‌ها",
+    "Kimi analysed no coin in this decision (it changed nothing and no plan was due).":
+        u"کیمی در این تصمیم هیچ کوینی را تحلیل نکرد (چیزی را تغییر نداد و مهلت هیچ برنامه‌ای نرسیده بود).",
+    "This decision is older than the technical reading (version 3.8): only the code's reading is shown below.":
+        u"این تصمیم پیش از اضافه شدن خوانش تکنیکال (نسخهٔ ۳٫۸) گرفته شده؛ پایین فقط خوانش کد نشان داده می‌شود.",
+    "Indicators of every coin": u"اندیکاتورهای همهٔ کوین‌ها",
+    "Price (USDT)": u"قیمت (تتر)",
+    "Trend (EMA 20 / 50 / 200)": u"روند (فاصله از EMA 20 / 50 / 200)",
+    "RSI 4h / 1d": u"RSI چهارساعته / روزانه",
+    "Bollinger": u"بولینگر",
+    "Donchian 20 (4h)": u"کانال دانچیان ۲۰ (۴ساعته)",
+    "30-day range": u"جایگاه در دامنهٔ ۳۰ روزه",
+    "7 d / 30 d": u"۷ روز / ۳۰ روز",
+    "Held": u"در سبد",
+    "Analysed": u"تحلیل‌شده",
+    "Prices and levels in USDT (USDT_IRT in toman), exactly as the bot gave them to Kimi; the small labels are the "
+    "code's reading by the fixed rules.":
+        u"قیمت‌ها و سطح‌ها به تتر (تتر خودش به تومان)، دقیقاً همان‌طور که ربات به کیمی داد؛ برچسب‌های کوچک خوانش کد با "
+        u"قاعده‌های ثابت است.",
+    "Technical reading": u"خوانش تکنیکال",
+    "%s read differently from the rules": u"%s مورد متفاوت با قاعده‌ها خوانده شده",
+    "Trend": u"روند",
+    "Long trend (EMA200)": u"روند بلند (EMA200)",
+    "Momentum": u"مومنتوم",
+    "Donchian": u"دانچیان",
+    "Volume": u"حجم",
+    "Up": u"صعودی",
+    "Down": u"نزولی",
+    "Mixed": u"نامشخص",
+    "Above": u"بالای آن",
+    "Below": u"زیر آن",
+    "Rising": u"رو به بالا",
+    "Falling": u"رو به پایین",
+    "Flat": u"بی‌جهت",
+    "Overbought": u"اشباع خرید",
+    "Strong": u"قوی",
+    "Neutral": u"خنثی",
+    "Weak": u"ضعیف",
+    "Oversold": u"اشباع فروش",
+    "Above the upper band": u"بالای باند بالا",
+    "Near the upper band": u"نزدیک باند بالا",
+    "Middle": u"وسط باندها",
+    "Near the lower band": u"نزدیک باند پایین",
+    "Below the lower band": u"زیر باند پایین",
+    "Upper half": u"نیمهٔ بالا",
+    "Lower half": u"نیمهٔ پایین",
+    "Breakdown": u"شکست کف",
+    "High": u"بالا",
+    "Normal": u"عادی",
+    "Low": u"پایین",
+    "Bullish": u"صعودی (مثبت)",
+    "Bearish": u"نزولی (منفی)",
+    "Trend: the price above the 4-hour EMA20 and EMA50 is up, below both is down, otherwise mixed; EMA200 shows the "
+    "longer trend.": u"روند: قیمت بالای EMA20 و EMA50 چهارساعته یعنی صعودی، زیر هر دو یعنی نزولی، وگرنه نامشخص؛ EMA200 روند "
+                     u"بلندتر را نشان می‌دهد.",
+    "Momentum: the MACD histogram (12, 26, 9) above 0.02% of the price is rising, below -0.02% falling, otherwise "
+    "flat.": u"مومنتوم: هیستوگرام MACD (۱۲، ۲۶، ۹) بالای ۰٫۰۲٪ قیمت یعنی رو به بالا، زیر ۰٫۰۲-٪ رو به پایین، وگرنه بی‌جهت.",
+    "RSI (14, 4 hours): 70 or more overbought, 55 to 70 strong, 45 to 55 neutral, 30 to 45 weak, 30 or less oversold.":
+        u"RSI (۱۴، چهارساعته): ۷۰ و بیشتر اشباع خرید، ۵۵ تا ۷۰ قوی، ۴۵ تا ۵۵ خنثی، ۳۰ تا ۴۵ ضعیف، ۳۰ و کمتر اشباع فروش.",
+    "Bollinger (20, 2): the place of the price in the bands; 0.8 or more is near the upper band, 0.2 or less near the "
+    "lower one.": u"بولینگر (۲۰، ۲): جای قیمت در باندها؛ ۰٫۸ و بیشتر نزدیک باند بالا، ۰٫۲ و کمتر نزدیک باند پایین.",
+    "Donchian (20 bars of 4 hours): at or above the highest close is a breakout, at or below the lowest a breakdown, "
+    "otherwise the upper or lower half.": u"دانچیان (۲۰ کندل چهارساعته): روی بالاترین سطح یا بالاتر یعنی شکست سقف، روی "
+                                          u"پایین‌ترین یا پایین‌تر یعنی شکست کف، وگرنه نیمهٔ بالا یا پایین کانال.",
+    "Volume: the last 24 hours against the 30-day daily average; 1.5 times or more is high, 0.7 or less low.":
+        u"حجم: ۲۴ ساعت اخیر نسبت به میانگین روزانهٔ ۳۰ روز؛ ۱٫۵ برابر و بیشتر بالا، ۰٫۷ و کمتر پایین.",
+    "Support and resistance: the nearest levels from the 4-hour swing lows and highs of 30 days, with the number of "
+    "swing points that hold them.": u"حمایت و مقاومت: نزدیک‌ترین سطح‌ها از کف‌ها و سقف‌های چرخشی چهارساعتهٔ ۳۰ روز اخیر، "
+                                    u"با تعداد نقطه‌هایی که آن سطح را ساخته‌اند.",
     "No news brief yet.": u"هنوز خلاصه‌ی خبری تهیه نشده.",
     "Made %s": u"تهیه‌شده در %s",
     "From the trusted sources' feeds": u"از فید منابع معتبر",

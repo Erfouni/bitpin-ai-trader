@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.7.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.8.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -57,7 +57,9 @@ risk that implies: the model stays the decision maker, and the code adds discipl
     items older than a week are dropped. The brief is treated as untrusted text: prices and embedded instructions
     are removed.
   - *Decision:* the decision model returns a strict JSON allocation. Every new position comes with an entry plan
-    (setup, horizon, invalidation, optional target or stop) and an expected-value analysis after costs.
+    (setup, horizon, invalidation, optional target or stop) and an expected-value analysis after costs; every
+    analysed coin also gets a technical reading by one fixed method (trend, momentum, RSI, Bollinger, Donchian,
+    volume, support, resistance) that the code re-checks on the same numbers.
 - **53 markets:** USDT, 34 liquid coins and 18 tokenized real-world assets (gold, silver, oil, gas, copper miners,
   US stocks, US equity and bond ETFs). Tokenized stocks, ETFs and commodity funds are bought only while the US
   market is open and below a 1 % spread; the gold tokens PAXG and XAUT trade around the clock.
@@ -135,6 +137,7 @@ sudo ufw allow 8443/tcp            # only if ufw is active: the panel never open
 | Dashboard | services, account value, profit or loss, drawdown, the last decision with its report, positions, spend |
 | Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it |
 | Trade history | every buy and sell of the bot, with filters, pages and a CSV download |
+| Technical analysis | the exact indicators the bot gave the model at its last decision, the model's reading by the fixed method and the code's check of it |
 | Trade settings | about 60 key settings in 9 groups (the trusted news sources too), with a preview and a diff before saving |
 | Models and keys | Moonshot, OpenRouter or another provider; the model list with prices; write-only keys |
 | Settings (JSON) | the complete `config.json` and `kimi.json`, validated before saving |
@@ -319,6 +322,7 @@ skipped elsewhere. No test touches the network or a real key: exchange and model
 | `notify.py` | the Telegram notifier (Persian) |
 | `panel_web.py`, `panel_auth.py`, `panel_settings.py`, `panel_i18n.py`, `static/` | the web panel: pages, login and sessions, the trade settings form, the Persian translations, the stylesheet |
 | `performance.py` | the panel's profit and loss report: totals in toman and USDT, rows per asset, chart data, the trade history |
+| `technical.py` | the fixed technical reading: its rules, the check of the model's reading, the panel's technical page |
 | `vpn.py` | VPN share links to xray outbounds, secret masking, xray and proxy tests |
 | `spend.py` | the USD spend meter of the model calls |
 | `data.py`, `indicators.py`, `backtest.py`, `research.py`, `strategies/` | candles, indicators, a lookahead-free backtester and the rule strategies that were tested |

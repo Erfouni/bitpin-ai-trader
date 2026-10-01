@@ -130,7 +130,7 @@ TEXT_TYPE = "text/plain; charset=utf-8"
 APP_NAME = N_("Bitpin AI Trader")
 NAV = (
     (N_("Overview"), (("/", "dashboard", N_("Dashboard")), ("/performance", "trend", N_("Performance")),
-                      ("/history", "list", N_("Trade history")))),
+                      ("/technical", "spark", N_("Technical analysis")), ("/history", "list", N_("Trade history")))),
     (N_("Trading"), (("/trade", "sliders", N_("Trade settings")), ("/models", "cpu", N_("Models & keys")),
                      ("/apply", "check", N_("Apply settings")))),
     (N_("System"), (("/vpn", "globe", N_("VPN")), ("/logs", "logs", N_("Logs")),
@@ -177,6 +177,38 @@ ROW_TITLES = {"B1": N_("holding USDT, the benchmark"), "B2": N_("a top coin agai
               "B12": N_("tokenized US stocks, ETFs and oil")}
 VERDICT_LABELS = {"open": N_("Open"), "add": N_("Add"), "hold": N_("Hold"), "trim": N_("Trim"), "cut": N_("Cut"),
                   "reject": N_("Reject")}
+# v3.8: the technical reading (bitpin/technical.py): the fields, their values and the method in words
+TA_FIELD_LABELS = (("trend", N_("Trend")), ("long", N_("Long trend (EMA200)")), ("momentum", N_("Momentum")),
+                   ("rsi", "RSI"),
+                   ("bands", N_("Bollinger")), ("channel", N_("Donchian")), ("volume", N_("Volume")))
+TA_VALUE_LABELS = {
+    "trend": {"up": N_("Up"), "down": N_("Down"), "mixed": N_("Mixed")},
+    "long": {"above": N_("Above"), "below": N_("Below")},
+    "momentum": {"rising": N_("Rising"), "falling": N_("Falling"), "flat": N_("Flat")},
+    "rsi": {"overbought": N_("Overbought"), "strong": N_("Strong"), "neutral": N_("Neutral"), "weak": N_("Weak"),
+            "oversold": N_("Oversold")},
+    "bands": {"above_upper": N_("Above the upper band"), "upper": N_("Near the upper band"), "middle": N_("Middle"),
+              "lower": N_("Near the lower band"), "below_lower": N_("Below the lower band")},
+    "channel": {"breakout": N_("Breakout"), "upper_half": N_("Upper half"), "lower_half": N_("Lower half"),
+                "breakdown": N_("Breakdown")},
+    "volume": {"high": N_("High"), "normal": N_("Normal"), "low": N_("Low")},
+    "read": {"bullish": N_("Bullish"), "bearish": N_("Bearish"), "neutral": N_("Neutral")},
+}
+TA_METHOD_LINES = (
+    N_("Trend: the price above the 4-hour EMA20 and EMA50 is up, below both is down, otherwise mixed; EMA200 shows "
+       "the longer trend."),
+    N_("Momentum: the MACD histogram (12, 26, 9) above 0.02% of the price is rising, below -0.02% falling, otherwise "
+       "flat."),
+    N_("RSI (14, 4 hours): 70 or more overbought, 55 to 70 strong, 45 to 55 neutral, 30 to 45 weak, 30 or less "
+       "oversold."),
+    N_("Bollinger (20, 2): the place of the price in the bands; 0.8 or more is near the upper band, 0.2 or less near "
+       "the lower one."),
+    N_("Donchian (20 bars of 4 hours): at or above the highest close is a breakout, at or below the lowest a "
+       "breakdown, otherwise the upper or lower half."),
+    N_("Volume: the last 24 hours against the 30-day daily average; 1.5 times or more is high, 0.7 or less low."),
+    N_("Support and resistance: the nearest levels from the 4-hour swing lows and highs of 30 days, with the number of "
+       "swing points that hold them."),
+)
 ANALYSIS_METHODS = (           # (group, method, pattern over Kimi's evidence and bear texts, lower case)
     ("technical", N_("4h EMAs"), r"\bema"),
     ("technical", "RSI", r"\brsi"),
@@ -949,6 +981,8 @@ def analysis_html(p):
         if v:
             rows.append((N_("Kimi's verdict"), te(VERDICT_LABELS[v]) if v in VERDICT_LABELS else ltr(v)))
         rows.append((N_("Analysed"), fmt_time(a.get("time"))))
+        if isinstance(a.get("ta"), dict) and a.get("ta"):              # v3.8: the technical reading
+            rows.append((N_("Technical reading"), ta_summary_html(a.get("ta"), a.get("ta_check"))))
         if a.get("evidence") or a.get("bear"):
             extra = '<details class="more"><summary>%s</summary><p><b>%s</b> %s</p><p><b>%s</b> %s</p></details>' % (
                 te("Kimi's own words"), te("Evidence:"), bdi(a.get("evidence") or ""), te("Against it:"),
@@ -960,6 +994,28 @@ def analysis_html(p):
         rows.append((N_("Kimi's note on the plan"), bdi(p.get("note"))))
     return '<div class="analysis"><h4>%s%s</h4><dl class="an">%s</dl>%s</div>' % (
         icon("spark"), te("Strategy and analysis"), "".join("<dt>%s</dt><dd>%s</dd>" % (te(k), v) for k, v in rows), extra)
+
+
+def ta_label(field, value):
+    """The translated label of a technical-reading value (the value itself when it is not one of the method's)."""
+    lab = TA_VALUE_LABELS.get(field, {}).get(value)
+    return te(lab) if lab else ltr(value)
+
+
+def ta_summary_html(ta, checks=None):
+    """v3.8: Kimi's technical reading in one line (its overall reading first), the fields the rules read
+    differently marked."""
+    bad = {x.get("field") for x in (checks or []) if isinstance(x, dict)}
+    parts = []
+    if ta.get("read") in TA_VALUE_LABELS["read"]:
+        parts.append("<b>%s</b>" % ta_label("read", ta["read"]))
+    for key, label in TA_FIELD_LABELS:
+        if ta.get(key):
+            parts.append('<span class="%s">%s: %s</span>' % ("ta-bad" if key in bad else "ta-ok", te(label),
+                                                             ta_label(key, ta[key])))
+    if bad:
+        parts.append('<span class="ta-bad">%s</span>' % esc(tr("%s read differently from the rules") % len(bad)))
+    return " &middot; ".join(parts) if parts else dash()
 
 
 class _Req(object):
@@ -1014,7 +1070,7 @@ class PanelApp(object):
             "/": self._dashboard, "/models": self._models_get, "/settings": self._settings_get,
             "/trade": self._trade_get, "/apply": self._apply_get, "/vpn": self._vpn_get, "/logs": self._logs_get,
             "/health": self._health_get, "/security": self._security_get, "/performance": self._performance_get,
-            "/history": self._history_get, "/history.csv": self._history_csv,
+            "/history": self._history_get, "/history.csv": self._history_csv, "/technical": self._technical_get,
         }
         self._post_routes = {
             "/logout": self._logout, "/service": self._service_post, "/models/list": self._models_list,
@@ -1589,6 +1645,7 @@ class PanelApp(object):
         if d.get("error"):
             kind = (" (%s)" % ltr(d.get("error_kind"))) if d.get("error_kind") else ""
             out.append(box("err", tr("Error%s: %s") % (kind, bdi(d.get("error")))))
+        out.append('<p class="small"><a href="/technical">%s</a></p>' % te("Technical analysis of this decision"))
         out.append("<h3>%s</h3>" % te("Target weights"))
         if tl:
             out.append('<div class="weights">%s</div>' % "".join(
@@ -2653,6 +2710,142 @@ class PanelApp(object):
         else:
             parts.append(box("info", te("Open positions and their charts are shown for a range that ends now.")))
         return self._page(req, title, "".join(parts), active="/performance", sub=sub, refresh=refresh)
+
+    # ---------------------------------------------------------------------------------- v3.8: the technical page
+    def _technical_get(self, req):
+        title = tr("Technical analysis")
+        sub = tr("The exact indicators the bot gave Kimi at its last decision, Kimi's reading by the fixed method and "
+                 "the code's check")
+        data, err = self._call(req, "technical")
+        if err is not None:
+            return self._page(req, title, self._helper_error(err), status=502, active="/technical", sub=sub)
+        if not data.get("time"):
+            return self._page(req, title, box("info", te("No decision with a market context is recorded yet.")),
+                              active="/technical", sub=sub)
+        info = [tr("Decision of %s") % fmt_time(data.get("time"))]
+        if data.get("mode"):
+            info.append(ltr(data.get("mode")))
+        if data.get("model"):
+            info.append(code(data.get("model")))
+        parts = ['<p class="muted">%s</p>' % " &middot; ".join(info)]
+        parts.append(self._ta_reading_card(data))
+        parts.append(self._ta_coins_card(data))
+        parts.append('<details class="card fold"><summary>%s<span>%s</span></summary><div class="card-b"><ul class='
+                     '"ta-method">%s</ul><p class="muted small">%s</p></div></details>' % (
+                         icon("spark"), te("How the reading works"),
+                         "".join("<li>%s</li>" % te(x) for x in TA_METHOD_LINES),
+                         te("Kimi reads the same numbers by the same rules in every decision; the code checks each "
+                            "field. The reading describes the chart: it is not a buy or sell signal of its own.")))
+        return self._page(req, title, "".join(parts), active="/technical", sub=sub)
+
+    def _ta_reading_card(self, data):
+        cands = [c for c in (data.get("candidates") or []) if isinstance(c, dict)]
+        head = [N_("Coin"), N_("Kimi's verdict"), N_("Overall reading")] + [lab for _k, lab in TA_FIELD_LABELS] + [
+            N_("Support"), N_("Resistance"), N_("Check")]
+        rows = []
+        for c in cands:
+            ta = c.get("ta") if isinstance(c.get("ta"), dict) else {}
+            codev = c.get("ta_code") if isinstance(c.get("ta_code"), dict) else {}
+            checks = {x.get("field"): x for x in (c.get("ta_check") or []) if isinstance(x, dict)}
+            v = c.get("verdict")
+            row = [code(c.get("symbol")), te(VERDICT_LABELS[v]) if v in VERDICT_LABELS else (ltr(v) if v else dash()),
+                   ("<b>%s</b>" % ta_label("read", ta["read"])) if ta.get("read") else dash()]
+            for key, _lab in TA_FIELD_LABELS + (("support", ""), ("resistance", "")):
+                mine = ta.get(key)
+                if mine is None:
+                    row.append(dash())
+                    continue
+                shown = price_text(mine) if key in ("support", "resistance") else ta_label(key, mine)
+                if key in checks:
+                    rule = codev.get(key)
+                    rule = price_text(rule) if key in ("support", "resistance") else ta_label(key, rule)
+                    row.append('<span class="ta-bad">%s</span><small class="rule">%s</small>' % (
+                        shown, tr("rules: %s") % rule))
+                else:
+                    row.append('<span class="ta-ok">%s</span>' % shown)
+            if not ta:
+                row.append('<span class="muted">%s</span>' % te("No reading"))
+            elif checks:
+                row.append('<span class="badge warn">%s</span>' % esc(tr("%s differ") % len(checks)))
+            else:
+                row.append('<span class="badge ok">%s</span>' % te("Matches the rules"))
+            rows.append(row)
+        if not rows:
+            body = '<p class="muted empty">%s</p>' % te("Kimi analysed no coin in this decision (it changed nothing "
+                                                       "and no plan was due).")
+        else:
+            body = table(head, rows, cls="ta-table")
+            if not any(isinstance(c.get("ta"), dict) and c.get("ta") for c in cands):
+                body += '<p class="muted small">%s</p>' % te("This decision is older than the technical reading "
+                                                            "(version 3.8): only the code's reading is shown below.")
+        return card(te("Kimi's technical reading"), body, "spark", cls="flush")
+
+    def _ta_coins_card(self, data):
+        head = [N_("Coin"), N_("Price (USDT)"), N_("Trend (EMA 20 / 50 / 200)"), N_("RSI 4h / 1d"), "MACD",
+                N_("Bollinger"), N_("Donchian 20 (4h)"), N_("30-day range"), N_("Volume"), N_("Support"),
+                N_("Resistance"), "ATR 4h", N_("7 d / 30 d")]
+        rows = []
+        for c in data.get("coins") or []:
+            if not isinstance(c, dict):
+                continue
+            v = c.get("values") if isinstance(c.get("values"), dict) else {}
+            r = c.get("reading") if isinstance(c.get("reading"), dict) else {}
+            sym = str(c.get("symbol") or "")
+            usdt = sym.upper().startswith("USDT_")
+            px = v.get("px") if usdt else v.get("px_usdt")
+            tags = ""
+            if c.get("held"):
+                tags += ' <span class="badge accent">%s</span>' % te("Held")
+            if c.get("candidate"):
+                tags += ' <span class="badge">%s</span>' % te("Analysed")
+
+            def lab(key):
+                return ('<small class="lab">%s</small>' % ta_label(key, r[key])) if r.get(key) else ""
+
+            def nums(key, nd=1, unit=""):
+                xs = v.get(key)
+                if not isinstance(xs, list):
+                    return dash()
+                return ltr(" / ".join(("%+.*f%s" % (nd, x, unit)) if unit else ("%.*f" % (nd, x)) for x in xs))
+
+            def plain(x, nd):
+                return ("%.*f" % (nd, x)) if _is_num(x) else "-"
+
+            dev = nums("ema_dev_pct", 1, "%")
+            rsi = ltr("%s / %s" % (plain(v.get("rsi4h"), 1), plain(v.get("rsi1d"), 1)))
+            macd = v.get("macd4h_pct")
+            macd_html = ltr("%+.2f%%" % macd[2]) if isinstance(macd, list) and len(macd) > 2 else dash()
+            bb = v.get("bb4h")
+            bb_html = ltr(u"%.2f · %.1f%%" % (bb[0], bb[1])) if isinstance(bb, list) and len(bb) > 1 else dash()
+            don = v.get("don20_4h")
+            don_html = (ltr("%s - %s" % (price_text(don[0]), price_text(don[1])))
+                        if isinstance(don, list) and len(don) > 1 else dash())
+
+            def level(key):
+                lv = r.get(key)
+                if not _is_num(lv):
+                    return dash()
+                extra = []
+                if _is_num(r.get(key + "_dist_pct")):
+                    extra.append("%+.1f%%" % r[key + "_dist_pct"])
+                if _is_num(r.get(key + "_n")):
+                    extra.append(u"×%d" % r[key + "_n"])
+                return ltr(price_text(lv)) + (('<small class="lab">%s</small>' % ltr(" ".join(extra))) if extra else "")
+
+            ret = v.get("ret_irt" if usdt else "ret_usdt")
+            ret_html = (ltr("%+.1f%% / %+.1f%%" % (ret[1], ret[2])) if isinstance(ret, list) and len(ret) > 2
+                        else dash())
+            rows.append([code(sym) + tags, ltr(price_text(px)) if _is_num(px) else dash(), dev + lab("trend")
+                         + lab("long"), rsi + lab("rsi"), macd_html + lab("momentum"), bb_html + lab("bands"),
+                         don_html + lab("channel"), ltr(plain(v.get("pos30"), 2)) if _is_num(v.get("pos30")) else dash(),
+                         (ltr(u"%.2f×" % v["vol_ratio"]) if _is_num(v.get("vol_ratio")) else dash()) + lab("volume"),
+                         level("support"), level("resistance"),
+                         ltr(pct_text(v.get("atr4h_pct"))) if _is_num(v.get("atr4h_pct")) else dash(), ret_html])
+        note = '<p class="muted small pad">%s</p>' % te(
+            "Prices and levels in USDT (USDT_IRT in toman), exactly as the bot gave them to Kimi; the small labels are "
+            "the code's reading by the fixed rules.")
+        return card(te("Indicators of every coin"), note + table(head, rows, num=(1, 7, 11), cls="ta-table"), "layers",
+                    cls="flush")
 
     def _perf_kpis(self, data):
         t = data.get("totals") if isinstance(data.get("totals"), dict) else {}

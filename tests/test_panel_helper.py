@@ -151,7 +151,7 @@ class TestProtocol(Base):
         self.assertEqual(sorted(ph.COMMANDS), sorted([
             "status", "config_get", "secrets_status", "health", "check", "logs", "confirm_show", "models", "vpn_get",
             "vpn_test", "audit_notify", "config_put", "settings_set", "model_set", "secret_set", "apply_live",
-            "service", "panel_password_set", "panel_totp_set", "vpn_put", "performance"]))
+            "service", "panel_password_set", "panel_totp_set", "vpn_put", "performance", "technical"]))
 
     def test_serve_reads_one_bounded_json_line(self):
         out = io.BytesIO()

@@ -149,6 +149,7 @@ from .analysis import (LIQUID_UNIVERSE, PLAN_HORIZON_HOURS, PLAN_INVALIDATION_MI
                        usdt_prices, validate_guard_config)
 from .analysis import current_weights as context_weights
 from . import analysis as _analysis      # asset_class / us_session_open are looked up at call time (spec C3)
+from . import technical                 # v3.8: the technical reading (TECHNICAL READING, ta)
 from .api import atomic_write_json
 from .llm import (_FENCE_RE, ConfigError, LLMClient, LLMError, _add_usage, check_bool, check_number,
                   ensure_writable_dir, find_json_objects, parse_json_object_strict, redact_text)
@@ -254,7 +255,7 @@ AGGRESSIVE_STYLE_INSTRUCTIONS = (
 # The closing line of the user message (prompt_review/final/user_message_tail.txt): it names the "analysis"
 # fields first so the model fills them before the targets. The web variant prefixes the search instruction.
 USER_MESSAGE_TAIL = ("Decide from the MARKET CONTEXT (all prices and rates from it only). Fill \"analysis\" first - "
-                     "candidates (setup, row, evidence, bear, p0, p, gain_pct, loss_pct, cost_pct, ev_pct, pass, "
+                     "candidates (setup, row, ta, evidence, bear, p0, p, gain_pct, loss_pct, cost_pct, ev_pct, pass, "
                      "verdict), clusters, headroom_pct, scenario_loss_pct, usdt_case, would_flip - then plans and "
                      "targets, and reply with ONLY the JSON object.")
 # Error kinds that mean "WE stopped the decision", not "Kimi failed": they must never start or extend
@@ -1784,6 +1785,17 @@ def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_us
                     "verdict": verdict if verdict in ANALYSIS_VERDICTS else None}
         if verdict is not None and verdict not in ANALYSIS_VERDICTS:
             problems.append((s, "verdict must be one of %s" % ", ".join(ANALYSIS_VERDICTS)))
+        # v3.8: the technical reading - the model's "ta" next to the same rules applied by the code; a field read
+        # differently is shown to the owner (panel), never a problem: the reading describes, it does not decide
+        ta, ta_dropped = technical.parse_ta(c.get("ta"))
+        code = technical.reading(ctx_syms.get(s), s)
+        cands[s].update(ta=ta, ta_code=code or None, ta_check=technical.check_ta(ta, code))
+        if ta_dropped:
+            cands[s]["ta_dropped"] = ta_dropped
+        if cands[s]["ta_check"] or ta_dropped:
+            log.info("technical reading of %s: %s", s, "; ".join(
+                ["%s read %s, the rules give %s" % (x["field"], x["model"], x["code"]) for x in cands[s]["ta_check"]]
+                + ["%s outside the method" % k for k in ta_dropped]))
         # the citations are checked on the reply's own text (the cleaned copy above has its "=" and "[ ]"
         # stripped like a plan note); only the check reads it, nothing stores or feeds it back
         for txt in (c.get("evidence"), c.get("bear")):
@@ -2459,6 +2471,8 @@ def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=N
                             if cfg.get("honor_next_review_hours") and cfg.get("decision_times_local") else
                             "advisory (the schedule and the wake-ups decide)"),
         "{{REPORT_FA_MAX}}": str(REPORT_FA_MAX),
+        "{{TA_METHOD}}": technical.method_text(),
+        "{{TA_SCHEMA}}": technical.schema_text(),
         "{{OWNER}}": (("ADDITIONAL INSTRUCTIONS FROM THE ACCOUNT OWNER\n" + str(cfg["extra_instructions"]).strip())
                       if str(cfg.get("extra_instructions") or "").strip() else ""),
     }
