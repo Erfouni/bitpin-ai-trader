@@ -1018,6 +1018,41 @@ form.range-f input[type=date] { width: auto; height: 32px; padding: 0 8px; font-
 .legend .sw.cone { height: 10px; border: 0; border-radius: 3px; background: var(--accent); opacity: .3; }
 .fc-h { margin: 14px 0 0; color: var(--text-2); font-size: 12.5px; font-weight: 650; }
 .fc-h + .legend { margin-top: 8px; }
+/* v3.9 the indicators on a position's chart (the bot's own numbers, bitpin/technical.py chart_data) and the panes
+   under it - RSI, MACD, traded value - on the same time axis (one width for the value labels of all of them) */
+.position .chart { grid-template-columns: 5.2em minmax(0, 1fr); }
+.chart.sm.ta-main { grid-template-rows: 240px auto; }
+@media (max-width: 640px) { .chart.sm.ta-main { grid-template-rows: 200px auto; } }
+.chart .ta-e20 { stroke: #f59e0b; stroke-width: 1.3; }
+.chart .ta-e50 { stroke: #8b5cf6; stroke-width: 1.3; }
+.chart .ta-e200 { stroke: #64748b; stroke-width: 1.6; }
+.chart .ta-bbm { stroke: #0ea5e9; stroke-width: 1; stroke-dasharray: 2 3; opacity: .8; }
+.chart .ta-bb { fill: #0ea5e9; fill-opacity: .08; }
+.chart .ta-don { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 5 4; opacity: .8; }
+.chart .ta-sup { stroke: var(--ok); stroke-width: 1.2; stroke-dasharray: 12 5; opacity: .8; }
+.chart .ta-res { stroke: var(--err); stroke-width: 1.2; stroke-dasharray: 12 5; opacity: .8; }
+.chart .ta-rsi { stroke: #a855f7; stroke-width: 1.6; }
+.chart .ta-macd { stroke: var(--accent); stroke-width: 1.4; }
+.chart .ta-sig { stroke: #f59e0b; stroke-width: 1.2; }
+.chart .ta-lim { stroke: var(--text-3); stroke-width: 1; stroke-dasharray: 4 3; }
+.chart .ta-mid { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 2 4; }
+.chart .ta-vavg { stroke: var(--text-2); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.chart .b { stroke: none; }
+.chart .ta-hp { fill: var(--ok); fill-opacity: .55; }
+.chart .ta-hn { fill: var(--err); fill-opacity: .55; }
+.chart .ta-vol { fill: var(--text-3); fill-opacity: .5; }
+.chart.xs { grid-template-rows: 78px auto; }
+.chart.noxl .xl { display: none; }
+.ta-panes { display: grid; gap: 8px; margin: 12px 0 0; }
+.ta-pane .ta-h { margin: 0 0 4px; color: var(--text-2); font-size: 12px; }
+.ta-now { margin: 10px 0 0; color: var(--text-2); font-size: 12.5px; line-height: 1.7; }
+.sw.ta-e20 { border-top-color: #f59e0b; }
+.sw.ta-e50 { border-top-color: #8b5cf6; }
+.sw.ta-e200 { border-top-color: #64748b; }
+.sw.ta-don { border-top-style: dashed; }
+.sw.ta-sup { border-top-color: var(--ok); border-top-style: dashed; }
+.sw.ta-res { border-top-color: var(--err); border-top-style: dashed; }
+.legend .sw.ta-bb { height: 10px; border: 0; border-radius: 3px; background: #0ea5e9; opacity: .3; }
 .analysis {
   margin: 14px 0 0;
   padding: 12px 14px;

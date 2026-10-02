@@ -164,5 +164,90 @@ class TestPanelData(unittest.TestCase):
         self.assertEqual(collect(self.dir)["coins"], [])
 
 
+
+# --------------------------------------------------------------------------- v3.9: the chart series
+T_END = 1790006400                      # an hour boundary (and a 4h one)
+
+
+def synth(n, t_end=T_END, seed=7):
+    """n hourly bars of a coin in toman (a random walk in USDT times a falling rial) and of USDT_IRT."""
+    import random
+    from bitpin.data import Bar
+    rnd = random.Random(seed)
+    coin, usdt = [], []
+    p_u, p_c = 100000.0, 50000.0
+    for i in range(n):
+        t = t_end - (n - i) * 3600
+        p_u *= 1 + 0.0002 + rnd.gauss(0, 0.001)
+        p_c *= 1 + rnd.gauss(0.0001, 0.006)
+        usdt.append(Bar(t, p_u, p_u, p_u, p_u, 10.0))
+        irt = p_c * p_u
+        coin.append(Bar(t, irt, irt * 1.002, irt * 0.998, irt, 1.0 + rnd.random()))
+    return coin, usdt
+
+
+class TestChartData(unittest.TestCase):
+    def setUp(self):
+        self.coin, self.usdt = synth(1900)
+        self.t_from = T_END - 30 * 86400
+        self.d = ta_mod.chart_data("XYZ_IRT", self.coin, self.usdt, self.t_from)
+
+    def test_the_last_values_are_the_bots_own(self):
+        """The series end at exactly what the bot's market context gives the model now (symbol_features of the
+        same last 1700 hourly bars), and "now" / "reading" are that context and the rules' reading of it."""
+        from bitpin import analysis
+        d = self.d
+        feat = analysis.symbol_features("XYZ_IRT", self.coin[-1700:], [b.ts for b in self.usdt],
+                                        [b.close for b in self.usdt])
+        c = d["close"][-1]
+        for k, n in enumerate((20, 50, 200)):
+            self.assertAlmostEqual((c / d["ema%d" % n][-1] - 1) * 100, feat["ema_dev_pct"][k], delta=0.051)
+        self.assertAlmostEqual(d["rsi"][-1], feat["rsi4h"], delta=0.051)
+        for j in range(3):
+            self.assertAlmostEqual(d["macd"][-1][j], feat["macd4h_pct"][j], delta=0.0051)
+        lo, mid, up = d["bb"][-1]
+        self.assertAlmostEqual((c - lo) / (up - lo), feat["bb4h"][0], delta=0.0051)
+        self.assertAlmostEqual((up - lo) / mid * 100, feat["bb4h"][1], delta=0.051)
+        for j in range(2):
+            self.assertAlmostEqual(d["don"][-1][j] / feat["don20_4h"][j], 1.0, delta=1e-4)
+        self.assertEqual(d["now"]["ema_dev_pct"], feat["ema_dev_pct"])
+        self.assertEqual(d["now"]["vol_ratio"], feat["vol_ratio"])
+        self.assertEqual(d["reading"], reading(feat, "XYZ_IRT"))
+
+    def test_the_shape_of_the_series(self):
+        d = self.d
+        n = len(d["t"])
+        self.assertGreater(n, 170)
+        for k in ta_mod.CHART_KEYS:
+            self.assertEqual(len(d[k]), n, k)
+        self.assertGreaterEqual(d["t"][0], self.t_from)
+        self.assertLessEqual(d["t"][-1], T_END)
+        self.assertTrue(all(t % ta_mod.CHART_STEP == 0 for t in d["t"]))                  # the close of a 4h bar
+        self.assertTrue(all(b - a == ta_mod.CHART_STEP for a, b in zip(d["t"], d["t"][1:])))
+        bucket = [b for b in self.coin if d["t"][-1] - ta_mod.CHART_STEP <= b.ts < d["t"][-1]]
+        self.assertEqual(len(bucket), 4)
+        self.assertAlmostEqual(d["vol"][-1], sum(b.volume * b.close for b in bucket) / 1e6, delta=d["vol"][-1] * 1e-3)
+        self.assertGreater(d["vol_avg"], 0)
+        json.dumps(d)                                               # what the worker prints
+
+    def test_only_the_bots_window_counts(self):
+        self.assertEqual(ta_mod.chart_data("XYZ_IRT", self.coin[-1700:], self.usdt, self.t_from), self.d)
+
+    def test_too_little_data(self):
+        self.assertIsNone(ta_mod.chart_data("XYZ_IRT", self.coin[-60:], self.usdt, self.t_from))
+        self.assertIsNone(ta_mod.chart_data("XYZ_IRT", self.coin, [], self.t_from))
+        self.assertIsNone(ta_mod.chart_data("XYZ_IRT", self.coin, self.usdt, T_END + 86400))     # nothing that late
+
+    def test_trim(self):
+        t = self.d["t"]
+        cut = ta_mod.trim_chart(self.d, t[10] + 3600)
+        self.assertEqual(cut["t"][0], t[10])                          # the bar before the cut: no gap at the edge
+        for k in ta_mod.CHART_KEYS:
+            self.assertEqual(cut[k], self.d[k][10:], k)
+        self.assertEqual(cut["now"], self.d["now"])
+        self.assertEqual(ta_mod.trim_chart(self.d, 0)["t"], t)
+        self.assertIsNone(ta_mod.trim_chart(None, 0))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.8.2` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.9.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -137,7 +137,7 @@ sudo ufw allow 8443/tcp            # only if ufw is active: the panel never open
 | Page | What you can do |
 |---|---|
 | Dashboard | services, account value, profit or loss, drawdown, the last decision with its report, positions, spend |
-| Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it |
+| Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it; on each position chart the bot's own indicators (EMA 20 / 50 / 200, Bollinger, Donchian, support and resistance) with RSI, MACD and traded-value panes |
 | Trade history | every buy and sell of the bot, with filters, pages and a CSV download |
 | Technical analysis | the exact indicators the bot gave the model at its last decision, the model's reading by the fixed method and the code's check of it |
 | Trade settings | about 60 key settings in 9 groups (the trusted news sources too), with a preview and a diff before saving |

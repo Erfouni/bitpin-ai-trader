@@ -24,9 +24,9 @@ def read(*p):
 
 class TestVersion(unittest.TestCase):
     def test_the_package_carries_the_release_version(self):
-        self.assertEqual(bitpin.__version__, "3.8.2")                       # v3.8.2: panel certificate
+        self.assertEqual(bitpin.__version__, "3.9.0")                       # v3.9: indicator charts
         # a plain string constant, readable without importing (deploy scripts may grep it)
-        self.assertIn('__version__ = "3.8.2"', read("bitpin", "__init__.py"))
+        self.assertIn('__version__ = "3.9.0"', read("bitpin", "__init__.py"))
 
     def test_the_version_is_a_dotted_triple(self):
         self.assertRegex(bitpin.__version__, r"^\d+\.\d+\.\d+$")
@@ -59,8 +59,9 @@ class TestVersion(unittest.TestCase):
         self.assertIn("## 3.8.0", read("CHANGELOG.md"))
         self.assertIn("## 3.8.1", read("CHANGELOG.md"))
         self.assertIn("## 3.8.2", read("CHANGELOG.md"))
+        self.assertIn("## 3.9.0", read("CHANGELOG.md"))
         for name in ("README.md", "README_FA.md"):                       # v3.1: English + Persian README
-            self.assertIn("`3.8.2`", read(name), name)
+            self.assertIn("`3.9.0`", read(name), name)
 
 
 # --------------------------------------------------------------------------- CHANGELOG.md

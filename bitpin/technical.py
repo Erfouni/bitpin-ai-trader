@@ -283,3 +283,99 @@ def collect(state_dir):
     return {"time": _num(rec.get("time")), "model": str(rec.get("model") or dec.get("model") or "")[:60],
             "mode": str(dec.get("mode") or rec.get("trigger") or "")[:40], "valid": dec.get("valid"),
             "held": held, "candidates": candidates, "coins": coins[:80]}
+
+
+# --------------------------------------------------------------------------- v3.9: the indicators as chart series
+CHART_LOOKBACK_HOURS = 1700     # the bot's context window (context.analysis_lookback_bars): the last values match it
+CHART_STEP = 4 * 3600           # the 4h bars every indicator is computed on (aligned to UTC, like data.resample)
+VOL_DAYS = 30                   # the average traded value (analysis.symbol_features: vol_ratio)
+CHART_KEYS = ("t", "close", "ema20", "ema50", "ema200", "bb", "don", "rsi", "macd", "vol")
+
+
+def _r(v, nd=6):
+    """A float with nd significant digits (small JSON), or None."""
+    v = _num(v)
+    return None if v is None else float("%.*g" % (nd, v))
+
+
+def chart_data(symbol, bars, usdt_bars, t_from, lookback=CHART_LOOKBACK_HOURS):
+    """v3.9: the indicators of one coin as series for the panel's position chart, computed like the bot's market
+    context (analysis.symbol_features): the coin's last `lookback` closed hourly IRT bars divided by the USDT_IRT close
+    of the same hour, 4h bars aligned to UTC, EMA 20 / 50 / 200, Bollinger (20, 2), Donchian 20 (the hourly closes'
+    extremes), RSI 14 and MACD (12, 26, 9, in % of the bar's close) of the 4h closes, and the traded value per 4h in
+    million toman. Each point is at the CLOSE of its 4h bar; only bars closing at or after t_from are kept.
+    "now" = the values of symbol_features() for the same bars (what the bot gives the model now: ema_dev_pct, rsi4h,
+    macd4h_pct, bb4h, don20_4h, sup / res, vol_ratio ...) and "reading" = reading() of them; "vol_avg" = the 30-day
+    average traded value per 4h (million toman). None without enough bars."""
+    from . import analysis, data as data_mod, indicators as ind
+    hourly = [b for b in bars or [] if _num(b.close) and b.close > 0][-int(lookback):]
+    while len(hourly) > 2 and hourly[1].ts - hourly[0].ts != 3600:      # like the context: resample needs 1h steps
+        hourly = hourly[1:]
+    usdt = [b for b in usdt_bars or [] if _num(b.close) and b.close > 0]
+    if len(hourly) < 4 * 20 or not usdt:
+        return None
+    usdt_ts, usdt_close = [b.ts for b in usdt], [b.close for b in usdt]
+    try:
+        feat = analysis.symbol_features(symbol, hourly, usdt_ts, usdt_close)
+    except (ValueError, ZeroDivisionError):
+        return None
+    basis = []
+    for b in hourly:
+        u = analysis._asof(usdt_ts, usdt_close, b.ts)
+        if u:
+            r = b.close / u
+            basis.append(data_mod.Bar(b.ts, r, r, r, r, 0.0))
+    b4 = data_mod.resample(basis, 4) if len(basis) > 1 else []
+    if len(b4) < 20:
+        return None
+    c4 = [b.close for b in b4]
+    e20, e50, e200 = ind.ema(c4, 20), ind.ema(c4, 50), ind.ema(c4, 200)
+    lo, mid, up = ind.bollinger(c4, 20, 2.0)
+    rsi = ind.rsi(c4, 14)
+    line, sig, hist = ind.macd(c4)
+    value = {}
+    for b in hourly:                                  # traded value of the 4h buckets (complete ones, like resample)
+        value.setdefault(b.ts - b.ts % CHART_STEP, []).append(b.volume * b.close)
+    out = dict((k, []) for k in CHART_KEYS)
+    for i, b in enumerate(b4):
+        t = b.ts + CHART_STEP
+        if t < t_from:
+            continue
+        c = c4[i]
+        out["t"].append(t)
+        out["close"].append(_r(c))
+        out["ema20"].append(_r(e20[i]))
+        out["ema50"].append(_r(e50[i]))
+        out["ema200"].append(_r(e200[i]))
+        out["bb"].append([_r(lo[i]), _r(mid[i]), _r(up[i])] if None not in (lo[i], mid[i], up[i]) else None)
+        out["don"].append([_r(min(x.low for x in b4[i - 19:i + 1])), _r(max(x.high for x in b4[i - 19:i + 1]))]
+                          if i >= 19 else None)
+        out["rsi"].append(_r(rsi[i], 4))
+        out["macd"].append([_r(v / c * 100.0, 4) for v in (line[i], sig[i], hist[i])]
+                           if None not in (line[i], sig[i], hist[i]) and c else None)
+        v = value.get(b.ts) or []
+        out["vol"].append(_r(sum(v) / 1e6, 4) if len(v) == 4 else None)
+    if not out["t"]:
+        return None
+    t_end = hourly[-1].ts
+    span = [b for b in hourly if b.ts > t_end - VOL_DAYS * 86400]
+    days = max(1.0, (t_end - span[0].ts + 3600) / 86400.0)
+    out["vol_avg"] = _r(sum(b.volume * b.close for b in span) / days / 6.0 / 1e6, 4)
+    out["now"] = _values(feat)
+    out["reading"] = reading(feat, symbol)
+    return out
+
+
+def trim_chart(data, t_from):
+    """chart_data() from the last 4h bar closing before t_from on (the lines start at the chart's left edge)."""
+    if not isinstance(data, dict) or not isinstance(data.get("t"), list):
+        return None
+    ts = data["t"]
+    k = 0
+    while k + 1 < len(ts) and ts[k + 1] <= t_from:
+        k += 1
+    out = dict(data)
+    for key in CHART_KEYS:
+        if isinstance(data.get(key), list):
+            out[key] = data[key][k:]
+    return out if out["t"] else None

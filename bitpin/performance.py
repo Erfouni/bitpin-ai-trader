@@ -26,12 +26,19 @@ The outlook of an open position (v3.6.1), drawn from now to the end of its plan 
 
 Prices: hourly candles for the last FINE_DAYS days, 4-hour candles before that (a year of history stays one small
 request per market, even with the panel's page reloading every minute).
+
+v3.9, the indicators on a position's chart: for the markets of the open positions and resting orders (and USDT_IRT)
+the hourly candles reach back TA_FETCH_HOURS (the bot's own context window), and bitpin.technical.chart_data()
+computes the EMA 20 / 50 / 200, Bollinger, Donchian, RSI, MACD and traded value series exactly like the bot's
+market context; each position gets them for its chart span ("ta").
 """
 import bisect
 import json
 import math
 import os
 import time
+
+from . import technical
 
 RUNNER_LOG = "kimi_runner.jsonl"
 EQUITY_FILE = "kimi_equity.json"
@@ -56,6 +63,7 @@ FORECAST_DEFAULT_HOURS = 72       # the outlook of a position without a plan in 
 CONE_STEPS = 24                   # points of the volatility range
 SIGMA_MIN_RETURNS = 24            # hourly returns needed for the volatility range
 ANALYSIS_TEXT_MAX = 400
+TA_FETCH_HOURS = technical.CHART_LOOKBACK_HOURS + 8     # v3.9: the hourly candles behind a position's indicators
 
 
 def _f(x):
@@ -401,9 +409,10 @@ def _thin(points, n=CHART_POINTS):
 
 
 # --------------------------------------------------------------------------- the report
-def report(records, start_equity, prices, t_from, t_to, now, orders=None, analyses=None):
+def report(records, start_equity, prices, t_from, t_to, now, orders=None, analyses=None, ta=None):
     """Everything the panel shows for (t_from, t_to]; see the module docstring. Never raises on odd data.
-    analyses: read_analyses() - Kimi's newest analysis of each coin, for the outlook of the open positions."""
+    analyses: read_analyses() - Kimi's newest analysis of each coin, for the outlook of the open positions;
+    ta: {asset: technical.chart_data()} - v3.9, the indicators of the open positions' charts."""
     fills = parse_fills(records)
     pts = equity_points(records)
     warnings = []
@@ -524,7 +533,7 @@ def report(records, start_equity, prices, t_from, t_to, now, orders=None, analys
     # the open positions and the resting orders, each with its price chart in USDT (a range that ends now)
     positions = []
     if live:
-        positions = _positions(rows, open_plans(records), orders or [], prices, t_to, now, analyses or {})
+        positions = _positions(rows, open_plans(records), orders or [], prices, t_to, now, analyses or {}, ta or {})
 
     history = []
     for f in reversed(in_range[-MAX_HISTORY:]):
@@ -549,7 +558,7 @@ def _chart_span(plan, now):
     return min(span, POSITION_CHART_MAX_DAYS * 86400)
 
 
-def _positions(rows, plans, orders, prices, t_to, now, analyses=None):
+def _positions(rows, plans, orders, prices, t_to, now, analyses=None, ta=None):
     held = [r["asset"] for r in rows if r["asset"] not in (CASH, UNIT) and r["qty_to"] > 1e-12]
     chart_assets = list(held)
     for o in orders:
@@ -599,7 +608,8 @@ def _positions(rows, plans, orders, prices, t_to, now, analyses=None):
                     "orders": o_list, "prices": _thin(line), "analysis": analysis,
                     "outlook": outlook(now_usdt, now, outlook_end(plan, now), hourly_sigma(line), target,
                                        invalidation, analysis.get("p") if analysis else None,
-                                       _origin(analysis, plan, line))})
+                                       _origin(analysis, plan, line)),
+                    "ta": technical.trim_chart((ta or {}).get(a), c_from)})
     return out
 
 
@@ -625,6 +635,11 @@ def collect(state_dir, t_from, t_to, now=None, fetch=None):
     fills = parse_fills(records)
     assets = {UNIT} | {f["asset"] for f in fills} | {f["quote_asset"] for f in fills} | {o["asset"] for o in orders}
     assets.discard(CASH)
+    chart = set()                                   # v3.9: the markets of the position charts (a range that ends now)
+    if min(t_to, now) >= now - HOUR:
+        held = holdings_at(fills, now, start_equity)
+        chart = {a for a, q in held.items() if q > 1e-12} | {o["asset"] for o in orders}
+        chart -= {CASH, UNIT}
     chart_from = min(t_to, now) - POSITION_CHART_HOURS * HOUR
     for plan in open_plans(records).values():
         chart_from = min(chart_from, now - _chart_span(plan, now))
@@ -632,14 +647,27 @@ def collect(state_dir, t_from, t_to, now=None, fetch=None):
     fine_from = max(start, int(now) - FINE_DAYS * 86400)
     fine, coarse, errors = {}, {}, []
     for a in sorted(assets):
+        a_from = min(fine_from, int(now) - TA_FETCH_HOURS * HOUR) if chart and (a in chart or a == UNIT) else fine_from
         try:
-            fine[a] = fetch(a + "_IRT", "60", fine_from, int(now))
-            if start < fine_from:
-                coarse[a] = fetch(a + "_IRT", "240", start, fine_from + COARSE_SECONDS)
+            fine[a] = fetch(a + "_IRT", "60", a_from, int(now))
+            if start < a_from:
+                coarse[a] = fetch(a + "_IRT", "240", start, a_from + COARSE_SECONDS)
         except Exception as e:  # noqa: BLE001 - one market less, not a broken page
             errors.append("%s_IRT candles: %s" % (a, str(e)[:120]))
             fine.setdefault(a, [])
+    ta = {}
+    usdt_closed = [b for b in fine.get(UNIT) or [] if b.ts + HOUR <= now]
+    t_ta = int(now) - POSITION_CHART_MAX_DAYS * 86400 - technical.CHART_STEP
+    for a in sorted(chart):
+        try:
+            d = technical.chart_data(a + "_IRT", [b for b in fine.get(a) or [] if b.ts + HOUR <= now], usdt_closed,
+                                     t_ta)
+        except Exception as e:  # noqa: BLE001 - a chart without its indicators, not a broken page
+            errors.append("%s indicators: %s" % (a, str(e)[:120]))
+            d = None
+        if d:
+            ta[a] = d
     out = report(records, start_equity, prices_from_bars(fine, now, coarse), t_from, t_to, now, orders,
-                 read_analyses(os.path.join(state_dir, DECISIONS_FILE)))
+                 read_analyses(os.path.join(state_dir, DECISIONS_FILE)), ta)
     out["warnings"] = errors + out["warnings"]
     return out

@@ -4,6 +4,32 @@
 
 ---
 
+## 3.9.0 — اندیکاتورها روی نمودار هر موقعیت (2026-10-02)
+
+- کارت هر موقعیت و هر سفارش باز در صفحهٔ **عملکرد** حالا روی نمودار قیمتش همان اندیکاتورهایی را نشان می‌دهد که ربات برای
+  کیمی حساب می‌کند، با همان روش و همان پنجره (کندل‌های ۴ ساعته به تتر از ۱۷۰۰ کندل ساعتی آخر):
+  - **EMA ۲۰ / ۵۰ / ۲۰۰**؛
+  - **باند بولینگر (۲۰، ۲)** با خط وسطش؛
+  - **کانال دانچیان ۲۰**؛
+  - **نزدیک‌ترین حمایت و مقاومت** با فاصله و تعداد برخورد.
+- زیر نمودار سه نمودار کوچک با همان محور زمان می‌آید:
+  - **RSI ۱۴** با مرزهای ۷۰، ۵۵، ۴۵ و ۳۰؛
+  - **MACD (۱۲، ۲۶، ۹)** به درصد قیمت، با هیستوگرام؛
+  - **ارزش معاملات هر ۴ ساعت** با میانگین ۳۰ روزه.
+- یک خط هم خوانش قاعده‌های «تحلیل تکنیکال» را برای همین لحظه می‌گوید. آخرین نقطهٔ هر خط همان عددی است که ربات اگر همین
+  حالا تصمیم بگیرد به کیمی می‌دهد؛ یک تست این را با کد خود ربات می‌سنجد.
+- دکمهٔ «پنهان کردن اندیکاتورها» نمودارها را ساده می‌کند و انتخاب با تازه‌سازی خودکار صفحه هم می‌ماند.
+- ربات و تصمیم‌هایش عوض نشده‌اند. برای این نمودارها فقط کندل‌های عمومی بیشتری خوانده می‌شود: برای بازار هر موقعیت و تتر،
+  ۷۱ روز کندل ساعتی، در یک درخواست.
+- English: `bitpin/technical.py` chart_data / trim_chart (the context's own basis: the coin's last 1700 closed hourly
+  IRT bars over the USDT_IRT close of the same hour, 4h bars aligned to UTC; EMA, Bollinger, Donchian, RSI, MACD in %
+  of the bar's close, traded value per 4h; "now" = symbol_features of the same bars, "reading" = reading() of them);
+  `bitpin/performance.py` (TA_FETCH_HOURS: the hourly window of the chart markets and USDT_IRT in a range that ends
+  now, report(..., ta), a position's "ta" trimmed to its chart span); `bitpin/panel_web.py` (line_chart bars /
+  y_range / x_range, ta_overlay, ta_reading_html, ta_panes, the ta=0 switch kept in the links and the live reload);
+  `bitpin/static/panel.css`; `tests/test_technical.py` TestChartData (the last values equal symbol_features),
+  `tests/test_performance.py`, `tests/test_panel_ta_chart.py`.
+
 ## 3.8.2 — گواهی معتبر برای دامنهٔ پنل (2026-10-02)
 
 - پنل حالا می‌تواند برای یک **دامنه** گواهی معتبر Let's Encrypt بگیرد. مرورگر دیگر هشدار نمی‌دهد و مقایسهٔ اثر انگشت لازم

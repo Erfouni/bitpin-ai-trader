@@ -61,6 +61,7 @@ from .panel_auth import (PBKDF2_ITERATIONS, DeviceTrust, LoginLimiter, SessionSt
                          verify_password, verify_totp)
 from .panel_i18n import LANG_NAMES, LANGS, N_, current, is_rtl, negotiate, reset_lang, set_lang, tr
 from .panel_cert import WARN_DAYS as CERT_WARN_DAYS
+from .technical import MACD_FLAT, RSI_NEUTRAL, RSI_OVERBOUGHT, RSI_STRONG, RSI_WEAK
 
 log = logging.getLogger("bitpin.panel")
 
@@ -825,23 +826,35 @@ def time_ticks(t0, t1, n=5):
     return [datetime.fromtimestamp(t0 + span * i / float(n - 1), TEHRAN).strftime(fmt) for i in range(n)]
 
 
-def line_chart(series, hlines=(), vlines=(), pct=False, label="", cls="", areas=(), shade=None):
+def line_chart(series, hlines=(), vlines=(), pct=False, label="", cls="", areas=(), shade=None, bars=(),
+               y_range=None, x_range=None):
     """series: [(class, [(time, value)])] drawn in this order; hlines: [(class, value)] across the chart (entry,
     stop, orders ...); vlines: [(class, time)]; areas: [(class, [(time, low, high)])] bands under the lines (v3.6.1:
     the outlook's volatility range); shade: (class, from, to) a stretch of time behind everything (the future).
+    v3.9: bars: [(class, [(time, value)])] columns from zero, each ending at its time (a 4h bar at its close);
+    y_range: (low, high) a fixed value axis (RSI 0..100); x_range: (from, to) the time axis (the panes under a
+    position's chart share its range; points outside it are left out).
     The chart's HTML, or a note when there is nothing to draw."""
 
     def ok_t(t):
         return _is_num(t) and 0 < t < 1e11
 
-    series = [(c, [(t, v) for t, v in s if ok_t(t) and _is_num(v)]) for c, s in series]
-    areas = [(c, [(t, lo, hi) for t, lo, hi in a if ok_t(t) and _is_num(lo) and _is_num(hi)]) for c, a in areas]
-    pts = [p for _c, s in series for p in s]
+    xr = x_range if (x_range and ok_t(x_range[0]) and ok_t(x_range[1]) and x_range[1] > x_range[0]) else None
+
+    def inside(t):
+        return ok_t(t) and (xr is None or xr[0] <= t <= xr[1])
+
+    series = [(c, [(t, v) for t, v in s if inside(t) and _is_num(v)]) for c, s in series]
+    areas = [(c, [(t, lo, hi) for t, lo, hi in a if inside(t) and _is_num(lo) and _is_num(hi)]) for c, a in areas]
+    bars = [(c, [(t, v) for t, v in b if inside(t) and _is_num(v)]) for c, b in bars]
+    pts = [p for _c, s in series for p in s] + [p for _c, b in bars for p in b]
     if len(pts) < 2:
         return '<p class="muted empty">%s</p>' % te("Not enough data for a chart yet.")
     pts += [(t, v) for _c, a in areas for t, lo, hi in a for v in (lo, hi)]
-    t0, t1 = min(t for t, _v in pts), max(t for t, _v in pts)
-    vals = [v for _t, v in pts] + [v for _c, v in hlines if _is_num(v)] + ([0.0] if pct else [])
+    t0, t1 = xr if xr else (min(t for t, _v in pts), max(t for t, _v in pts))
+    vals = [v for _t, v in pts] + [v for _c, v in hlines if _is_num(v)] + ([0.0] if (pct or bars) else [])
+    if y_range and _is_num(y_range[0]) and _is_num(y_range[1]) and y_range[1] > y_range[0]:
+        vals = [y_range[0], y_range[1]]
     bottom, top, ticks, step = nice_ticks(min(vals), max(vals))
     w, h = 1000, 300
 
@@ -863,6 +876,18 @@ def line_chart(series, hlines=(), vlines=(), pct=False, label="", cls="", areas=
             g.append('<polygon class="a %s" points="%s"/>' % (c, " ".join(
                 ["%.1f,%.1f" % (x(t), y(hi)) for t, _lo, hi in a] + ["%.1f,%.1f" % (x(t), y(lo)) for t, lo, _hi in
                                                                     reversed(a)])))
+    if bars:
+        times = sorted(set(t for _c, b in bars for t, _v in b))
+        gap = min([b - a for a, b in zip(times, times[1:]) if b > a] or [(t1 - t0) / 60.0])
+        bw = max(1.0, (x(t0 + gap) - x(t0)) * 0.72)
+        y0 = y(min(max(0.0, bottom), top))
+        for c, b in bars:
+            for t, v in b:
+                yv, left = y(v), x(t - gap / 2.0) - bw / 2.0
+                left, right = max(0.0, left), min(float(w), left + bw)        # never past the plot's edges
+                if right > left:
+                    g.append('<rect class="b %s" x="%.1f" y="%.1f" width="%.1f" height="%.1f"/>' % (
+                        c, left, min(yv, y0), right - left, max(abs(y0 - yv), 0.6)))
     for c, t in vlines:
         if _is_num(t) and t0 <= t <= t1:
             g.append('<line class="v %s" x1="%.1f" y1="0" x2="%.1f" y2="%d"/>' % (c, x(t), x(t), h))
@@ -937,6 +962,106 @@ def csv_cell(v):
     """A text cell a spreadsheet will not run as a formula."""
     s = "" if v is None else str(v)
     return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
+
+
+def _ta_points(ta, key, idx=None):
+    """[(time, value)] of one chart_data() series (idx: one value of a list point, e.g. bb[0])."""
+    out = []
+    for t, v in zip(ta.get("t") or [], ta.get(key) or []):
+        if idx is not None:
+            v = v[idx] if isinstance(v, list) and len(v) > idx else None
+        if _is_num(t) and _is_num(v):
+            out.append((t, v))
+    return out
+
+
+def ta_overlay(ta):
+    """v3.9: the indicators on a position's price chart (bitpin/technical.py chart_data, the bot's own numbers):
+    (series, areas, hlines, legend items) - EMA 20 / 50 / 200, the Bollinger band and its middle, the Donchian
+    channel, the nearest support and resistance of the rules."""
+    series = [("ta-don", _ta_points(ta, "don", 1)), ("ta-don", _ta_points(ta, "don", 0)),
+              ("ta-bbm", _ta_points(ta, "bb", 1)), ("ta-e200", _ta_points(ta, "ema200")),
+              ("ta-e50", _ta_points(ta, "ema50")), ("ta-e20", _ta_points(ta, "ema20"))]
+    band = [(t, b[0], b[2]) for t, b in zip(ta.get("t") or [], ta.get("bb") or [])
+            if isinstance(b, list) and len(b) > 2 and _is_num(b[0]) and _is_num(b[2])]
+    now = ta.get("now") if isinstance(ta.get("now"), dict) else {}
+    devs = now.get("ema_dev_pct") if isinstance(now.get("ema_dev_pct"), list) else []
+    items = []
+    for i, n in enumerate((20, 50, 200)):
+        pts = _ta_points(ta, "ema%d" % n)
+        if pts:
+            text = tr("EMA %s: %s") % (n, ltr(price_text(pts[-1][1])))
+            if len(devs) > i and _is_num(devs[i]):
+                text += " " + tr("(the price %s from it)") % ltr("%+.1f%%" % devs[i])
+            items.append(("ta-e%d" % n, text))
+    bb = now.get("bb4h") if isinstance(now.get("bb4h"), list) else []
+    if band:
+        text = te("Bollinger 20, 2")
+        if len(bb) > 1 and _is_num(bb[0]) and _is_num(bb[1]):
+            text += " " + tr("(place %s, width %s)") % (ltr("%.2f" % bb[0]), ltr("%.1f%%" % bb[1]))
+        items.append(("ta-bb", text))
+    don = now.get("don20_4h") if isinstance(now.get("don20_4h"), list) else []
+    if len(don) > 1 and _is_num(don[0]) and _is_num(don[1]):
+        items.append(("ta-don", tr("Donchian 20: %s") % ltr("%s - %s" % (price_text(don[0]), price_text(don[1])))))
+    rd = ta.get("reading") if isinstance(ta.get("reading"), dict) else {}
+    hlines = []
+    for key, cls, label in (("support", "ta-sup", N_("Support %s")), ("resistance", "ta-res", N_("Resistance %s"))):
+        lv = rd.get(key)
+        if not _is_num(lv):
+            continue
+        hlines.append((cls, lv))
+        extra = []
+        if _is_num(rd.get(key + "_dist_pct")):
+            extra.append("%+.1f%%" % rd[key + "_dist_pct"])
+        if _is_num(rd.get(key + "_n")):
+            extra.append(u"\u00d7%d" % rd[key + "_n"])
+        items.append((cls, tr(label) % ltr(price_text(lv)) + ((" " + ltr("(%s)" % ", ".join(extra))) if extra else "")))
+    return series, [("ta-bb", band)], hlines, items
+
+
+def ta_reading_html(ta):
+    """v3.9: the rules' reading of the same numbers now (bitpin/technical.py reading), in one line."""
+    rd = ta.get("reading") if isinstance(ta.get("reading"), dict) else {}
+    shown = dict((k, rd[k]) for k, _label in TA_FIELD_LABELS if rd.get(k))
+    if rd.get("tone"):
+        shown["read"] = rd["tone"]
+    if not shown:
+        return ""
+    return '<p class="ta-now"><b>%s</b> %s</p>' % (te("The rules read it now:"), ta_summary_html(shown))
+
+
+def _pane(head, chart):
+    return '<div class="ta-pane"><p class="ta-h">%s</p>%s</div>' % (head, chart)
+
+
+def ta_panes(ta, x_range, shade):
+    """v3.9: RSI, MACD and the traded value under a position's chart, on its time axis."""
+    out = []
+    rsi = _ta_points(ta, "rsi")
+    if rsi:
+        lines = [("ta-lim", RSI_OVERBOUGHT), ("ta-mid", RSI_STRONG), ("ta-mid", RSI_NEUTRAL), ("ta-lim", RSI_WEAK)]
+        out.append(_pane(tr("RSI 14: %s") % ltr("%.1f" % rsi[-1][1]),
+                         line_chart([("ta-rsi", rsi)], lines, label="RSI", cls="xs noxl", shade=shade,
+                                    y_range=(0, 100), x_range=x_range)))
+    hist = _ta_points(ta, "macd", 2)
+    if hist:
+        out.append(_pane(tr("MACD 12, 26, 9 in percent of the price: histogram %s") % ltr("%+.3f%%" % hist[-1][1]),
+                         line_chart([("ta-sig", _ta_points(ta, "macd", 1)), ("ta-macd", _ta_points(ta, "macd", 0))],
+                                    [("ta-mid", MACD_FLAT), ("ta-mid", -MACD_FLAT)], pct=True, label="MACD",
+                                    cls="xs noxl", shade=shade, x_range=x_range,
+                                    bars=[("ta-hp", [(t, v) for t, v in hist if v >= 0]),
+                                          ("ta-hn", [(t, v) for t, v in hist if v < 0])])))
+    vol = _ta_points(ta, "vol")
+    if vol:
+        now = ta.get("now") if isinstance(ta.get("now"), dict) else {}
+        head = te("Traded value per 4 hours (million toman)")
+        if _is_num(now.get("vol_ratio")):
+            head += " &middot; " + tr("the last 24 hours against the 30-day average: %s") % ltr(
+                u"%.2f\u00d7" % now["vol_ratio"])
+        avg = ta.get("vol_avg")
+        out.append(_pane(head, line_chart([], [("ta-vavg", avg)] if _is_num(avg) else [], label=tr("Traded value"),
+                                          cls="xs", shade=shade, x_range=x_range, bars=[("ta-vol", vol)])))
+    return '<div class="ta-panes">%s</div>' % "".join(out) if out else ""
 
 
 def analysis_html(p):
@@ -2677,11 +2802,13 @@ class PanelApp(object):
         title, sub = tr("Performance"), tr("Profit and loss in toman and in USDT, per asset, with live charts")
         key, t_from, t_to, f_text, t_text, error = self._perf_range(req)
         live_on = req.query.get("live", "") != "0"
-        parts = [self._range_bar("/performance", key, f_text, t_text, [] if live_on else [("live", "0")])]
+        show_ta = req.query.get("ta", "") != "0"                 # v3.9: the indicators on the position charts
+        ta_q = [] if show_ta else [("ta", "0")]
+        parts = [self._range_bar("/performance", key, f_text, t_text, ([] if live_on else [("live", "0")]) + ta_q)]
         if error:
             parts.append(box("err", esc(error)))
             return self._page(req, title, "".join(parts), status=400, active="/performance", sub=sub)
-        rq = self._range_query(key, f_text, t_text)
+        rq = self._range_query(key, f_text, t_text) + ta_q
         live = t_to >= req.now - 3600                       # the range ends now
         refresh = "/performance?" + urlencode(rq + [("auto", "1")]) if (live and live_on) else None
         data, err = self._perf_data(req, key, f_text, t_text, t_from, t_to)
@@ -2707,7 +2834,10 @@ class PanelApp(object):
         parts.append(card(te("Portfolio value"), self._equity_chart(data), "trend"))
         parts.append(card(te("Profit and loss per asset"), self._assets_table(data), "coins"))
         if data.get("live"):
-            parts.append(self._positions_section(data))
+            base = self._range_query(key, f_text, t_text) + ([] if live_on else [("live", "0")])
+            toggle = link_button("/performance?" + urlencode(base + ([("ta", "0")] if show_ta else [])),
+                                 tr("Hide the indicators") if show_ta else tr("Show the indicators"), "ghost sm", "spark")
+            parts.append(self._positions_section(data, show_ta, toggle))
         else:
             parts.append(box("info", te("Open positions and their charts are shown for a range that ends now.")))
         return self._page(req, title, "".join(parts), active="/performance", sub=sub, refresh=refresh)
@@ -2920,14 +3050,15 @@ class PanelApp(object):
             "of USDT is what the rial's fall gave. The rows add up to the change of the account rebuilt from the "
             "bot's trades."))
 
-    def _positions_section(self, data):
+    def _positions_section(self, data, show_ta=True, toggle=""):
         pos = [p for p in data.get("positions") or [] if isinstance(p, dict)]
-        body = ('<div class="positions">%s</div>' % "".join(self._position_panel(p) for p in pos) if pos else
+        body = ('<div class="positions">%s</div>' % "".join(self._position_panel(p, show_ta) for p in pos) if pos else
                 '<p class="muted empty">%s</p>' % te("No open position and no resting order."))
-        return card(te("Open positions and orders"), body, "target")
+        has_ta = any(isinstance(p.get("ta"), dict) for p in pos)
+        return card(te("Open positions and orders"), body, "target", actions=toggle if has_ta else "")
 
     @staticmethod
-    def _position_panel(p):
+    def _position_panel(p, show_ta=True):
         asset = str(p.get("asset") or "")
         now = p.get("price_usdt")
         line = [(x[0], x[1]) for x in p.get("prices") or [] if isinstance(x, list) and len(x) >= 2]
@@ -2956,6 +3087,11 @@ class PanelApp(object):
         # plan, over the range a driftless walk stays in (68% / 95%) from now; the future is shaded
         cone = [c for c in o.get("cone") or [] if isinstance(c, list) and len(c) >= 5]
         areas = [("cone2", [(c[0], c[3], c[4]) for c in cone]), ("cone1", [(c[0], c[1], c[2]) for c in cone])]
+        ta = p.get("ta") if show_ta and isinstance(p.get("ta"), dict) and p["ta"].get("t") else None
+        ta_items = []
+        if ta:                                  # v3.9: the indicators under the price line (it stays on top)
+            ta_series, ta_areas, ta_hl, ta_items = ta_overlay(ta)
+            series, areas, hl = ta_series + series, ta_areas + areas, hl + ta_hl
         origin, end, prob = o.get("origin"), o.get("to"), o.get("p")
         prob = prob if (_is_num(prob) and 0 <= prob <= 1) else None
         fc = []
@@ -2974,10 +3110,18 @@ class PanelApp(object):
                     fc.append((cls, text))
         if cone:
             fc.append(("cone", te("the normal range of the price: 68% and 95% of the time")))
+        ts = [t for _c, pts in series for t, _v in pts if _is_num(t)] + [t for _c, a in areas for t, _l, _h in a
+                                                                          if _is_num(t)]
+        xr = (min(ts), max(ts)) if len(ts) > 1 and max(ts) > min(ts) else None
+        shade = ("future", o.get("from"), end)
         chart = line_chart(series, hl, [("set", p.get("set_at")), ("now", o.get("from"))],
-                           label=tr("Price of %s in USDT") % asset, cls="sm", areas=areas,
-                           shade=("future", o.get("from"), end))
+                           label=tr("Price of %s in USDT") % asset, cls="sm ta-main" if ta else "sm", areas=areas,
+                           shade=shade, x_range=xr)
         fc_html = ('<p class="fc-h">%s</p>%s' % (tr("Outlook until %s") % fmt_time(end), legend(fc))) if fc else ""
+        if ta:
+            fc_html += '<p class="fc-h">%s</p>%s%s%s' % (
+                te("Indicators: 4-hour bars in USDT, computed like the bot's market context"), legend(ta_items),
+                ta_reading_html(ta), ta_panes(ta, xr, shade))
         ch = p.get("change_pct")
         badge = (' <span class="badge %s">%s</span>' % ("ok" if ch > 0 else ("err" if ch < 0 else ""),
                                                         ltr("%+.2f%%" % ch))) if _is_num(ch) else ""

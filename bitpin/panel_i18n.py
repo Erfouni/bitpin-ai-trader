@@ -727,6 +727,24 @@ FA = {
 
     # ---------------------------------------------------------------- security
     "Password, two-step login, the certificate and the audit log": u"رمز عبور، ورود دومرحله‌ای، گواهی و گزارش رویدادها",
+    # v3.9: the indicators on the position charts
+    "Hide the indicators": u"پنهان کردن اندیکاتورها",
+    "Show the indicators": u"نمایش اندیکاتورها",
+    "Indicators: 4-hour bars in USDT, computed like the bot's market context":
+        u"اندیکاتورها: کندل‌های ۴ ساعته به تتر، به همان روشی که ربات برای کیمی حساب می‌کند",
+    "EMA %s: %s": u"میانگین EMA %s: %s",
+    "(the price %s from it)": u"(قیمت %s با آن فاصله دارد)",
+    "Bollinger 20, 2": u"بولینگر ۲۰، ۲",
+    "(place %s, width %s)": u"(جایگاه %s، پهنا %s)",
+    "Donchian 20: %s": u"دانچیان ۲۰: %s",
+    "Support %s": u"حمایت %s",
+    "Resistance %s": u"مقاومت %s",
+    "The rules read it now:": u"خوانش قاعده‌ها در این لحظه:",
+    "RSI 14: %s": u"RSI ۱۴: %s",
+    "MACD 12, 26, 9 in percent of the price: histogram %s": u"MACD ۱۲، ۲۶، ۹ به درصد قیمت: هیستوگرام %s",
+    "Traded value per 4 hours (million toman)": u"ارزش معاملات هر ۴ ساعت (میلیون تومان)",
+    "the last 24 hours against the 30-day average: %s": u"۲۴ ساعت اخیر نسبت به میانگین ۳۰ روزه: %s",
+    "Traded value": u"ارزش معاملات",
     # v3.8.2: the panel's certificate (Security page)
     "The panel's certificate": u"گواهی پنل",
     "The certificate cannot be read: %s": u"گواهی خوانده نمی‌شود: %s",

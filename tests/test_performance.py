@@ -451,7 +451,7 @@ class TestCollect(unittest.TestCase):
 
     def test_an_older_range_takes_4_hour_candles_before_the_last_ten_days(self):
         self.now = T0 + 15 * 86400
-        r = perf.collect(self.dir, int(T0 - 86400), int(self.now), self.now, fetch=self.fetch)
+        r = perf.collect(self.dir, int(T0 - 86400), int(self.now) - 2 * 86400, self.now, fetch=self.fetch)
         self.assertEqual(r["from"], cycle(0) - H)                               # the account starts later
         usdt = [c for c in self.calls if c[0] == "USDT_IRT"]
         fine_from = int(self.now) - perf.FINE_DAYS * 86400
@@ -461,6 +461,33 @@ class TestCollect(unittest.TestCase):
         self.assertLessEqual(usdt[1][2], cycle(0) - 4 * H)
         rows = r["assets"]
         self.assertAlmostEqual(sum(a["pnl_irt"] for a in rows), r["rebuilt_value_to_irt"] - START, places=3)
+
+    def test_the_position_charts_get_the_bots_indicators(self):
+        """v3.9: a range that ends now - the markets of the positions and resting orders (and USDT_IRT) take hourly
+        candles over the bot's context window; each position gets technical.chart_data() for its chart span."""
+        from bitpin import technical
+        self.now = T0 + 15 * 86400
+        r = perf.collect(self.dir, int(T0 - 86400), int(self.now), self.now, fetch=self.fetch)
+        hourly = dict((c[0], c[2]) for c in self.calls if c[1] == "60")
+        long_from = int(self.now) - perf.TA_FETCH_HOURS * H
+        self.assertEqual(hourly, {"USDT_IRT": long_from, "BTC_IRT": long_from, "ETH_IRT": long_from})
+        btc = [p for p in r["positions"] if p["asset"] == "BTC"][0]
+        ta = btc["ta"]
+        self.assertTrue(set(technical.CHART_KEYS) <= set(ta))
+        self.assertIsInstance(ta["now"], dict)
+        self.assertIsInstance(ta["reading"], dict)
+        chart_from = btc["prices"][0][0]
+        self.assertLessEqual(ta["t"][0], chart_from)                  # trimmed to the chart: one bar before it
+        self.assertGreater(ta["t"][1], chart_from)
+        self.assertLessEqual(ta["t"][-1], self.now)
+        eth = [p for p in r["positions"] if p["asset"] == "ETH"][0]   # no market in this world: no indicators
+        self.assertIsNone(eth["ta"])
+        json.dumps(r)
+        # a range that ended earlier has no position charts: no long candles, no indicators
+        self.calls = []
+        r = perf.collect(self.dir, int(T0 - 86400), int(self.now) - 2 * 86400, self.now, fetch=self.fetch)
+        self.assertEqual(r["positions"], [])
+        self.assertTrue(all(c[2] >= int(self.now) - perf.FINE_DAYS * 86400 for c in self.calls if c[1] == "60"))
 
     def test_missing_files_give_an_empty_report(self):
         self.now = T0 + 5 * H
