@@ -2863,6 +2863,23 @@ class TestReleaseV3Ops(Base):
         self.assertEqual(len(self.tg.sent), before)
         self.assertFalse(os.path.exists(path))
 
+    def test_a_failed_certificate_renewal_is_not_called_a_bot_failure(self):
+        """v3.8.2: bitpin-bot-panel-cert.service (the panel certificate's renewal) has its own alert."""
+        n = self.notifier()
+        n.start()
+        path = os.path.join(self.nd, notify.UNIT_FAILURE_FILE)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"unit": "bitpin-bot-panel-cert.service", "exit_status": 1, "result": "exit-code",
+                       "time": T0 - 10}, f)
+        n.step()
+        n.step()
+        text = " | ".join(t for t in self.tg.texts() if "گواهی" in t)
+        self.assertEqual(text.count("تمدید گواهی پنل مدیریت انجام نشد"), 1)
+        self.assertIn("ربات و معامله‌هایش به این ربطی ندارند", text)
+        self.assertIn("sudo journalctl -u bitpin-bot-panel-cert.service", text)
+        self.assertNotIn("سرویس ربات از کار افتاد", text)
+        self.assertFalse(os.path.exists(path))
+
     # ---- v3.1: the management panel's events
     def test_panel_events_become_alerts_and_are_deleted(self):
         n = self.notifier()

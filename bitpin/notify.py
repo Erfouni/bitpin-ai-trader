@@ -4056,6 +4056,18 @@ class Notifier:
         result = clean_text(str(d.get("result") or ""), 30)
         t = _fnum(d.get("time"))
         t = t if t is not None and ts_ok(t) else now
+        if unit.startswith("bitpin-bot-panel-cert"):         # v3.8.2: the panel certificate's renewal, not the bot
+            L = ["⚠️ <b>تمدید گواهی پنل مدیریت انجام نشد</b>",
+                 "سرویس <code>%s</code> · کد خروج <code>%s</code> · %s" % (esc(unit), esc(status), fmt_when(t)),
+                 "ربات و معامله‌هایش به این ربطی ندارند. گواهی فعلی تا تاریخ پایانش کار می‌کند و تمدید هر روز دو بار "
+                 "دوباره امتحان می‌شود (از ۳۰ روز پیش از پایان). علت معمول: توکن Cloudflare باطل شده یا دسترسی "
+                 "سرور به Cloudflare / Let's Encrypt قطع است.",
+                 "علت: <code>sudo journalctl -u %s -n 50 --no-pager</code>" % esc(unit),
+                 "وضعیت گواهی: <code>sudo bitpin-bot panel-status</code> · توکن تازه: <code>sudo bitpin-bot "
+                 "panel-cert DOMAIN --new-token</code>"]
+            self.enqueue("a:unitfail:%s:%d" % (unit, int(t)), "alert", "\n".join(L))
+            _remove_path(path)
+            return
         L = ["🚨 <b>سرویس ربات از کار افتاد و دیگر ری‌استارت نمی‌شود</b>",
              "سرویس <code>%s</code> · کد خروج <code>%s</code>%s · %s" % (
                  esc(unit), esc(status), (" · نتیجه <code>%s</code>" % esc(result)) if result else "", fmt_when(t))]

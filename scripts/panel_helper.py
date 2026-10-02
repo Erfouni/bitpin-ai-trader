@@ -25,7 +25,9 @@ side is not trusted). What they may touch:
   when the new one does not work;
 * systemctl start / stop / restart of SERVICE_UNITS only, journalctl of LOG_UNITS only;
 * confirm-live: through the bitpin-bot command line (the same guards as by hand), with the phrase the
-  owner typed in the panel.
+  owner typed in the panel;
+* v3.8.2 panel_cert: the panel's certificate and its renewal timer, read only (the Cloudflare token of
+  'bitpin-bot panel-cert' is never read).
 
 Every command is logged to the journal (its name and result, never an argument value). Changes and
 panel logins are relayed to the Telegram notifier as small JSON files in its state directory
@@ -123,6 +125,7 @@ class Paths(object):
         self.app_dir = "/opt/bitpin-bot"
         self.etc_dir = "/etc/bitpin-bot"
         self.panel_etc_dir = "/etc/bitpin-bot-panel"     # root:bitpin-panel 0750: the web process reads it
+        self.acme_dir = "/etc/bitpin-bot-panel/acme"     # v3.8.2: root 0700, the certificate's ACME client
         self.state_dir = "/var/lib/bitpin-bot"
         self.notify_state_dir = "/var/lib/bitpin-bot-notify"
         self.backup_dir = "/var/backups/bitpin-bot"
@@ -616,6 +619,41 @@ class Helper(object):
         if not isinstance(data, dict):
             raise HelperError("the technical data could not be read (exit %d): %s" % (rc, out.strip()[-200:]))
         return data
+
+    def cmd_panel_cert(self, a):
+        """v3.8.2: the panel's certificate (names, issuer, end, fingerprint: bitpin.panel_cert.cert_info) and its
+        automatic renewal - the timer and the last run of the renewal service. Read-only: panel.json gives only the
+        certificate's path, the Cloudflare token is never read."""
+        from bitpin import panel_cert as pc
+        try:
+            conf = json.loads(read_text(self.p.panel_conf, 64 * 1024))
+        except (OSError, ValueError, HelperError):
+            conf = {}
+        cert = conf.get("tls_cert") if isinstance(conf, dict) else None
+        info = pc.cert_info(cert) if isinstance(cert, str) and cert else {"error": "panel.json has no tls_cert"}
+        managed = os.path.isfile(os.path.join(self.p.acme_dir, "renewal", pc.CERT_NAME + ".conf"))
+        out = {"cert": info, "managed": managed, "timer": None, "next": None, "last_run": None}
+        if managed:
+            out["timer"] = self.unit_info(pc.RENEW_TIMER)
+            kv = self._show(pc.RENEW_TIMER, ("NextElapseUSecRealtime",))
+            out["next"] = kv.get("NextElapseUSecRealtime") or None
+            kv = self._show(pc.RENEW_SERVICE, ("Result", "ExecMainStatus", "ExecMainExitTimestamp"))
+            if kv.get("ExecMainExitTimestamp"):
+                out["last_run"] = {"result": kv.get("Result") or None, "status": kv.get("ExecMainStatus") or None,
+                                   "at": kv.get("ExecMainExitTimestamp")}
+        return out
+
+    def _show(self, unit, props):
+        argv = ["systemctl", "show", unit]
+        for prop in props:
+            argv += ["-p", prop]
+        _rc, out = self.run(argv, 20)
+        kv = {}
+        for line in out.splitlines():
+            if "=" in line:
+                k, v = line.split("=", 1)
+                kv[k.strip()] = v.strip()
+        return kv
 
     def cmd_config_get(self, a):
         return {"config": read_text(self.p.config), "kimi": read_text(self.p.kimi)}
@@ -1163,6 +1201,7 @@ COMMANDS = {
     "status": (False, Helper.cmd_status),
     "performance": (False, Helper.cmd_performance),
     "technical": (False, Helper.cmd_technical),
+    "panel_cert": (False, Helper.cmd_panel_cert),
     "config_get": (False, Helper.cmd_config_get),
     "secrets_status": (False, Helper.cmd_secrets_status),
     "health": (False, Helper.cmd_health),

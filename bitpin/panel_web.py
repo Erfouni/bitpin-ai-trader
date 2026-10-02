@@ -60,6 +60,7 @@ from .panel_auth import (PBKDF2_ITERATIONS, DeviceTrust, LoginLimiter, SessionSt
                          is_password_hash, load_device_secret, new_totp_secret, otpauth_uri, password_problems,
                          verify_password, verify_totp)
 from .panel_i18n import LANG_NAMES, LANGS, N_, current, is_rtl, negotiate, reset_lang, set_lang, tr
+from .panel_cert import WARN_DAYS as CERT_WARN_DAYS
 
 log = logging.getLogger("bitpin.panel")
 
@@ -3168,10 +3169,60 @@ class PanelApp(object):
                 totp_card = card(te("Two-step login (TOTP)"), box("warn", te(
                     "Off. For a panel reachable from the internet, turning it on is recommended.")) + self._form(
                     req, "/security/totp/new", button(tr("Create a new key"), "primary", "key")), "shield")
-        parts = ['<div class="grid2">%s%s</div>' % (pw_card, totp_card),
+        parts = ['<div class="grid2">%s%s</div>' % (pw_card, totp_card), self._cert_card(req),
                  card(te("Recent events (50)"), self._audit_table(), "list", cls="flush")]
         return self._page(req, tr("Security"), "".join(parts), status=status, active="/security",
-                          sub=tr("Password, two-step login and the audit log"))
+                          sub=tr("Password, two-step login, the certificate and the audit log"))
+
+    def _cert_card(self, req):
+        """v3.8.2: the panel's certificate and its automatic renewal (helper panel_cert): its names, who issued it,
+        its end, the renewal timer and its last run, the fingerprint."""
+        title = te("The panel's certificate")
+        data, err = self._call(req, "panel_cert")
+        if err is not None:
+            return card(title, self._helper_error(err), "shield")
+        info = data.get("cert") if isinstance(data.get("cert"), dict) else {}
+        if not info.get("names"):
+            return card(title, box("warn", tr("The certificate cannot be read: %s") % bdi(info.get("error") or "?")),
+                        "shield")
+        days, own = info.get("days_left"), bool(info.get("self_signed"))
+        left = ""
+        if _is_num(days):
+            kind = "err" if days < 0 else ("warn" if days < CERT_WARN_DAYS and not own else "ok")
+            left = ' <span class="badge %s">%s</span>' % (kind, esc(tr("%s days left") % days) if days >= 0
+                                                         else te("Expired"))
+        rows = [(N_("Names"), " ".join(code(n) for n in info["names"])),
+                (N_("Issued by"), te("Self-signed (made by the panel's setup)") if own else bdi(info.get("issuer"))),
+                (N_("Valid until"), fmt_time(info.get("not_after")) + left)]
+        if data.get("managed"):
+            t = data.get("timer") if isinstance(data.get("timer"), dict) else {}
+            on = t.get("enabled") == "enabled" and t.get("state") == "active"
+            ren = '<span class="badge %s">%s</span>' % ("ok" if on else "warn", te("On") if on else te("Off"))
+            if on and data.get("next"):
+                ren += " " + tr("next check %s") % ltr(data["next"])
+            rows.append((N_("Automatic renewal"), ren))
+            last = data.get("last_run") if isinstance(data.get("last_run"), dict) else None
+            if last:
+                ok = last.get("result") == "success"
+                rows.append((N_("Last renewal check"), ltr(last.get("at")) + ' <span class="badge %s">%s</span>' % (
+                    "ok" if ok else "err", te("Done") if ok else esc(tr("Failed (exit %s)") % (last.get("status") or "?")))))
+        rows.append((N_("Fingerprint (SHA-256)"), '<code dir="ltr" class="fp">%s</code>' % esc(info.get("fingerprint"))))
+        notes = []
+        if _is_num(days) and days < 0:
+            notes.append(box("err", te("The certificate has expired and browsers refuse the domain. Open the panel by "
+                                       "the server's IP address and run the panel-cert command with the domain "
+                                       "again.")))
+        elif _is_num(days) and days < CERT_WARN_DAYS and not own:
+            notes.append(box("warn", te("The certificate ends soon and was not renewed: see the last renewal check "
+                                        "above and the Telegram alerts.")))
+        if own:
+            notes.append(help_p(tr("The browser warns about a self-signed certificate: compare the fingerprint above. "
+                                   "A trusted certificate for a domain: <code>sudo bitpin-bot panel-cert DOMAIN</code> "
+                                   "(the panel guide).")))
+        else:
+            notes.append(help_p(te("It renews itself from 30 days before its end; a failed renewal is reported in "
+                                   "Telegram. The bot and its trading do not depend on it.")))
+        return card(title, kv_table(rows) + "".join(notes), "shield")
 
     def _audit_table(self):
         labels = {"login_ok": N_("Signed in"), "login_failed": N_("Failed sign-in"), "login_locked": N_("Sign-in locked"),

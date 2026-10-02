@@ -849,7 +849,8 @@ sudo bash /opt/bitpin-bot/deploy/uninstall.sh
 sudo bitpin-bot panel-setup
 ```
 
-راهنمای کامل: [docs/PANEL_FA.md](PANEL_FA.md).
+راهنمای کامل: [docs/PANEL_FA.md](PANEL_FA.md). از نسخهٔ ۳٫۸٫۲ پنل برای یک دامنه گواهی معتبر هم می‌گیرد که خودش تمدید
+می‌شود: `sudo bitpin-bot panel-cert panel.example.com` (گام ۵ همان راهنما).
 
 ## تعویض مدل Kimi
 

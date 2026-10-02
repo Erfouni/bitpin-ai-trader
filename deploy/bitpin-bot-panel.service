@@ -21,6 +21,8 @@ Type=simple
 User=bitpin-panel
 Group=bitpin-panel
 ExecStart=/usr/bin/python3 /opt/bitpin-bot/scripts/panel_server.py --config /etc/bitpin-bot-panel/panel.json
+# v3.8.2: a renewed certificate is loaded for the next connections; the sessions stay (panel-cert, its renewal)
+ExecReload=/bin/kill -HUP $MAINPID
 Environment=TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
 WorkingDirectory=/opt/bitpin-bot
 Restart=on-failure

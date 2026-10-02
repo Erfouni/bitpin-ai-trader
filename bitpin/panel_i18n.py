@@ -726,7 +726,38 @@ FA = {
     "Unknown service.": u"سرویس نامعتبر.",
 
     # ---------------------------------------------------------------- security
-    "Password, two-step login and the audit log": u"رمز عبور، ورود دومرحله‌ای و گزارش رویدادها",
+    "Password, two-step login, the certificate and the audit log": u"رمز عبور، ورود دومرحله‌ای، گواهی و گزارش رویدادها",
+    # v3.8.2: the panel's certificate (Security page)
+    "The panel's certificate": u"گواهی پنل",
+    "The certificate cannot be read: %s": u"گواهی خوانده نمی‌شود: %s",
+    "%s days left": u"%s روز مانده",
+    "Expired": u"منقضی شده",
+    "Names": u"نام‌ها",
+    "Issued by": u"صادرکننده",
+    "Self-signed (made by the panel's setup)": u"خودامضا (ساختهٔ راه‌اندازی پنل)",
+    "Valid until": u"معتبر تا",
+    "On": u"روشن",
+    "Off": u"خاموش",
+    "next check %s": u"بررسی بعدی %s",
+    "Automatic renewal": u"تمدید خودکار",
+    "Done": u"انجام شد",
+    "Failed (exit %s)": u"ناموفق (کد خروج %s)",
+    "Last renewal check": u"آخرین بررسی تمدید",
+    "Fingerprint (SHA-256)": u"اثر انگشت (SHA-256)",
+    "The certificate has expired and browsers refuse the domain. Open the panel by the server's IP address and "
+    "run the panel-cert command with the domain again.":
+        u"گواهی منقضی شده و مرورگرها نشانی دامنه را باز نمی‌کنند. پنل را با آی‌پی سرور باز کنید و دستور panel-cert "
+        u"را دوباره با دامنه اجرا کنید.",
+    "The certificate ends soon and was not renewed: see the last renewal check above and the Telegram alerts.":
+        u"گواهی به‌زودی تمام می‌شود و تمدید نشده است: آخرین بررسی تمدید در بالا و هشدارهای تلگرام را ببینید.",
+    "The browser warns about a self-signed certificate: compare the fingerprint above. A trusted certificate for a "
+    "domain: <code>sudo bitpin-bot panel-cert DOMAIN</code> (the panel guide).":
+        u"مرورگر برای گواهی خودامضا هشدار می‌دهد: اثر انگشت بالا را مقایسه کنید. گواهی معتبر برای یک دامنه: "
+        u"<code>sudo bitpin-bot panel-cert DOMAIN</code> (راهنمای پنل).",
+    "It renews itself from 30 days before its end; a failed renewal is reported in Telegram. The bot and its "
+    "trading do not depend on it.":
+        u"از ۳۰ روز پیش از پایانش خودکار تمدید می‌شود؛ تمدید ناموفق در تلگرام گزارش می‌شود. ربات و معامله‌هایش به "
+        u"آن وابسته نیستند.",
     "Change the password": u"تغییر رمز عبور",
     "Current password": u"رمز فعلی",
     "New password": u"رمز تازه",

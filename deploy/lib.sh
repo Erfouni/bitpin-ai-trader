@@ -27,10 +27,12 @@ NOTIFY_UNITS="bitpin-bot-notify.service bitpin-bot-notify-stop.service bitpin-bo
 OPS_UNITS="bitpin-bot-failed@.service bitpin-bot-backup.service bitpin-bot-backup.timer"
 # Release v3.1: the management panel (docs/PANEL_FA.md). Installed leniently like the ops units and NEVER enabled
 # by install.sh / update.sh: it opens a port, so only 'sudo bitpin-bot panel-setup' enables it. Its own user
-# bitpin-panel and /etc/bitpin-bot-panel are created there too.
-PANEL_UNITS="bitpin-bot-panel.service bitpin-bot-panel-helper.socket bitpin-bot-panel-helper@.service"
+# bitpin-panel and /etc/bitpin-bot-panel are created there too. v3.8.2: the certificate renewal service + timer
+# the same way (only 'sudo bitpin-bot panel-cert DOMAIN' enables the timer); its ACME work and log directories:
+PANEL_UNITS="bitpin-bot-panel.service bitpin-bot-panel-helper.socket bitpin-bot-panel-helper@.service bitpin-bot-panel-cert.service bitpin-bot-panel-cert.timer"
 PANEL_ETC_DIR="/etc/bitpin-bot-panel"
 PANEL_STATE_DIR="/var/lib/bitpin-bot-panel"
+PANEL_ACME_DIRS="/var/lib/bitpin-bot-panel-acme /var/log/bitpin-bot-panel-acme"
 PANEL_USER="bitpin-panel"
 # System configuration files of v3 (year_review/Y2-ops-12-months), both scoped to the bot: NEEDRESTART
 # excludes the two trading units from needrestart's automatic restarts after apt upgrades, LOGROTATE rotates

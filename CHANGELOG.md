@@ -4,6 +4,31 @@
 
 ---
 
+## 3.8.2 — گواهی معتبر برای دامنهٔ پنل (2026-10-02)
+
+- پنل حالا می‌تواند برای یک **دامنه** گواهی معتبر Let's Encrypt بگیرد. مرورگر دیگر هشدار نمی‌دهد و مقایسهٔ اثر انگشت لازم
+  نیست: `sudo bitpin-bot panel-cert panel.example.com`.
+- پورت‌های ۸۰ و ۴۴۳ سرور معمولاً دست وب‌سرور دیگری است، پس مالکیت دامنه با یک رکورد DNS در **Cloudflare** ثابت می‌شود. دستور
+  یک بار توکن API ‌ای را می‌پرسد که مالک فقط برای DNS همان دامنه ساخته است (موقع تایپ دیده نمی‌شود). اول آن را از Cloudflare
+  می‌پرسد و بعد در `/etc/bitpin-bot-panel/acme/cloudflare.ini` (فقط root) نگه می‌دارد؛ هیچ‌جا چاپ نمی‌شود.
+- **تمدید خودکار:** زمان‌بند تازهٔ `bitpin-bot-panel-cert.timer` روزی دو بار نگاه می‌کند و گواهی را از ۳۰ روز پیش از پایانش
+  تمدید می‌کند. پنل گواهی تازه را **بدون بستن نشست‌ها** بار می‌کند (`systemctl reload`). تمدید ناموفق در تلگرام با پیام خودش
+  گزارش می‌شود، نه با هشدار «سرویس ربات از کار افتاد».
+- **جدا از certbot سایت‌های دیگر سرور:** پوشه‌ها، تنظیمات و زمان‌بند خودش را دارد و `/etc/letsencrypt` و `cli.ini` آن را نه
+  می‌خواند و نه دست می‌زند. گواهی خودامضای قبلی نگه داشته می‌شود و `panel-cert --off` آن را برمی‌گرداند.
+- **پنل:** صفحهٔ **امنیت** کارت تازهٔ «گواهی پنل» دارد: نام‌ها، صادرکننده، تاریخ پایان و روزهای مانده، تمدید خودکار (روشن /
+  خاموش و بررسی بعدی)، نتیجهٔ آخرین بررسی تمدید و اثر انگشت. `panel-status` و `health` هم گواهی را نشان می‌دهند.
+- English: `bitpin/panel_cert.py` (new: domain / token checks, the Cloudflare token check with the IPv4 answers first -
+  the server's IPv6 route to Cloudflare times out after a minute -, certbot arguments in the panel's own directories,
+  installing a lineage for the panel with the self-signed pair kept once, cert_info / summary);
+  `scripts/panel_setup.py` (`cert DOMAIN [--new-token] | --off`, internal `cert-deploy` / `cert-renew` / `cert-info` /
+  `certbot`: certbot's main with IPv4 first and without the server's other cli.ini); `scripts/panel_server.py`
+  (SIGHUP: a new TLS context for the next connections); `deploy/bitpin-bot-panel-cert.{service,timer}` (new, never
+  enabled by install / update; OnFailure -> Telegram); `deploy/bitpin-bot-panel.service` (ExecReload);
+  `deploy/lib.sh` / `uninstall.sh` / `bitpin-bot` (PANEL_UNITS, the ACME directories, `panel-cert`, a health line);
+  `scripts/panel_helper.py` (read-only `panel_cert`); `bitpin/panel_web.py` (the certificate card);
+  `bitpin/notify.py` (the renewal's own alert); `tests/test_panel_cert.py`.
+
 ## 3.8.1 — صفحهٔ تحلیل تکنیکال خواناتر (2026-10-02)
 
 - جدول «خوانش تکنیکال کیمی» حالا در عرض صفحه جا می‌شود و ستون «بررسی» درست بعد از خوانش کلی می‌آید، پس بدون جابه‌جا کردن

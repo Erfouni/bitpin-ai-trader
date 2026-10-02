@@ -6,18 +6,30 @@
                                       /etc/bitpin-bot-panel/panel.json - then the panel is started
     sudo bitpin-bot panel-password    a new password (--username: a new username too); open sessions end
     sudo bitpin-bot panel-totp        the authenticator code on (a new secret) or off (--off)
-    sudo bitpin-bot panel-status      address, certificate fingerprint, 2FA, services
+    sudo bitpin-bot panel-status      address, certificate, 2FA, services
+    sudo bitpin-bot panel-cert DOMAIN [--new-token]
+                                      v3.8.2: a trusted Let's Encrypt certificate for the panel's domain, proved
+                                      through Cloudflare DNS (asks once for an API token limited to the zone's
+                                      DNS); it renews itself (bitpin-bot-panel-cert.timer)
+    sudo bitpin-bot panel-cert --off  back to the self-signed certificate; the renewal stops
 
 The password is never stored: panel.json keeps its PBKDF2 hash. The authenticator secret is shown ONCE, in
 this terminal, to be added to an authenticator app (Google Authenticator, Aegis, ...). Opening the port in
-a firewall is left to the owner (the command is printed).
+a firewall is left to the owner (the command is printed). The Cloudflare token is typed hidden and kept in
+/etc/bitpin-bot-panel/acme/cloudflare.ini (root 0600); it is never printed.
+
+Internal (v3.8.2): 'cert-deploy' is certbot's deploy hook (installs a renewed certificate for the panel and
+reloads it without ending sessions), 'cert-renew' is bitpin-bot-panel-cert.service, 'cert-info' prints one line
+for 'bitpin-bot health', 'certbot ARGS' runs certbot with IPv4 tried first (bitpin/panel_cert.py).
 """
 import argparse
 import getpass
 import hashlib
+import importlib.util
 import json
 import os
 import re
+import shlex
 import socket
 import ssl
 import subprocess
@@ -27,6 +39,8 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+
+from bitpin import panel_cert as pc  # noqa: E402
 
 PANEL_USER = "bitpin-panel"
 PANEL_ETC = "/etc/bitpin-bot-panel"
@@ -257,16 +271,37 @@ def start_units():
     run(["systemctl", "restart", "bitpin-bot-panel.service"])
 
 
-def print_access(conf, fingerprint):
+def _url(host, port):
+    return "https://%s:%d/" % ("[%s]" % host if ":" in host else host, port)
+
+
+def print_access(conf, fingerprint, info=None):
+    """How to reach the panel: by its domain when it has a trusted certificate (v3.8.2), else by the server's
+    addresses with the self-signed certificate's fingerprint to compare."""
     addrs = server_addresses()
+    names = [n for n in (info or {}).get("names") or [] if not _is_ip(n)]
     print()
-    print("The panel: %s" % "  or  ".join("https://%s:%d/" % ("[%s]" % a if ":" in a else a, conf["port"])
-                                         for a in (addrs or ["<server-ip>"])))
-    print("Certificate SHA-256 fingerprint. The browser warns about a self-signed certificate: open the")
-    print("certificate's details and continue only if it shows exactly this:")
-    print("    %s" % fingerprint)
+    if names and not (info or {}).get("self_signed"):
+        print("The panel: %s" % "  or  ".join(_url(n, conf["port"]) for n in names))
+        print("If the certificate ever expires, browsers refuse the name (HSTS): open %s meanwhile and run"
+              % _url(addrs[0] if addrs else "<server-ip>", conf["port"]))
+        print("sudo bitpin-bot panel-cert %s again." % names[0])
+    else:
+        print("The panel: %s" % "  or  ".join(_url(a, conf["port"]) for a in (addrs or ["<server-ip>"])))
+        print("Certificate SHA-256 fingerprint. The browser warns about a self-signed certificate: open the")
+        print("certificate's details and continue only if it shows exactly this:")
+        print("    %s" % fingerprint)
     print("Firewall: open the port yourself if needed, e.g.  sudo ufw allow %d/tcp  (and in the provider's" % conf["port"])
     print("cloud firewall, if it has one). Stop the panel any time: sudo systemctl disable --now bitpin-bot-panel")
+
+
+def _is_ip(text):
+    import ipaddress
+    try:
+        ipaddress.ip_address(str(text))
+        return True
+    except ValueError:
+        return False
 
 
 def cmd_setup(args, ask=input, secret_ask=getpass.getpass, clock=time.time):
@@ -327,15 +362,204 @@ def cmd_status(args):
         print("%-32s %s, %s" % (u, act.strip() or "?", en.strip() or "?"))
     print("username: %s   2FA: %s   port: %s" % (conf.get("username"), "ON" if conf.get("totp_secret") else "OFF",
                                                  conf.get("port")))
+    info = pc.cert_info(conf.get("tls_cert") or "")
+    print("certificate: %s" % pc.summary(info, renewal_state()))
+    if info.get("fingerprint"):
+        print_access(conf, info["fingerprint"], info)
+    return 0
+
+
+# ---------------------------------------------------------------- v3.8.2: a trusted certificate for a domain
+CF_HELP = """\
+The Cloudflare API token: made once in the Cloudflare dashboard, for the DNS of this zone only:
+  My Profile -> API Tokens -> Create Token -> template "Edit zone DNS" -> Zone Resources: Include, Specific zone,
+  the zone of %s -> Client IP Address Filtering (recommended): Is in, %s (this server) -> Continue to summary ->
+  Create Token. Cloudflare shows it only once. It is kept in %s (root only) and never printed."""
+
+
+def renewal_state(runner=None):
+    """'on' / 'OFF ...' for a certificate of panel-cert (its renewal timer), None without one (self-signed only)."""
+    if not os.path.isfile(pc.renewal_conf()):
+        return None
+    _rc, out = (runner or run)(["systemctl", "is-enabled", pc.RENEW_TIMER], check=False)
+    return "on" if out.strip() == "enabled" else "OFF (sudo systemctl enable --now %s)" % pc.RENEW_TIMER
+
+
+def certbot_cmd():
+    """certbot as this script runs it: 'panel_setup.py certbot ARGS', getaddrinfo answering IPv4 first."""
+    return [sys.executable or "/usr/bin/python3", os.path.abspath(__file__), "certbot"]
+
+
+def certbot_env():
+    """certbot's environment: HOME in its own work directory, so no ~/.cloudflare.cfg of another setup on the
+    server mixes into the Cloudflare plugin's login."""
+    return dict(os.environ, HOME=pc.ACME_WORK)
+
+
+def deploy_hook_cmd():
+    """certbot's deploy hook (kept in the renewal settings): 'panel_setup.py cert-deploy'."""
+    return " ".join(shlex.quote(x) for x in (sys.executable or "/usr/bin/python3", os.path.abspath(__file__),
+                                             "cert-deploy"))
+
+
+def run_certbot_inline(argv):
+    """'panel_setup.py certbot ARGS': certbot's own main with IPv4 tried first; its exit status."""
+    pc.prefer_ipv4()
     try:
-        with open(conf["tls_cert"], "r", encoding="ascii") as f:
-            print_access(conf, cert_fingerprint(f.read()))
-    except (OSError, KeyError, ValueError) as e:
-        print("certificate: not readable (%s)" % e)
+        from certbot.main import main as certbot_main
+    except ImportError:
+        print("certbot is not installed: sudo apt install certbot python3-certbot-dns-cloudflare", file=sys.stderr)
+        return 1
+    try:                    # not the cli.ini of the server's other certbot (its hooks may reload another web server)
+        from certbot._internal import constants as certbot_constants
+        certbot_constants.CLI_DEFAULTS["config_files"] = []
+    except (ImportError, AttributeError, KeyError, TypeError):
+        pass
+    rc = certbot_main(argv)
+    if isinstance(rc, str):
+        print(rc, file=sys.stderr)
+        return 1
+    return int(rc or 0)
+
+
+def reload_panel(runner=None):
+    """The running panel loads the new certificate without ending its sessions (SIGHUP, ExecReload); a panel
+    unit without ExecReload is restarted instead."""
+    runner = runner or run
+    rc, _out = runner(["systemctl", "reload", "bitpin-bot-panel.service"], check=False)
+    if rc == 0:
+        return "reloaded"
+    runner(["systemctl", "try-restart", "bitpin-bot-panel.service"], check=False)
+    return "restarted"
+
+
+def _plugin_installed():
+    return importlib.util.find_spec("certbot_dns_cloudflare") is not None
+
+
+def cmd_cert(args, secret_ask=getpass.getpass, runner=None, call=subprocess.call, verify=None, resolve=None,
+             plugin=_plugin_installed):
+    runner = runner or run
+    path = conf_path()
+    conf = read_conf(path)
+    if not conf:
+        raise SetupError("the panel is not set up yet: sudo bitpin-bot panel-setup")
+    cert_path, key_path = conf.get("tls_cert"), conf.get("tls_key")
+    if not cert_path or not key_path:
+        raise SetupError("%s has no tls_cert / tls_key: run sudo bitpin-bot panel-setup first" % path)
+    gid = os.stat(path).st_gid
+    if args.off:
+        return cert_off(cert_path, key_path, gid, runner)
+    domain = pc.clean_domain(args.domain)
+    why = pc.domain_problem(domain)
+    if why:
+        raise SetupError("%s: %s" % (domain or "the domain", why))
+    if not plugin():
+        raise SetupError("certbot's Cloudflare plugin is missing: sudo apt install certbot "
+                         "python3-certbot-dns-cloudflare")
+    # the name should point here (a CDN proxy in front would also hide the visitor's address from the panel)
+    addrs = server_addresses()
+    seen = pc.resolve_addresses(domain, resolve)
+    if not seen:
+        print("WARNING: %s has no address yet (no DNS record, or it has not spread): the certificate can be made, "
+              "the address works once the A record is there" % domain)
+    elif not set(seen) & set(addrs):
+        print("WARNING: %s points to %s, not to this server (%s). With a CDN proxy in front (Cloudflare's orange "
+              "cloud) the panel sees the proxy's address instead of yours: set the record to 'DNS only'."
+              % (domain, ", ".join(seen), ", ".join(addrs) or "?"))
+    creds = pc.ACME_CREDENTIALS
+    if args.new_token or not pc.credentials_present(creds):
+        ipv4 = [a for a in addrs if ":" not in a]
+        print(CF_HELP % (domain, ipv4[0] if ipv4 else "this server's IPv4 address", creds))
+        token = pc.clean_token(secret_ask("Cloudflare API token (typed hidden): "))
+        why = pc.token_problem(token)
+        if why:
+            raise SetupError("the token was not accepted: %s - nothing was changed" % why)
+        pc.prefer_ipv4()
+        ok, why = (verify or pc.verify_token)(token)
+        if not ok:
+            raise SetupError("Cloudflare does not accept this token: %s - nothing was changed" % why)
+        pc.write_credentials(creds, token)
+        token = None
+        print("Cloudflare accepted the token; kept in %s (root only)" % creds)
+    else:
+        print("using the Cloudflare token in %s (another one: --new-token)" % creds)
+    for d in (pc.ACME_WORK, pc.ACME_LOGS):
+        os.makedirs(d, mode=0o700, exist_ok=True)
+    print("asking Let's Encrypt for a certificate for %s (the DNS check through Cloudflare takes about a minute)"
+          % domain)
+    rc = call(certbot_cmd() + pc.certbot_args(domain, deploy_hook_cmd()), env=certbot_env())
+    if rc != 0:
+        raise SetupError("certbot failed (exit %s): see the lines above and %s. The panel keeps its current "
+                         "certificate." % (rc, pc.ACME_LOGS))
+    info = pc.install_cert(pc.live_dir(), cert_path, key_path, gid)
+    how = reload_panel(runner)
+    runner(["systemctl", "daemon-reload"], check=False)
+    rc_t, out_t = runner(["systemctl", "enable", "--now", pc.RENEW_TIMER], check=False)
+    print("installed for the panel (%s): %s" % (how, pc.summary(info)))
+    if rc_t == 0:
+        print("automatic renewal on: %s (twice a day; renewed 30 days before the end; a failure is reported in "
+              "Telegram)" % pc.RENEW_TIMER)
+    else:
+        print("WARNING: the renewal timer could not be enabled (%s): sudo systemctl enable --now %s"
+              % (out_t.strip()[-200:], pc.RENEW_TIMER))
+    print_access(conf, info.get("fingerprint", ""), info)
+    return 0
+
+
+def cert_off(cert_path, key_path, gid, runner=None):
+    runner = runner or run
+    runner(["systemctl", "disable", "--now", pc.RENEW_TIMER], check=False)
+    if pc.restore_selfsigned(cert_path, key_path, gid):
+        how = reload_panel(runner)
+        info = pc.cert_info(cert_path)
+        print("the panel is back on its self-signed certificate (%s): %s" % (how, pc.summary(info)))
+        print("its fingerprint, to compare in the browser: %s" % info.get("fingerprint"))
+    else:
+        print("no self-signed certificate was kept (the panel never had one of panel-cert): nothing to restore")
+    print("automatic renewal off. The Cloudflare token stays in %s: delete it with  sudo rm %s  and in Cloudflare"
+          % (pc.ACME_CREDENTIALS, pc.ACME_CREDENTIALS))
+    return 0
+
+
+def cmd_cert_deploy(args, env=None, runner=None):
+    """certbot's deploy hook after a renewal (RENEWED_LINEAGE: only this client's own live directory)."""
+    env = os.environ if env is None else env
+    lineage = env.get("RENEWED_LINEAGE") or pc.live_dir()
+    if os.path.realpath(lineage) != os.path.realpath(pc.live_dir()):
+        raise SetupError("refused: %s is not the panel's certificate (%s)" % (lineage, pc.live_dir()))
+    path = conf_path()
+    conf = read_conf(path)
+    if not conf:
+        raise SetupError("the panel is not set up: nothing was installed")
+    info = pc.install_cert(lineage, conf["tls_cert"], conf["tls_key"], os.stat(path).st_gid)
+    print("panel certificate renewed and installed (%s): %s" % (reload_panel(runner), pc.summary(info)))
+    return 0
+
+
+def cmd_cert_renew(args, call=subprocess.call):
+    """bitpin-bot-panel-cert.service: certbot renew of this client (a certificate 30 days or less from its end)."""
+    if not os.path.isfile(pc.renewal_conf()):
+        print("no certificate of panel-cert here: nothing to renew")
+        return 0
+    os.makedirs(pc.ACME_WORK, mode=0o700, exist_ok=True)
+    return call(certbot_cmd() + pc.renew_args(), env=certbot_env())
+
+
+def cmd_cert_info(args):
+    """One line for 'bitpin-bot health' (information only)."""
+    conf = read_conf(conf_path())
+    if not conf:
+        print("the panel is not set up")
+        return 0
+    print(pc.summary(pc.cert_info(conf.get("tls_cert") or ""), renewal_state()))
     return 0
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["certbot"]:                     # internal (v3.8.2): certbot with IPv4 first
+        return run_certbot_inline(argv[1:])
     ap = argparse.ArgumentParser(prog="bitpin-bot panel-...", description="Set up the management panel.")
     sub = ap.add_subparsers(dest="cmd")
     p = sub.add_parser("setup")
@@ -346,6 +570,13 @@ def main(argv=None):
     p = sub.add_parser("totp")
     p.add_argument("--off", action="store_true", help="turn the authenticator code off")
     sub.add_parser("status")
+    p = sub.add_parser("cert", help="a trusted Let's Encrypt certificate for the panel's domain (v3.8.2)")
+    p.add_argument("domain", nargs="?", help="the panel's domain, e.g. panel.example.com (its A record: this server)")
+    p.add_argument("--new-token", action="store_true", help="ask for a new Cloudflare API token")
+    p.add_argument("--off", action="store_true", help="back to the self-signed certificate; the renewal stops")
+    sub.add_parser("cert-deploy")
+    sub.add_parser("cert-renew")
+    sub.add_parser("cert-info")
     args = ap.parse_args(argv)
     if args.cmd is None:
         ap.print_help()
@@ -353,12 +584,17 @@ def main(argv=None):
     if getattr(args, "port", None) is not None and not 1024 <= args.port <= 65535:
         print("--port must be 1024..65535 (443 is usually nginx's)", file=sys.stderr)
         return 2
+    if args.cmd == "cert" and not args.off and not args.domain:
+        print("which domain? e.g.  sudo bitpin-bot panel-cert panel.example.com", file=sys.stderr)
+        return 2
     if hasattr(os, "geteuid") and os.geteuid() != 0:
         print("run it as root: sudo bitpin-bot panel-%s" % args.cmd, file=sys.stderr)
         return 2
     os.umask(0o077)
     try:
-        return {"setup": cmd_setup, "password": cmd_password, "totp": cmd_totp, "status": cmd_status}[args.cmd](args)
+        return {"setup": cmd_setup, "password": cmd_password, "totp": cmd_totp, "status": cmd_status,
+                "cert": cmd_cert, "cert-deploy": cmd_cert_deploy, "cert-renew": cmd_cert_renew,
+                "cert-info": cmd_cert_info}[args.cmd](args)
     except SetupError as e:
         print("REFUSED: %s" % e, file=sys.stderr)
         return 1

@@ -167,6 +167,11 @@ def default_responses():
         "vpn_put": vpn_put,
         "panel_password_set": {},
         "panel_totp_set": {},
+        "panel_cert": {"cert": {"names": ["panel.example.com"], "issuer": "Test CA (T1)", "self_signed": False,
+                                "not_after": 1790000000.0, "days_left": 60, "fingerprint": "AB:CD:EF"},
+                       "managed": True, "timer": {"state": "active", "enabled": "enabled", "sub": "waiting", "since": None},
+                       "next": "Sat 2026-10-03 02:41:00 UTC",
+                       "last_run": {"result": "success", "status": "0", "at": "Fri 2026-10-02 14:30:05 UTC"}},
         "audit_notify": {"relayed": True},
     }
 

@@ -129,7 +129,8 @@ main() {
         local ours=0 panel_ours=0
         [ -f "$ETC_DIR/.user-created-by-installer" ] && ours=1
         [ -f "$PANEL_ETC_DIR/.user-created-by-installer" ] && panel_ours=1
-        for d in "$PANEL_ETC_DIR" "$PANEL_STATE_DIR"; do
+        # shellcheck disable=SC2086  # PANEL_ACME_DIRS: two fixed paths (v3.8.2: the certificate's ACME work / logs)
+        for d in "$PANEL_ETC_DIR" "$PANEL_STATE_DIR" $PANEL_ACME_DIRS; do
             if [ -e "$d" ]; then
                 rm -rf "${d:?}"
                 ok "removed $d"

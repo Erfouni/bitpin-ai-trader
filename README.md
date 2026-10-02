@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.8.1` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.8.2` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -129,6 +129,8 @@ up:
 
 ```bash
 sudo bitpin-bot panel-setup        # user, password, 2FA, self-signed certificate and its fingerprint; starts the panel
+sudo bitpin-bot panel-cert panel.example.com   # optional: a trusted Let's Encrypt certificate for a domain
+                                   # (proved through Cloudflare DNS with a token of the zone's DNS); renews itself
 sudo ufw allow 8443/tcp            # only if ufw is active: the panel never opens ports itself
 ```
 
@@ -257,7 +259,7 @@ sudo bitpin-bot ladder              # the crash-ladder bids, read-only
 sudo bitpin-bot stop                # kill switch: the running bot cancels its ladder bids and exits
 sudo bitpin-bot resume              # remove the kill switch (then start the service)
 sudo bitpin-bot confirm-live --check
-sudo bitpin-bot panel-status        # panel address, certificate fingerprint, 2FA
+sudo bitpin-bot panel-status        # panel address, certificate (issuer, end, renewal), 2FA
 sudo bitpin-bot help                # everything else
 ```
 

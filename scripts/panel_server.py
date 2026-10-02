@@ -21,6 +21,8 @@ per connection, no Server version. The log (stderr -> journal) has the client IP
 string and status - never a header, cookie, form field or body.
 
 Exit codes: 0 stopped, 1 cannot listen, 78 configuration / certificate problem (systemd should not restart).
+SIGHUP (systemctl reload, v3.8.2): the certificate files are loaded again for the next connections (a renewed
+certificate of panel-cert); the sessions stay.
 """
 import argparse
 import ipaddress
@@ -310,6 +312,19 @@ def make_server(cfg, app, ssl_context):
     return PanelServer((bind, int(cfg.get("port") or 8443)), app, ssl_context, bool(cfg.get("trusted_proxy")))
 
 
+def reload_certificate(server, cfg):
+    """v3.8.2 (SIGHUP): a new TLS context from the certificate files for the next connections - open sessions and
+    connections stay. A pair that cannot be loaded leaves the old one in use. True when it was replaced."""
+    try:
+        ctx = make_ssl_context(cfg["tls_cert"], cfg["tls_key"])
+    except (ssl.SSLError, OSError, ValueError, KeyError) as e:
+        log.error("panel: the TLS certificate could not be reloaded (%s): the old one stays", e)
+        return False
+    server.ssl_context = ctx
+    log.info("panel: TLS certificate reloaded")
+    return True
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="HTTPS server of the bitpin-bot management panel")
     ap.add_argument("--config", default=DEFAULT_CONFIG, help="panel.json (default %(default)s)")
@@ -346,6 +361,8 @@ def main(argv=None):
     def _stop(signum, frame):
         raise KeyboardInterrupt()
     signal.signal(signal.SIGTERM, _stop)
+    if hasattr(signal, "SIGHUP"):                # v3.8.2: systemctl reload - the renewed certificate
+        signal.signal(signal.SIGHUP, lambda signum, frame: reload_certificate(server, cfg))
     log.info("panel listening on https://%s:%s (2FA %s, allowed hosts: %s, trusted proxy: %s)",
              cfg.get("bind") or "0.0.0.0", cfg.get("port") or 8443, "on" if cfg.get("totp_secret") else "OFF",
              ", ".join(app.allowed_hosts) or "any", "yes" if cfg.get("trusted_proxy") else "no")

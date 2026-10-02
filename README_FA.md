@@ -13,7 +13,7 @@
 
 | | |
 |---|---|
-| **نسخه** | `3.8.1` · تغییرات هر نسخه در [CHANGELOG.md](CHANGELOG.md) |
+| **نسخه** | `3.8.2` · تغییرات هر نسخه در [CHANGELOG.md](CHANGELOG.md) |
 | **اجرا** | روی یک سرور Ubuntu، به‌صورت سه سرویس systemd مستقل |
 | **وابستگی** | هیچ؛ فقط کتابخانهٔ استاندارد پایتون (Python 3.7 تا 3.14) |
 | **تست** | حدود ۱۵۰۰ تست واحد و یکپارچه؛ بدون نیاز به شبکه یا کلید واقعی |
@@ -109,6 +109,8 @@ flowchart LR
 
 ```bash
 sudo bitpin-bot panel-setup        # کاربر، رمز، ورود دومرحله‌ای، گواهی خودامضا و اثر انگشتش؛ پنل را روشن می‌کند
+sudo bitpin-bot panel-cert panel.example.com   # اختیاری: گواهی معتبر Let's Encrypt برای یک دامنه
+                                   # (مالکیت با DNS در Cloudflare و توکن همان دامنه)؛ خودش تمدید می‌شود
 sudo ufw allow 8443/tcp            # فقط اگر ufw فعال است؛ پنل خودش هیچ پورتی باز نمی‌کند
 ```
 
@@ -270,7 +272,7 @@ sudo bitpin-bot ladder              # سفارش‌های نردبان، فقط 
 sudo bitpin-bot stop                # کلید توقف: ربات سفارش‌های نردبانش را لغو می‌کند و خارج می‌شود
 sudo bitpin-bot resume              # برداشتن کلید توقف (بعد سرویس را روشن کنید)
 sudo bitpin-bot confirm-live --check
-sudo bitpin-bot panel-status        # نشانی پنل، اثر انگشت گواهی، ورود دومرحله‌ای
+sudo bitpin-bot panel-status        # نشانی پنل، گواهی (صادرکننده، پایان، تمدید)، ورود دومرحله‌ای
 sudo bitpin-bot help                # بقیهٔ دستورها
 ```
 

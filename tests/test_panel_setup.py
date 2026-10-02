@@ -143,7 +143,7 @@ class TestDeployKit(unittest.TestCase):
     def test_the_kit_installs_but_never_enables_the_panel(self):
         lib = read("deploy", "lib.sh")
         self.assertIn('PANEL_UNITS="bitpin-bot-panel.service bitpin-bot-panel-helper.socket '
-                      'bitpin-bot-panel-helper@.service"', lib)
+                      'bitpin-bot-panel-helper@.service bitpin-bot-panel-cert.service bitpin-bot-panel-cert.timer"', lib)
         self.assertIn("for u in $PANEL_UNITS; do", lib)
         for f in ("install.sh", "update.sh", "lib.sh"):
             self.assertNotIn("enable --now bitpin-bot-panel", read("deploy", f), f)
@@ -158,7 +158,7 @@ class TestDeployKit(unittest.TestCase):
 
     def test_the_command_line(self):
         cli = read("deploy", "bitpin-bot")
-        self.assertIn("panel-setup|panel-password|panel-totp|panel-status)", cli)
+        self.assertIn("panel-setup|panel-password|panel-totp|panel-status|panel-cert)", cli)
         self.assertIn('exec "$PYTHON" "$APP_DIR/scripts/panel_setup.py" "${cmd#panel-}" "$@"', cli)
         self.assertIn("--check|--show) ;;", cli)
         self.assertIn("sudo bitpin-bot panel-setup", cli)

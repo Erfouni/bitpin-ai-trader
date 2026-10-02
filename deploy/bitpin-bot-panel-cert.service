@@ -1,0 +1,51 @@
+# The management panel's certificate renewal (release v3.8.2; docs/PANEL_FA.md), started by
+# bitpin-bot-panel-cert.timer twice a day. Installed by install.sh / update.sh, NEVER enabled there: only
+# 'sudo bitpin-bot panel-cert DOMAIN' enables the timer, after it got the panel a Let's Encrypt certificate.
+#
+# certbot renew with the panel's OWN ACME directories (/etc/bitpin-bot-panel/acme, /var/lib/bitpin-bot-panel-acme,
+# /var/log/bitpin-bot-panel-acme): a certbot the server uses for other sites (/etc/letsencrypt) is never read or
+# touched. A certificate 30 days or less from its end is renewed, the domain proved with a DNS TXT record through
+# Cloudflare (the token in /etc/bitpin-bot-panel/acme/cloudflare.ini, root 0600); certbot's deploy hook installs
+# it for the panel, which reloads it without ending sessions. A failure reaches Telegram (bitpin-bot-failed@);
+# the bot and its trading do not depend on any of this.
+[Unit]
+Description=Bitpin bot management panel: renew the panel's certificate
+Documentation=file:///opt/bitpin-bot/docs/PANEL_FA.md
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/bitpin-bot-panel/acme/renewal/bitpin-panel.conf
+OnFailure=bitpin-bot-failed@%n.service
+
+[Service]
+Type=oneshot
+TimeoutStartSec=900
+Nice=10
+WorkingDirectory=/opt/bitpin-bot
+Environment=TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8
+ExecStart=/usr/bin/python3 /opt/bitpin-bot/scripts/panel_setup.py cert-renew
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bitpin-bot-panel-cert
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/etc/bitpin-bot-panel -/var/lib/bitpin-bot-panel-acme -/var/log/bitpin-bot-panel-acme
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+# none of the bot's secrets or state, and not the other sites' certificates
+InaccessiblePaths=-/etc/bitpin-bot -/var/lib/bitpin-bot -/var/lib/bitpin-bot-paper -/var/lib/bitpin-bot-notify -/var/backups/bitpin-bot -/opt/xray -/etc/letsencrypt

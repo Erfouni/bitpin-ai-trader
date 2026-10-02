@@ -53,7 +53,11 @@
 #                                      code, self-signed certificate; starts it (open the port yourself)
 #   sudo bitpin-bot panel-password [--username]   a new panel password; open sessions end
 #   sudo bitpin-bot panel-totp [--off] the panel's authenticator code on (a new key) or off
-#   sudo bitpin-bot panel-status       panel address, certificate fingerprint, 2FA, services
+#   sudo bitpin-bot panel-status       panel address, certificate, 2FA, services
+#   sudo bitpin-bot panel-cert DOMAIN [--new-token]   v3.8.2: a trusted Let's Encrypt certificate for the
+#                                      panel's domain, proved through Cloudflare DNS (asks once for an API token
+#                                      of the zone's DNS); renews itself (bitpin-bot-panel-cert.timer)
+#   sudo bitpin-bot panel-cert --off   back to the self-signed certificate; the renewal stops
 set -euo pipefail
 
 APP_DIR=/opt/bitpin-bot
@@ -394,6 +398,10 @@ case "$cmd" in
             last_bk="$(ls -1t /var/backups/bitpin-bot/state-*.tgz 2>/dev/null | head -n 1)"
             echo "bitpin-bot-backup.timer: enabled=$(systemctl is-enabled bitpin-bot-backup.timer 2>/dev/null || true); newest backup: ${last_bk:-none yet}"
         fi
+        # v3.8.2 (information only): the panel's certificate and its automatic renewal
+        if [ -f /etc/bitpin-bot-panel/panel.json ] && [ -f "$APP_DIR/scripts/panel_setup.py" ]; then
+            echo "panel certificate: $(cd "$APP_DIR" && "$PYTHON" "$APP_DIR/scripts/panel_setup.py" cert-info 2>/dev/null | tail -n 1)"
+        fi
         if [ "$rc" = 0 ]; then echo "RESULT: OK"; else echo "RESULT: the live bot needs attention"; fi
         exit "$rc" ;;
     stop|resume)
@@ -469,7 +477,7 @@ for line in sys.stdin:
         print(line)
     print("-" * 60)
 ' ;;
-    panel-setup|panel-password|panel-totp|panel-status)
+    panel-setup|panel-password|panel-totp|panel-status|panel-cert)
         # as root: panel-setup creates the user bitpin-panel and /etc/bitpin-bot-panel and starts the units
         [ -f "$APP_DIR/scripts/panel_setup.py" ] || { echo "this version has no management panel" >&2; exit 1; }
         export TZ=UTC LANG=C.UTF-8 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PYTHONIOENCODING=utf-8

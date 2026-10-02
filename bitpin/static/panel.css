@@ -793,6 +793,8 @@ details.more > p {
   font: 12.5px/1.6 "Inter", "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
 }
 .secret { font-size: 15px; letter-spacing: .08em; padding: 4px 10px; }
+/* v3.8.2: the certificate's fingerprint (95 characters) wraps anywhere */
+code.fp { white-space: normal; word-break: break-all; font-size: 12px; }
 
 /* trade settings: sections list + fields in two columns + the save bar */
 .with-toc {

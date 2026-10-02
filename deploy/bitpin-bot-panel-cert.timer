@@ -1,0 +1,16 @@
+# /etc/systemd/system/bitpin-bot-panel-cert.timer - checks the panel's certificate twice a day (release v3.8.2):
+# bitpin-bot-panel-cert.service renews it when 30 days or less are left (nothing happens on the other runs).
+# Installed by install.sh / update.sh, enabled ONLY by 'sudo bitpin-bot panel-cert DOMAIN' and disabled by
+# 'sudo bitpin-bot panel-cert --off'. Persistent=true: a run missed while the server was off happens at boot.
+[Unit]
+Description=Bitpin bot management panel: certificate renewal timer
+Documentation=file:///opt/bitpin-bot/docs/PANEL_FA.md
+
+[Timer]
+OnCalendar=*-*-* 02,14:23:00 UTC
+Persistent=true
+RandomizedDelaySec=1800
+Unit=bitpin-bot-panel-cert.service
+
+[Install]
+WantedBy=timers.target
