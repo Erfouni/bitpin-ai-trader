@@ -931,6 +931,26 @@ class TestBotState(unittest.TestCase):
         many = [{"symbol": "BTC_IRT", "reason": "stop", "t": NOW - i * H} for i in range(20)]
         self.assertEqual(len(self.builder().build(None, recent_exits=many)["recent_exits"]), 8)
 
+    def test_atr_and_traded_value_are_in_usdt(self):
+        """v3.10: a coin flat in USDT while the toman falls 0.1% an hour: its ATR is its own 0.2% range (not the
+        toman's drift), its traded value in USDT is flat (vol_ratio 1.0, not inflated by the falling toman)."""
+        from bitpin.data import Bar
+        t0 = 1790006400 - 900 * 3600
+        usdt, coin = [], []
+        for i in range(900):
+            t = t0 + i * 3600
+            rate = 100000.0 * 1.001 ** i
+            usdt.append(Bar(t, rate, rate, rate, rate, 50.0))
+            px = 50000.0 * rate                                          # 50,000 USDT in toman
+            coin.append(Bar(t, px, px * 1.001, px * 0.999, px, 2.0))
+        f = an.symbol_features("XYZ_IRT", coin, [b.ts for b in usdt], [b.close for b in usdt])
+        self.assertAlmostEqual(f["atr4h_pct"], 0.2, delta=0.02)
+        self.assertEqual(f["vol_ratio"], 1.0)
+        self.assertAlmostEqual(f["vol24h_k"], 24 * 2.0 * 50000.0 / 1000.0, delta=1.0)  # thousand USDT
+        self.assertNotIn("vol24h_m", f)
+        self.assertIn("vol24h_k: 24h traded value, thousand USDT", an.LEGEND)
+        self.assertIn("atr4h_pct: ATR(14) of the 4h candles in USDT", an.LEGEND)
+
     def test_features_without_positions_and_a_broken_state_never_break_the_context(self):
         ctx = self.builder().build(None, ladder={"coins": {"BTC": "junk"}}, positions={})
         self.assertEqual(ctx["features"], {"ladder": True, "code_exits": True})

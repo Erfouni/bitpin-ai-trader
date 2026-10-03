@@ -381,6 +381,40 @@ class TestPricesAndParsing(unittest.TestCase):
         self.assertIsNone(p.irt("DOGE", now))
         self.assertIsNone(p.usdt("DOGE", now, now))
 
+    def test_a_fee_rounded_by_the_exchange_leaves_zero_not_a_debt(self):
+        """v3.9.1: a fee taken in the coin is rounded down by the exchange (8 decimals here) while the record keeps
+        every digit; selling everything then left -0.000000002 coins. Up to 0.1% of the fill below zero is zero, a
+        sale of coins the bot never recorded stays below zero."""
+        def f(t, side, base, fee, fee_asset):
+            return {"t": t, "symbol": "BTC_USDT", "asset": "BTC", "quote_asset": "USDT", "side": side, "base": base,
+                    "quote": base * 50000.0, "fee": fee, "fee_asset": fee_asset, "reason": "", "route": "",
+                    "order_id": "o%d" % t}
+        buy = f(1, "buy", 0.00012345, 0.000000432075, "BTC")          # the exchange took 0.00000043
+        sell = f(2, "sell", 0.00012302, 0.02, "USDT")                 # everything the account held
+        q = perf.holdings_at([buy, sell], 3, START)
+        self.assertEqual(q["BTC"], 0.0)
+        self.assertGreater(perf.holdings_at([buy], 3, START)["BTC"], 0.0)
+        big = f(2, "sell", 0.00013, 0.02, "USDT")                     # 6% more than was bought: not a rounding
+        self.assertAlmostEqual(perf.holdings_at([buy, big], 3, START)["BTC"], 0.00012345 - 0.000000432075 - 0.00013,
+                               places=12)
+        usdt = [{"t": 1, "symbol": "USDT_IRT", "asset": "USDT", "quote_asset": "IRT", "side": "buy", "base": 10.0,
+                 "quote": 1000000.0, "fee": 0.035, "fee_asset": "USDT", "reason": "", "route": "", "order_id": "u"},
+                f(2, "buy", 9.965 / 50000.0 + 1e-12, 0.0, "BTC")]
+        self.assertEqual(perf.holdings_at(usdt, 3, START)["USDT"], 0.0)  # the quote side the same way
+
+    def test_a_leftover_without_a_plan_is_dust_not_a_position(self):
+        """v3.10: what the account holds below DUST_USDT without a plan of the bot is a leftover of a sale."""
+        records = world_records(21)
+        for r in records:
+            r["positions"] = {}                                          # no plan of the bot anywhere
+        rows = [{"asset": "BTC", "qty_to": 0.0000001, "value_to_irt": 300.0, "value_to_usdt": 0.003},
+                {"asset": "XRP", "qty_to": 10.0, "value_to_irt": 2000000.0, "value_to_usdt": 20.0}]
+        prices = world_prices(cycle(20))
+        out = perf._positions(rows, {}, [], prices, cycle(20), cycle(20))
+        by = dict((p["asset"], p) for p in out)
+        self.assertEqual((by["BTC"]["held"], by["BTC"]["dust"]), (False, True))
+        self.assertEqual((by["XRP"]["held"], by["XRP"]["dust"]), (True, False))   # worth more than DUST_USDT
+
     def test_bad_fills_and_records_are_skipped(self):
         records = [{"time": T0, "fills": [
             {"symbol": "BTC_IRT", "side": "buy", "base": "0", "quote": "5"},
@@ -482,6 +516,8 @@ class TestCollect(unittest.TestCase):
         self.assertLessEqual(ta["t"][-1], self.now)
         eth = [p for p in r["positions"] if p["asset"] == "ETH"][0]   # no market in this world: no indicators
         self.assertIsNone(eth["ta"])
+        self.assertEqual((btc["held"], btc["dust"]), (True, False))     # v3.10: the bot's plan: a position
+        self.assertEqual((eth["held"], eth["dust"]), (False, False))    # only a resting order: not held
         json.dumps(r)
         # a range that ended earlier has no position charts: no long candles, no indicators
         self.calls = []

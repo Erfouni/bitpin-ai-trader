@@ -486,8 +486,8 @@ def cmd_cert(args, secret_ask=getpass.getpass, runner=None, call=subprocess.call
         print("using the Cloudflare token in %s (another one: --new-token)" % creds)
     for d in (pc.ACME_WORK, pc.ACME_LOGS):
         os.makedirs(d, mode=0o700, exist_ok=True)
-    print("asking Let's Encrypt for a certificate for %s (the DNS check through Cloudflare takes about a minute)"
-          % domain)
+    print("asking Let's Encrypt for a certificate for %s. This takes about a minute: certbot waits 30 seconds for "
+          "the DNS record to spread and prints nothing meanwhile - please wait, do not press Ctrl+C." % domain)
     rc = call(certbot_cmd() + pc.certbot_args(domain, deploy_hook_cmd()), env=certbot_env())
     if rc != 0:
         raise SetupError("certbot failed (exit %s): see the lines above and %s. The panel keeps its current "

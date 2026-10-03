@@ -209,8 +209,8 @@ LEGEND = ("px: last price in IRT (toman); px_usdt = px / USDT_IRT. ret_usdt: USD
           "log returns x sqrt 24). d30h: px vs the highest close of the last 30 d, %; pos30: place in the 30-day "
           "range (0 = low, 1 = high). beta_btc / corr_btc: 30-day beta and correlation vs BTC (4h log returns). "
           "rsi4h / rsi1d, ema_dev_pct [vs EMA20, 50, 200 on 4h]: on the coin's USDT price (USDT_IRT: IRT). "
-          "atr4h_pct: ATR(14) of IRT 4h candles, % of price. vol24h_m: 24h traded value, M IRT; vol_ratio: vs the "
-          "30-day daily average. book: best bid/ask, spread_pct, depth1_m = [bid, ask] M IRT within 1% of mid (20 "
+          "atr4h_pct: ATR(14) of the 4h candles in USDT, % of price. vol24h_k: 24h traded value, thousand USDT; "
+          "vol_ratio: vs the 30-day daily average (both in USDT; USDT_IRT: its own candles). book: best bid/ask, spread_pct, depth1_m = [bid, ask] M IRT within 1% of mid (20 "
           "levels). macd4h_pct: MACD(12, 26, 9) of the 4h closes [line, signal, histogram], % of price. bb4h: "
           "Bollinger(20, 2) of the 4h closes [place in the bands: 0 = lower, 1 = upper; width, % of the middle]. "
           "don20_4h: [lowest, highest] of the last 20 4h bars. sup / res: support levels below px and resistance "
@@ -1181,21 +1181,32 @@ def symbol_features(symbol, bars, usdt_ts, usdt_close, price=None, btc_grid=None
         out["sup"], out["sup_n"] = [m for m, _ in sup], [n for _, n in sup]
     if res:
         out["res"], out["res_n"] = [m for m, _ in res], [n for _, n in res]
-    irt4 = data_mod.resample(bars, 4) if len(bars) > 1 else []
-    if len(irt4) > 15:
-        a = _last(ind.atr([b.high for b in irt4], [b.low for b in irt4], [b.close for b in irt4], 14))
+    # v3.10: the ATR and the traded value in USDT too, like every other technical field (the rial's own moves out):
+    # each hourly IRT candle over the USDT_IRT close of its hour (USDT_IRT itself: its IRT candles, 1 USDT a unit)
+    if is_safe:
+        usd = [(b, 1.0) for b in bars]
+    else:
+        usd = [(b, _asof(usdt_ts, usdt_close, b.ts)) for b in bars]
+        usd = [(b, u) for b, u in usd if u]
+    usd_bars = ([data_mod.Bar(b.ts, b.open, b.high, b.low, b.close, b.volume) for b, _u in usd] if is_safe else
+                [data_mod.Bar(b.ts, b.open / u, b.high / u, b.low / u, b.close / u, b.volume) for b, u in usd])
+    u4 = data_mod.resample(usd_bars, 4) if len(usd_bars) > 1 else []
+    if len(u4) > 15:
+        a = _last(ind.atr([b.high for b in u4], [b.low for b in u4], [b.close for b in u4], 14))
         if a:
-            out["atr4h_pct"] = round(a / irt4[-1].close * 100, 2)
-    # traded value (IRT)
-    t_end = ts[-1]
-    v24 = sum(b.volume * b.close for b in bars if b.ts > t_end - DAY)
-    span = [b for b in bars if b.ts > t_end - 30 * DAY]
-    if span:
-        days = max(1.0, (t_end - span[0].ts + HOUR) / float(DAY))
-        avg = sum(b.volume * b.close for b in span) / days
-        out["vol24h_m"] = rnd(v24 / 1e6, 4)
-        if avg > 0:
-            out["vol_ratio"] = round(v24 / avg, 2)
+            out["atr4h_pct"] = round(a / u4[-1].close * 100, 2)
+    # traded value in USDT (a coin's volume is in the coin, its IRT price over the hour's USDT_IRT; USDT_IRT's is USDT)
+    if usd:
+        t_end = ts[-1]
+        value = [(b.ts, b.volume * (1.0 if is_safe else b.close / u)) for b, u in usd]
+        v24 = sum(v for t, v in value if t > t_end - DAY)
+        span = [(t, v) for t, v in value if t > t_end - 30 * DAY]
+        if span:
+            days = max(1.0, (t_end - span[0][0] + HOUR) / float(DAY))
+            avg = sum(v for _t, v in span) / days
+            out["vol24h_k"] = rnd(v24 / 1e3, 4)
+            if avg > 0:
+                out["vol_ratio"] = round(v24 / avg, 2)
     return out
 
 

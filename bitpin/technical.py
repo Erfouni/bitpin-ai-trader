@@ -11,7 +11,8 @@ The panel's technical page shows the numbers, the model's reading and the check.
 The reading describes the chart; it is no setup and no base-rate row of its own (B7, B8: mechanical signals did not
 beat the costs) and it never blocks a decision: a wrong field is a note for the owner, not a rejection.
 
-Fields (the price is px_usdt, for USDT_IRT its toman price px, like the levels in the context):
+Fields, all on the USDT price px_usdt like the levels in the context (v3.10: USDT_IRT gets no reading - it is the
+toman's price, not a coin's chart):
     trend      ema_dev_pct[0] (EMA20) and [1] (EMA50) both > 0: up, both < 0: down, else mixed
     long       ema_dev_pct[2] (EMA200) > 0: above, < 0: below
     momentum   macd4h_pct[2] (the MACD histogram, % of the price) > MACD_FLAT: rising, < -MACD_FLAT: falling, else flat
@@ -76,11 +77,12 @@ def price_of(sym_ctx, symbol=""):
 
 
 def reading(sym_ctx, symbol=""):
-    """The rule fields of one coin's context ({} for a coin without the full-detail fields): every TA_FIELDS value
-    the rules give (a field whose input is missing is left out), the nearest support / resistance with its
-    distance in % of the price and how many swing points hold it, and "tone": bullish when the trend is up and the
-    momentum rising, bearish when down and falling, else neutral (a description, not a signal)."""
-    if not isinstance(sym_ctx, dict):
+    """The rule fields of one coin's context ({} for a coin without the full-detail fields, and for USDT_IRT: the
+    toman's price, not a coin's chart): every TA_FIELDS value the rules give (a field whose input is missing is left
+    out), the nearest support / resistance with its distance in % of the price and how many swing points hold it, and
+    "tone": bullish when the trend is up and the momentum rising, bearish when down and falling, else neutral (a
+    description, not a signal)."""
+    if not isinstance(sym_ctx, dict) or str(symbol).upper().startswith("USDT_"):
         return {}
     out = {}
     d20, d50, d200 = (_at(sym_ctx.get("ema_dev_pct"), i) for i in range(3))
@@ -173,7 +175,7 @@ def check_ta(ta, code):
 def method_text():
     """The TECHNICAL READING paragraph of the system prompt (rendered from the constants above)."""
     return ("TECHNICAL READING (a fixed method: it describes each candidate's chart; it is no setup and no row of its "
-            "own, B7, B8). Fill \"ta\" from the coin's context, on px_usdt (USDT_IRT: px) like its levels: trend: "
+            "own, B7, B8). Fill \"ta\" from the coin's context, on px_usdt like its levels (all in USDT): trend: "
             "ema_dev_pct[0] and [1] both > 0 = up, both < 0 = down, else mixed; long: ema_dev_pct[2] > 0 = above (EMA200), "
             "< 0 = below; momentum: macd4h_pct[2] (the histogram) > %g = rising, < -%g = falling, else flat; rsi: rsi4h "
             ">= %g overbought, >= %g strong, > %g neutral, > %g weak, else oversold; bands: bb4h[0] > 1 above_upper, "
@@ -181,7 +183,8 @@ def method_text():
             "don20_4h[0] breakdown, above their middle upper_half, else lower_half; volume: vol_ratio >= %g high, <= %g "
             "low, else normal; support / resistance: sup[0] / res[0] (without one: don20_4h[0] / [1]), copied exactly; "
             "read: bullish / bearish / neutral, your overall reading, consistent with the setup and the bear case. A "
-            "coin without these fields (a compact row) gets \"ta\": null. The code recomputes every rule field and "
+            "coin without these fields (a compact row) and USDT_IRT (the toman's price) get \"ta\": null. The code "
+            "recomputes every rule field and "
             "shows the owner each one you read differently."
             % (MACD_FLAT, MACD_FLAT, RSI_OVERBOUGHT, RSI_STRONG, RSI_NEUTRAL, RSI_WEAK, BB_UPPER, BB_LOWER, VOL_HIGH,
                VOL_LOW))
@@ -278,11 +281,16 @@ def collect(state_dir):
         sc = syms.get(s)
         if not isinstance(sc, dict) or not isinstance(sc.get("ema_dev_pct"), list):
             continue                          # a compact row: not the full technical fields
+        if str(s).upper().startswith("USDT_"):
+            continue                          # v3.10: the toman's price, shown apart ("usdt"), not a coin's chart
         coins.append({"symbol": str(s)[:24], "held": s in held, "candidate": s in cands_raw,
                       "values": _values(sc), "reading": reading(sc, s)})
+    us = syms.get("USDT_IRT") if isinstance(syms.get("USDT_IRT"), dict) else {}
+    usdt = {"px": _num(us.get("px")), "ret_irt": [_num(x) for x in us.get("ret_irt") or []][:3]} if us else None
     return {"time": _num(rec.get("time")), "model": str(rec.get("model") or dec.get("model") or "")[:60],
             "mode": str(dec.get("mode") or rec.get("trigger") or "")[:40], "valid": dec.get("valid"),
-            "held": held, "candidates": candidates, "coins": coins[:80]}
+            "held": held, "candidates": candidates, "coins": coins[:80], "usdt": usdt,
+            "usdt_weight": _num(cur.get("USDT_IRT"))}
 
 
 # --------------------------------------------------------------------------- v3.9: the indicators as chart series
@@ -303,10 +311,10 @@ def chart_data(symbol, bars, usdt_bars, t_from, lookback=CHART_LOOKBACK_HOURS):
     context (analysis.symbol_features): the coin's last `lookback` closed hourly IRT bars divided by the USDT_IRT close
     of the same hour, 4h bars aligned to UTC, EMA 20 / 50 / 200, Bollinger (20, 2), Donchian 20 (the hourly closes'
     extremes), RSI 14 and MACD (12, 26, 9, in % of the bar's close) of the 4h closes, and the traded value per 4h in
-    million toman. Each point is at the CLOSE of its 4h bar; only bars closing at or after t_from are kept.
+    thousand USDT (v3.10). Each point is at the CLOSE of its 4h bar; only bars closing at or after t_from are kept.
     "now" = the values of symbol_features() for the same bars (what the bot gives the model now: ema_dev_pct, rsi4h,
     macd4h_pct, bb4h, don20_4h, sup / res, vol_ratio ...) and "reading" = reading() of them; "vol_avg" = the 30-day
-    average traded value per 4h (million toman). None without enough bars."""
+    average traded value per 4h (thousand USDT). None without enough bars."""
     from . import analysis, data as data_mod, indicators as ind
     hourly = [b for b in bars or [] if _num(b.close) and b.close > 0][-int(lookback):]
     while len(hourly) > 2 and hourly[1].ts - hourly[0].ts != 3600:      # like the context: resample needs 1h steps
@@ -319,12 +327,14 @@ def chart_data(symbol, bars, usdt_bars, t_from, lookback=CHART_LOOKBACK_HOURS):
         feat = analysis.symbol_features(symbol, hourly, usdt_ts, usdt_close)
     except (ValueError, ZeroDivisionError):
         return None
-    basis = []
+    basis, value = [], {}
     for b in hourly:
         u = analysis._asof(usdt_ts, usdt_close, b.ts)
         if u:
             r = b.close / u
             basis.append(data_mod.Bar(b.ts, r, r, r, r, 0.0))
+            # the traded value in USDT, per 4h bucket (complete buckets only, like resample)
+            value.setdefault(b.ts - b.ts % CHART_STEP, []).append(b.volume * r)
     b4 = data_mod.resample(basis, 4) if len(basis) > 1 else []
     if len(b4) < 20:
         return None
@@ -333,9 +343,6 @@ def chart_data(symbol, bars, usdt_bars, t_from, lookback=CHART_LOOKBACK_HOURS):
     lo, mid, up = ind.bollinger(c4, 20, 2.0)
     rsi = ind.rsi(c4, 14)
     line, sig, hist = ind.macd(c4)
-    value = {}
-    for b in hourly:                                  # traded value of the 4h buckets (complete ones, like resample)
-        value.setdefault(b.ts - b.ts % CHART_STEP, []).append(b.volume * b.close)
     out = dict((k, []) for k in CHART_KEYS)
     for i, b in enumerate(b4):
         t = b.ts + CHART_STEP
@@ -354,13 +361,16 @@ def chart_data(symbol, bars, usdt_bars, t_from, lookback=CHART_LOOKBACK_HOURS):
         out["macd"].append([_r(v / c * 100.0, 4) for v in (line[i], sig[i], hist[i])]
                            if None not in (line[i], sig[i], hist[i]) and c else None)
         v = value.get(b.ts) or []
-        out["vol"].append(_r(sum(v) / 1e6, 4) if len(v) == 4 else None)
+        out["vol"].append(_r(sum(v) / 1e3, 4) if len(v) == 4 else None)
     if not out["t"]:
         return None
     t_end = hourly[-1].ts
-    span = [b for b in hourly if b.ts > t_end - VOL_DAYS * 86400]
-    days = max(1.0, (t_end - span[0].ts + 3600) / 86400.0)
-    out["vol_avg"] = _r(sum(b.volume * b.close for b in span) / days / 6.0 / 1e6, 4)
+    rate = dict((b.ts, b.close) for b in basis)                          # the coin's USDT price of each hour
+    usd = [(b.ts, b.volume * rate[b.ts]) for b in hourly if b.ts > t_end - VOL_DAYS * 86400 and b.ts in rate]
+    out["vol_avg"] = None
+    if usd:
+        days = max(1.0, (t_end - usd[0][0] + 3600) / 86400.0)
+        out["vol_avg"] = _r(sum(v for _t, v in usd) / days / 6.0 / 1e3, 4)
     out["now"] = _values(feat)
     out["reading"] = reading(feat, symbol)
     return out

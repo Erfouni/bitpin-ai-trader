@@ -63,12 +63,13 @@ class TestRules(unittest.TestCase):
         self.assertEqual(one(ema_dev_pct=[-1, -1, -1], macd4h_pct=[0, 0, -0.5])["tone"], "bearish")
         self.assertEqual(one(macd4h_pct=[0, 0, -0.5])["tone"], "neutral")
 
-    def test_usdt_irt_is_read_on_its_toman_price_and_odd_rows_give_nothing(self):
+    def test_usdt_irt_gets_no_reading_and_odd_rows_give_nothing(self):
+        """v3.10: the technical reading is in USDT only - USDT_IRT is the toman's price, not a coin's chart."""
         usdt = {"px": 257000.0, "ema_dev_pct": [1.0, 2.0, 9.0], "don20_4h": [240000.0, 256000.0], "rsi4h": 75.3,
                 "sup": [251000.0], "res": []}
-        r = reading(usdt, "USDT_IRT")
-        self.assertEqual((r["channel"], r["rsi"], r["support"]), ("breakout", "overbought", 251000.0))
-        self.assertNotIn("resistance", r)
+        self.assertEqual(reading(usdt, "USDT_IRT"), {})
+        self.assertIn("USDT_IRT (the toman's price) get \"ta\": null", method_text())
+        self.assertNotIn("USDT_IRT: px", method_text())
         self.assertEqual(reading(None), {})
         self.assertEqual(reading({"px_usdt": "x", "rsi4h": True, "ema_dev_pct": "1,2"}), {})
 
@@ -150,7 +151,9 @@ class TestPanelData(unittest.TestCase):
         self.write({"time": 1, "context": {"symbols": {}}}, rec, junk=b'{"time": 3, "context": ')   # a cut last line
         d = collect(self.dir)
         self.assertEqual((d["time"], d["model"], d["mode"], d["held"]), (1790074800.0, "kimi-k3", "slot", ["BTC_IRT"]))
-        self.assertEqual([c["symbol"] for c in d["coins"]], ["BTC_IRT", "ETH_IRT", "USDT_IRT"])   # held, candidate
+        self.assertEqual([c["symbol"] for c in d["coins"]], ["BTC_IRT", "ETH_IRT"])   # held, candidate; no USDT_IRT
+        self.assertEqual(d["usdt"], {"px": 257000.0, "ret_irt": []})                   # v3.10: the toman apart
+        self.assertEqual(d["usdt_weight"], 0.7)
         self.assertTrue(d["coins"][0]["held"])
         self.assertEqual(d["coins"][0]["values"]["rsi4h"], 61.0)
         self.assertEqual(d["coins"][0]["reading"]["trend"], "up")
@@ -224,9 +227,10 @@ class TestChartData(unittest.TestCase):
         self.assertLessEqual(d["t"][-1], T_END)
         self.assertTrue(all(t % ta_mod.CHART_STEP == 0 for t in d["t"]))                  # the close of a 4h bar
         self.assertTrue(all(b - a == ta_mod.CHART_STEP for a, b in zip(d["t"], d["t"][1:])))
-        bucket = [b for b in self.coin if d["t"][-1] - ta_mod.CHART_STEP <= b.ts < d["t"][-1]]
+        bucket = [(b, u) for b, u in zip(self.coin, self.usdt) if d["t"][-1] - ta_mod.CHART_STEP <= b.ts < d["t"][-1]]
         self.assertEqual(len(bucket), 4)
-        self.assertAlmostEqual(d["vol"][-1], sum(b.volume * b.close for b in bucket) / 1e6, delta=d["vol"][-1] * 1e-3)
+        usd = sum(b.volume * b.close / u.close for b, u in bucket) / 1e3              # v3.10: thousand USDT
+        self.assertAlmostEqual(d["vol"][-1], usd, delta=d["vol"][-1] * 1e-3)
         self.assertGreater(d["vol_avg"], 0)
         json.dumps(d)                                               # what the worker prints
 

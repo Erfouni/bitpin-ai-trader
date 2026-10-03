@@ -59,6 +59,8 @@ CASH = "IRT"
 UNIT = "USDT"
 RESTING = ("resting", "submitting", "unknown")
 MISMATCH_WARN = 0.02              # rebuilt vs recorded equity
+ROUNDING_FRACTION = 0.001         # v3.9.1: a fill may leave its side this far below zero (0.1% of the fill)
+DUST_USDT = 1.0                   # v3.10: less than this, without a plan of the bot: a leftover, not a position
 FORECAST_DEFAULT_HOURS = 72       # the outlook of a position without a plan in force (no max hold ahead)
 CONE_STEPS = 24                   # points of the volatility range
 SIGMA_MIN_RETURNS = 24            # hourly returns needed for the volatility range
@@ -381,14 +383,21 @@ def _legs(f):
 
 
 def holdings_at(fills, t, start_cash):
-    """{asset: qty} after every fill at or before t, starting from start_cash toman."""
+    """{asset: qty} after every fill at or before t, starting from start_cash toman.
+    v3.9.1: the exchange rounds a fee taken in the coin down to the coin's precision while the record keeps all its
+    digits, so selling everything left the rebuilt amount a hair below zero (-0.00000001 BTC on the panel). A fill
+    that leaves its side below zero by at most ROUNDING_FRACTION of the fill's own size leaves zero: nothing can be
+    held below zero. A bigger gap (a trade the bot did not record) stays and is warned about."""
     q = {CASH: start_cash}
     for f in fills:
         if f["t"] > t:
             break
         d_base, d_quote = _legs(f)
-        q[f["asset"]] = q.get(f["asset"], 0.0) + d_base
-        q[f["quote_asset"]] = q.get(f["quote_asset"], 0.0) + d_quote
+        for asset, d, size in ((f["asset"], d_base, f["base"]), (f["quote_asset"], d_quote, f["quote"])):
+            v = q.get(asset, 0.0) + d
+            if v < 0.0 and d < 0.0 and -v <= ROUNDING_FRACTION * abs(size):
+                v = 0.0
+            q[asset] = v
     return q
 
 
@@ -594,11 +603,16 @@ def _positions(rows, plans, orders, prices, t_to, now, analyses=None, ta=None):
             o_list.append({"side": o["side"], "price_usdt": p_usdt, "price": o["price"], "quote_asset": o["quote_asset"],
                            "amount": o["amount"], "tag": o["tag"], "symbol": o["symbol"]})
         o_list.sort(key=lambda o: -(o["price_usdt"] or 0.0))
+        # v3.10: a position = the bot's own plan for the coin, or a holding worth at least DUST_USDT; the rest of the
+        # charts are coins the account does not hold (a resting order), a leftover below DUST_USDT is "dust"
+        qty, value_usdt = row.get("qty_to", 0.0), row.get("value_to_usdt")
+        held = qty > 1e-12 and (bool(plan) or (_f(value_usdt) or 0.0) >= DUST_USDT)
         entry = _f(plan.get("entry_px_usdt"))
         target = _f(plan.get("target_px_usdt")) or _f(inner.get("take_profit_usdt"))
         invalidation = _f(inner.get("invalidation_usdt"))
         analysis = (analyses or {}).get(a)
-        out.append({"asset": a, "qty": row.get("qty_to", 0.0), "value_irt": row.get("value_to_irt"),
+        out.append({"asset": a, "held": held, "dust": (not held) and qty > 1e-12,
+                    "qty": row.get("qty_to", 0.0), "value_irt": row.get("value_to_irt"),
                     "value_usdt": row.get("value_to_usdt"), "price_usdt": now_usdt, "entry_usdt": entry,
                     "stop_usdt": _f(plan.get("stop_px_usdt")), "target_usdt": target,
                     "invalidation_usdt": invalidation, "horizon_hours": _f(inner.get("horizon_hours")),

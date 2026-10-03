@@ -999,6 +999,8 @@ form.range-f input[type=date] { width: auto; height: 32px; padding: 0 8px; font-
 .position-h code { font-size: 13px; font-weight: 650; }
 .position .facts { margin: 14px 0 0; }
 .position .note { margin: 10px 0 0; color: var(--text-3); font-size: 12px; line-height: 1.6; }
+/* v3.10 a coin the account does not hold (a resting order): set apart from the positions */
+.position.watch { background: var(--surface); border-style: dashed; }
 
 /* v3.6.1 the outlook of a position: the future shaded, the normal range (68% / 95%), Kimi's two scenarios and
    their probability-weighted price, the invalidation level, the line of now */

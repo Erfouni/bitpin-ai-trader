@@ -179,6 +179,8 @@ ROW_TITLES = {"B1": N_("holding USDT, the benchmark"), "B2": N_("a top coin agai
               "B12": N_("tokenized US stocks, ETFs and oil")}
 VERDICT_LABELS = {"open": N_("Open"), "add": N_("Add"), "hold": N_("Hold"), "trim": N_("Trim"), "cut": N_("Cut"),
                   "reject": N_("Reject")}
+NO_POSITION = N_("No open position: the account holds no coin now (only USDT and toman).")
+
 # v3.8: the technical reading (bitpin/technical.py): the fields, their values and the method in words
 TA_FIELD_LABELS = (("trend", N_("Trend")), ("long", N_("Long trend (EMA200)")), ("momentum", N_("Momentum")),
                    ("rsi", "RSI"),
@@ -600,8 +602,11 @@ def fmt_num(v, nd=None):
 
 
 def pct_text(v, nd=2):
-    """50.0 -> "50%", 2.68 -> "2.68%"."""
-    return ("%.*f" % (nd, v)).rstrip("0").rstrip(".") + "%"
+    """50.0 -> "50%", 2.68 -> "2.68%"; v3.10.1: zeros are cut only after a decimal point (nd=0 gave "5%" for 50)."""
+    s = "%.*f" % (nd, v)
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s + "%"
 
 
 def usd(v):
@@ -1054,7 +1059,7 @@ def ta_panes(ta, x_range, shade):
     vol = _ta_points(ta, "vol")
     if vol:
         now = ta.get("now") if isinstance(ta.get("now"), dict) else {}
-        head = te("Traded value per 4 hours (million toman)")
+        head = te("Traded value per 4 hours (thousand USDT)")
         if _is_num(now.get("vol_ratio")):
             head += " &middot; " + tr("the last 24 hours against the 30-day average: %s") % ltr(
                 u"%.2f\u00d7" % now["vol_ratio"])
@@ -1795,6 +1800,8 @@ class PanelApp(object):
             rows.append([code(p.get("symbol")), '<span class="badge">%s</span>' % te(kinds.get(k, k or "")),
                          fmt_num(p.get("amount")), fmt_num(p.get("entry_px_usdt")), fmt_num(p.get("stop_px_usdt")),
                          fmt_num(p.get("target_px_usdt")), fmt_time(p.get("max_hold_until"))])
+        if not rows:                                    # v3.10: no table of nothing
+            return card(te("Positions"), '<p class="muted empty pad">%s</p>' % te(NO_POSITION), "layers", cls="flush")
         return card(te("Positions"), table([N_("Market"), N_("Kind"), N_("Amount"), N_("Entry (USDT)"),
                                             N_("Stop (USDT)"), N_("Target (USDT)"), N_("Hold until")], rows,
                                            num=(2, 3, 4, 5)), "layers", cls="flush")
@@ -2859,6 +2866,20 @@ class PanelApp(object):
         if data.get("model"):
             info.append(code(data.get("model")))
         parts = ['<p class="muted">%s</p>' % " &middot; ".join(info)]
+        held = [str(s) for s in data.get("held") or [] if isinstance(s, str)]
+        parts.append('<p>%s</p>' % (tr("Coins in the account at this decision: %s") % " ".join(code(s) for s in held)
+                                    if held else te("At this decision the account held no coin: only USDT and toman.")))
+        us = data.get("usdt") if isinstance(data.get("usdt"), dict) else None
+        if us and _is_num(us.get("px")):
+            rets = [x for x in us.get("ret_irt") or [] if _is_num(x)]
+            text = tr("The toman against USDT: 1 USDT = %s toman") % fmt_num(us["px"], 0)
+            if len(rets) == 3:
+                text += " &middot; " + tr("24 h / 7 d / 30 d: %s") % ltr(" / ".join("%+.1f%%" % x for x in rets))
+            if _is_num(data.get("usdt_weight")):
+                text += " &middot; " + tr("USDT is %s of the account") % ltr(pct_text(data["usdt_weight"] * 100.0, 0))
+            parts.append('<p class="muted small">%s. %s</p>' % (text, te(
+                "USDT gets no technical reading: it is the toman's price, not a coin's chart. Every reading on this "
+                "page is in USDT.")))
         parts.append(self._ta_reading_card(data))
         parts.append(self._ta_coins_card(data))
         parts.append('<details class="card fold"><summary>%s<span>%s</span></summary><div class="card-b"><ul class='
@@ -2973,8 +2994,8 @@ class PanelApp(object):
                          level("support"), level("resistance"),
                          ltr(pct_text(v.get("atr4h_pct"))) if _is_num(v.get("atr4h_pct")) else dash(), ret_html])
         note = '<p class="muted small pad">%s</p>' % te(
-            "Prices and levels in USDT (USDT_IRT in toman), exactly as the bot gave them to Kimi; the small labels are "
-            "the code's reading by the fixed rules.")
+            "Prices and levels in USDT, exactly as the bot gave them to Kimi; the small labels are the code's reading "
+            "by the fixed rules.")
         return card(te("Indicators of every coin"), note + table(head, rows, num=(1, 7, 11), cls="ta-table"), "layers",
                     cls="flush")
 
@@ -3051,11 +3072,22 @@ class PanelApp(object):
             "bot's trades."))
 
     def _positions_section(self, data, show_ta=True, toggle=""):
+        """v3.10: the positions the account holds, and apart from them the coins it does not hold (a resting order:
+        what the bot waits for). A report without the flag (an older worker) shows every chart as a position."""
         pos = [p for p in data.get("positions") or [] if isinstance(p, dict)]
-        body = ('<div class="positions">%s</div>' % "".join(self._position_panel(p, show_ta) for p in pos) if pos else
-                '<p class="muted empty">%s</p>' % te("No open position and no resting order."))
+        held = [p for p in pos if p.get("held", True)]
+        other = [p for p in pos if not p.get("held", True)]
         has_ta = any(isinstance(p.get("ta"), dict) for p in pos)
-        return card(te("Open positions and orders"), body, "target", actions=toggle if has_ta else "")
+        body = ('<div class="positions">%s</div>' % "".join(self._position_panel(p, show_ta) for p in held) if held else
+                '<p class="muted empty">%s</p>' % te(NO_POSITION))
+        out = card(te("Open positions"), body, "target", actions=toggle if has_ta else "")
+        if other:
+            out += card(te("Coins we do not hold: resting orders"), help_p(te(
+                "The account holds none of these coins. The bot has a resting order on each - a buy of the crash "
+                "ladder fills only if the price falls to its level. The charts, the indicators and Kimi's last "
+                "analysis show what the bot is waiting for.")) + '<div class="positions">%s</div>' % "".join(
+                self._position_panel(p, show_ta) for p in other), "eye")
+        return out
 
     @staticmethod
     def _position_panel(p, show_ta=True):
@@ -3125,11 +3157,24 @@ class PanelApp(object):
         ch = p.get("change_pct")
         badge = (' <span class="badge %s">%s</span>' % ("ok" if ch > 0 else ("err" if ch < 0 else ""),
                                                         ltr("%+.2f%%" % ch))) if _is_num(ch) else ""
-        rows = [(N_("Amount"), ltr(qty_text(p.get("qty"), asset)) if _is_num(p.get("qty")) else dash()),
+        held = p.get("held", True)                      # v3.10: what the account holds, and what it does not
+        badge = (' <span class="badge accent">%s</span>' % te("Held") if held else
+                 ' <span class="badge">%s</span>' % te("Not held")) + badge
+        qty = p.get("qty")
+        if held:
+            amount = ltr(qty_text(qty, asset)) if _is_num(qty) else dash()
+        elif p.get("dust") and _is_num(qty):
+            amount = tr("%s (a leftover below the minimum order)") % ltr(qty_text(qty, asset))
+        else:
+            amount = te("None")
+        rows = [(N_("Amount"), amount),
                 (N_("Value (IRT)"), fmt_num(p.get("value_irt"), 0)), (N_("Value (USDT)"), fmt_num(p.get("value_usdt"), 2)),
                 (N_("Hold until"), fmt_time(p.get("max_hold_until")))]
-        return '<article class="position"><div class="position-h">%s%s</div>%s%s%s%s%s</article>' % (
-            code(asset + " / USDT"), badge, chart, legend(items), fc_html, facts(rows), analysis_html(p))
+        if not held:
+            rows = rows[:1]
+        return '<article class="position%s"><div class="position-h">%s%s</div>%s%s%s%s%s</article>' % (
+            "" if held else " watch", code(asset + " / USDT"), badge, chart, legend(items), fc_html, facts(rows),
+            analysis_html(p))
 
     def _history_filters(self, req):
         asset = re.sub(r"[^A-Z0-9]", "", req.query.get("asset", "").upper())[:12]

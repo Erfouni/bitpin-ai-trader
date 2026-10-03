@@ -72,7 +72,7 @@ class TestPositionCard(unittest.TestCase):
                   '<polyline class="l ta-macd"', '<polyline class="l ta-sig"', 'class="b ta-vol"',
                   "Indicators: 4-hour bars in USDT, computed like the bot&#x27;s market context", "EMA 20:",
                   "Bollinger 20, 2", "Donchian 20:", "Support ", "Resistance ", "The rules read it now:", "RSI 14:",
-                  "MACD 12, 26, 9 in percent of the price: histogram", "Traded value per 4 hours (million toman)",
+                  "MACD 12, 26, 9 in percent of the price: histogram", "Traded value per 4 hours (thousand USDT)",
                   "the last 24 hours against the 30-day average"):
             self.assertIn(s, html, s)
         self.assertEqual(html.count('<figure class="chart xs'), 3)       # RSI, MACD, traded value
@@ -87,6 +87,41 @@ class TestPositionCard(unittest.TestCase):
             old = pw.PanelApp._position_panel(position(with_ta=False))
         self.assertEqual(off, old)
         self.assertNotIn("ta-", off)
+
+
+class TestPercentText(unittest.TestCase):
+    def test_whole_numbers_keep_their_zeros(self):
+        """v3.10.1: a confidence of 0.5 showed as "5%" and USDT's 100% of the account as "1%"."""
+        self.assertEqual([pw.pct_text(x, 0) for x in (50.0, 100.0, 99.96, 10.0, 7.0, 0.0)],
+                         ["50%", "100%", "100%", "10%", "7%", "0%"])
+        self.assertEqual([pw.pct_text(50.0), pw.pct_text(2.68), pw.pct_text(2.0, 1), pw.pct_text(1.5, 1)],
+                         ["50%", "2.68%", "2%", "1.5%"])
+
+
+class TestHeldAndNotHeld(unittest.TestCase):
+    """v3.10: a card says whether the account holds the coin; a coin it does not hold shows its order, not a
+    position (no value, no hold time), a leftover below the minimum order is named so."""
+
+    def render(self, **kw):
+        p = position(with_ta=False)
+        p.update(kw)
+        with use("en"):
+            return pw.PanelApp._position_panel(p)
+
+    def test_badges_and_facts(self):
+        held = self.render(held=True)
+        self.assertIn('<span class="badge accent">Held</span>', held)
+        self.assertIn("Hold until", held)
+        none = self.render(held=False, qty=0.0, value_usdt=0.0)
+        self.assertIn('<article class="position watch">', none)
+        self.assertIn('<span class="badge">Not held</span>', none)
+        self.assertIn("<dd>None</dd>", none)
+        self.assertNotIn("Hold until", none)
+        dust = self.render(held=False, dust=True, qty=0.0000072)
+        self.assertIn("0.0000072", dust)
+        self.assertIn("(a leftover below the minimum order)", dust)
+        old = self.render()                                            # a report without the flag: a position
+        self.assertIn("Held", old)
 
 
 class TestPerformancePage(tw.PanelCase):
@@ -116,6 +151,31 @@ class TestPerformancePage(tw.PanelCase):
         self.assertIn("range=7d&amp;ta=0", t)                             # the range buttons keep it too
         t = self.c.get("/performance", "range=all&ta=0&live=0").text
         self.assertIn('href="/performance?range=all&amp;live=0"', t)     # showing them again keeps live off
+
+    def test_held_positions_first_the_rest_apart(self):
+        base = tw.perf_report
+
+        def report(a):
+            rep = base(a)
+            for p in rep["positions"]:
+                p["held"] = p["asset"] == "BTC"
+            return rep
+        self.helper.responses["performance"] = report
+        t = self.c.get("/performance").text
+        self.assertLess(t.index(">Open positions<"), t.index("BTC / USDT"))
+        self.assertLess(t.index("BTC / USDT"), t.index(">Coins we do not hold: resting orders<"))
+        self.assertLess(t.index(">Coins we do not hold: resting orders<"), t.index("ETH / USDT"))
+
+        def nothing_held(a):
+            rep = base(a)
+            for p in rep["positions"]:
+                p["held"] = False
+            return rep
+        self.helper.responses["performance"] = nothing_held
+        self.app._perf_cache.clear()                                    # the page reuses a report for 45 s
+        t = self.c.get("/performance").text
+        self.assertIn("No open position: the account holds no coin now (only USDT and toman).", t)
+        self.assertIn(">Coins we do not hold: resting orders<", t)
 
     def test_no_switch_without_indicators(self):
         self.helper.responses["performance"] = tw.perf_report

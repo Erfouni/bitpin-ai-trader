@@ -216,10 +216,9 @@ FA = {
     "7 d / 30 d": u"۷ روز / ۳۰ روز",
     "Held": u"در سبد",
     "In Kimi's analysis": u"در تحلیل کیمی",
-    "Prices and levels in USDT (USDT_IRT in toman), exactly as the bot gave them to Kimi; the small labels are the "
-    "code's reading by the fixed rules.":
-        u"قیمت‌ها و سطح‌ها به تتر (تتر خودش به تومان)، دقیقاً همان‌طور که ربات به کیمی داد؛ برچسب‌های کوچک خوانش کد با "
-        u"قاعده‌های ثابت است.",
+    "Prices and levels in USDT, exactly as the bot gave them to Kimi; the small labels are the code's reading by "
+    "the fixed rules.":
+        u"قیمت‌ها و سطح‌ها به تتر، دقیقاً همان‌طور که ربات به کیمی داد؛ برچسب‌های کوچک خوانش کد با قاعده‌های ثابت است.",
     "Technical reading": u"خوانش تکنیکال",
     "%s read differently from the rules": u"%s مورد متفاوت با قاعده‌ها خوانده شده",
     "Trend": u"روند",
@@ -609,8 +608,26 @@ FA = {
         u"آمده؛ هر معامله با قیمت خودش حساب می‌شود و کارمزد به پای همان دارایی معامله‌شده نوشته می‌شود. در ستون تتر "
         u"هر مبلغ تومانی بر قیمت تتر در همان ساعت تقسیم می‌شود تا اثر افت ریال کنار برود؛ سود تومانیِ خودِ تتر همان "
         u"چیزی است که افت ریال داده. جمع ردیف‌ها برابر تغییر حسابی است که از روی معامله‌های ربات بازسازی شده.",
-    "Open positions and orders": u"موقعیت‌های باز و سفارش‌ها",
-    "No open position and no resting order.": u"هیچ موقعیت باز یا سفارش در انتظاری نیست.",
+    "Open positions": u"موقعیت‌های باز",
+    "No open position: the account holds no coin now (only USDT and toman).":
+        u"موقعیت بازی نداریم: حساب الان هیچ کوینی ندارد (فقط تتر و تومان).",
+    "Coins we do not hold: resting orders": u"کوین‌هایی که نداریم: سفارش‌های منتظر",
+    "The account holds none of these coins. The bot has a resting order on each - a buy of the crash ladder fills "
+    "only if the price falls to its level. The charts, the indicators and Kimi's last analysis show what the bot is "
+    "waiting for.":
+        u"حساب هیچ‌کدام از این کوین‌ها را ندارد. ربات روی هر کدام یک سفارش منتظر دارد؛ خرید نردبانی فقط وقتی انجام می‌شود "
+        u"که قیمت تا سطح آن پایین بیاید. نمودار، اندیکاتورها و آخرین تحلیل کیمی نشان می‌دهند ربات منتظر چیست.",
+    "Not held": u"در سبد نیست",
+    "%s (a leftover below the minimum order)": u"%s (باقی‌ماندهٔ کمتر از حداقل سفارش)",
+    "None": u"ندارد",
+    "Coins in the account at this decision: %s": u"کوین‌های حساب در این تصمیم: %s",
+    "At this decision the account held no coin: only USDT and toman.": u"در این تصمیم حساب هیچ کوینی نداشت: فقط تتر و تومان.",
+    "The toman against USDT: 1 USDT = %s toman": u"تومان در برابر تتر: هر تتر %s تومان",
+    "24 h / 7 d / 30 d: %s": u"۲۴ ساعت / ۷ روز / ۳۰ روز: %s",
+    "USDT is %s of the account": u"تتر %s حساب است",
+    "USDT gets no technical reading: it is the toman's price, not a coin's chart. Every reading on this page is in "
+    "USDT.":
+        u"تتر خوانش تکنیکال ندارد: نرخ تومان است، نه نمودار یک کوین. همهٔ خوانش‌های این صفحه به تتر است.",
     "Price": u"قیمت",
     "Price now %s": u"قیمت فعلی %s",
     "Entry %s": u"ورود %s",
@@ -742,7 +759,7 @@ FA = {
     "The rules read it now:": u"خوانش قاعده‌ها در این لحظه:",
     "RSI 14: %s": u"RSI ۱۴: %s",
     "MACD 12, 26, 9 in percent of the price: histogram %s": u"MACD ۱۲، ۲۶، ۹ به درصد قیمت: هیستوگرام %s",
-    "Traded value per 4 hours (million toman)": u"ارزش معاملات هر ۴ ساعت (میلیون تومان)",
+    "Traded value per 4 hours (thousand USDT)": u"ارزش معاملات هر ۴ ساعت (هزار تتر)",
     "the last 24 hours against the 30-day average: %s": u"۲۴ ساعت اخیر نسبت به میانگین ۳۰ روزه: %s",
     "Traded value": u"ارزش معاملات",
     # v3.8.2: the panel's certificate (Security page)

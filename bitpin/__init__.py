@@ -8,4 +8,4 @@ never block an update - it only mislabels the banner. Semantic-ish: MAJOR = a re
 confirm-live again for (what the bot does on its own changed), MINOR = settings / notifier / docs,
 PATCH = fixes."""
 
-__version__ = "3.9.0"
+__version__ = "3.10.1"

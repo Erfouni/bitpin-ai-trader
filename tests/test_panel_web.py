@@ -1000,7 +1000,8 @@ class TestPerformancePages(PanelCase):
         t = r.text
         self.assertEqual(self.perf_calls(), [{"from": int(T0) - 400 * 86400, "to": int(T0)}])
         for s in (u"عملکرد", u"ارزش سبد", u"سود / زیان به تومان", u"سود / زیان به تتر", u"اگر فقط تتر نگه می‌داشتیم",
-                  u"سود و زیان هر دارایی", u"تومان (نقد)", u"جمع", u"موقعیت‌های باز و سفارش‌ها", "BTC / USDT",
+                  u"سود و زیان هر دارایی", u"تومان (نقد)", u"جمع", u"موقعیت‌های باز", "BTC / USDT",
+                  u"کوین‌هایی که نداریم: سفارش‌های منتظر", u"در سبد نیست", "ETH / USDT",
                   u"سفارش فروش", u"سفارش خرید", u"حد ضرر", u"ادامهٔ روند", "A test plan &lt;b&gt;", u"زنده",
                   '<polyline class="l s1"', '<polyline class="l s2"', '<polyline class="l s3"',
                   '<polyline class="l pl"', 'class="h stop"', 'class="h target"', 'class="h entry"', 'class="h sell"',
@@ -1010,7 +1011,8 @@ class TestPerformancePages(PanelCase):
             self.assertIn(s, t, s)
         self.assertIn('<meta http-equiv="refresh" content="60; url=/performance?range=all&amp;auto=1">', t)
         self.assertNotIn("auto%3D1", t)                              # the language switch comes back without it
-        self.assertEqual(t.count('<article class="position">'), 2)   # BTC held, ETH only an order
+        self.assertEqual(t.count('<article class="position">'), 1)   # BTC held (its plan) ...
+        self.assertEqual(t.count('<article class="position watch">'), 1)   # ... ETH only an order (v3.10: apart)
         self.assertIn(u"هنوز دادهٔ کافی برای نمودار نیست.", t)      # no ETH candles in this world
 
     def test_the_outlook_and_the_analysis_of_a_position(self):

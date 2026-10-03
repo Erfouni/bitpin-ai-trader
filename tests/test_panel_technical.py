@@ -45,7 +45,7 @@ class TestHelperCommand(tph.Base):
     def test_in_process_and_as_the_bot_user(self):
         self.write(record(ta={"trend": "down", "rsi": "weak", "read": "bearish"}))
         data = self.ok("technical")
-        self.assertEqual([c["symbol"] for c in data["coins"]], ["BTC_IRT", "ETH_IRT", "USDT_IRT"])
+        self.assertEqual([c["symbol"] for c in data["coins"]], ["BTC_IRT", "ETH_IRT"])   # v3.10: no USDT_IRT
         self.assertEqual(data["candidates"][0]["ta"]["read"], "bearish")
         self.paths.state_in_process = False
         self.run_fake.worker_out = json.dumps({"time": 5, "candidates": [], "coins": []})
@@ -100,12 +100,23 @@ class TestPage(tpw.PanelCase):
                   "+1.0% / +22.0%", "How the reading works", "70 or more overbought", "kimi-k3", "slot"):
             self.assertIn(s, t, s)
         self.assertIn('href="/technical"', t)                                 # the navigation entry
+        # v3.10: the coins the account held, and the toman apart (no reading of USDT_IRT, every reading in USDT)
+        for s in ('Coins in the account at this decision: <code dir="ltr">BTC_IRT</code>',
+                  "The toman against USDT: 1 USDT = ", "257,000", "+0.2% / +1.0% / +22.0%", "USDT is ",
+                  "USDT gets no technical reading", "Prices and levels in USDT, exactly as the bot gave them"):
+            self.assertIn(s, t, s)
+        self.assertNotIn("<code dir=\"ltr\">USDT_IRT</code><", t.split("Indicators of every coin")[1])
         # the page in Persian
         self.c.cookies["__Host-bplang"] = "fa"
         t = self.c.get("/technical").text
         for s in (u"تحلیل تکنیکال", u"خوانش تکنیکال کیمی", u"نزولی (منفی)", u"طبق قاعده: ضعیف", u"اشباع خرید",
                   u"اندیکاتورهای همهٔ کوین‌ها", u"در سبد"):
             self.assertIn(s, t, s)
+
+    def test_no_coin_in_the_account(self):
+        d = self.data()
+        d["held"] = []
+        self.assertIn("At this decision the account held no coin: only USDT and toman.", self.show(d))
 
     def test_an_old_decision_and_no_decision(self):
         t = self.show(self.data())
