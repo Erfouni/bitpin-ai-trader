@@ -239,9 +239,9 @@ LEGEND_BOT = (" ladder: per coin scale (0..1), dd48 = last hourly close vs the h
               "stop, target in USDT, pnl_pct unrealised, hold_left_h to the max hold; ladder_lot = the coin's separate "
               "crash-ladder position (its own entry / stop / target, kept by the code). focus: c4h/c1d = the last 12 "
               "4-hour / 7 daily closes in USDT.")
-LEGEND_EXITS = (" recent_exits: coins the CODE sold on purpose (reason stop / target), ago_h hours ago, px = sale price "
-                "and entry in USDT, pnl_pct realised; after a stop the coin may not be bought back within 24 h, after "
-                "a target sale not before the next daily decision.")
+LEGEND_EXITS = (" recent_exits: the coins sold in the last days (reason stop / target = the CODE's sales, on purpose; "
+                "sold = a decision's or any other sale), ago_h hours ago, px = sale price and entry in USDT, pnl_pct "
+                "realised; the re-entry rules (24 h after a stop, the cooldown after any sale) are in HOW THE BOT RUNS.")
 LEGEND_PLAN = (" your_plan = YOUR OWN plan of the position from when you opened / last added to it (checked by the "
                "bot): setup, horizon_h, age_h / left_h (h since it / left of its horizon; expired = past it), invalid "
                "(USDT; a close below = thesis wrong), tp, px_then, since_plan_pct, to_invalid_pct / to_tp_pct (px "

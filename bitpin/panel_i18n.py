@@ -195,6 +195,27 @@ FA = {
         u"توصیف می‌کند و به‌تنهایی سیگنال خرید یا فروش نیست.",
     "Kimi's technical reading": u"خوانش تکنیکال کیمی",
     "Coin": u"کوین",
+    # v3.11 hold discipline and the pause after a sale
+    "Sold only on": u"فروش فقط با",
+    "an hourly close below %s, its target %s or news about this coin":
+        u"بسته‌شدن ساعتی زیر %s، رسیدن به هدف %s یا خبری درباره‌ی همین کوین",
+    "an hourly close below %s or news about this coin": u"بسته‌شدن ساعتی زیر %s یا خبری درباره‌ی همین کوین",
+    "its invalidation broke: Kimi may sell it or restate the plan":
+        u"سطح ابطالش شکسته: کیمی می‌تواند آن را بفروشد یا برنامه را دوباره بنویسد",
+    "its target is reached: Kimi may sell it": u"به هدفش رسیده: کیمی می‌تواند آن را بفروشد",
+    "any decision (the hold rule is off)": u"هر تصمیمی (قانون نگه‌داری خاموش است)",
+    "Buy back": u"خرید دوباره",
+    "allowed now: the price is %s or lower": u"آزاد است: قیمت به %s یا کمتر رسیده",
+    "not before %s, unless at %s or lower": u"نه پیش از %s، مگر به قیمت %s یا کمتر",
+    "stop loss": u"حد ضرر",
+    "decision": u"تصمیم",
+    "Sold": u"فروش",
+    "Sale price (USDT)": u"قیمت فروش (تتر)",
+    "Sold lately: a pause before buying back": u"فروخته‌شده‌های اخیر: مکث پیش از خرید دوباره",
+    "After a stop or a decision's sale the bot does not buy the coin back for a while, unless its price falls the set "
+    "percent below the sale. This stops selling and then buying back higher.":
+        u"پس از فروش با حد ضرر یا با تصمیم، ربات تا مدتی همان کوین را دوباره نمی‌خرد، مگر قیمتش به اندازه‌ی درصد "
+        u"تعیین‌شده زیر قیمت فروش بیاید. این جلوی فروختن و بعد گران‌تر خریدن را می‌گیرد.",
     "Overall reading": u"خوانش کلی",
     "Support": u"حمایت",
     "Resistance": u"مقاومت",

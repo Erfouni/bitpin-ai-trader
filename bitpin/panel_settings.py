@@ -125,6 +125,25 @@ FIELDS = [
     Field("kimi", "brain.require_plan", "bool", "style",
           T("برنامه‌ی ورود برای هر موقعیت تازه لازم است", "Every new position needs an entry plan"),
           T("نوع ستاپ، افق زمانی و قیمت ابطال.", "Setup type, time horizon and invalidation price.")),
+    # v3.11 (study 07): hold discipline and the re-entry cooldown
+    Field("kimi", "brain.hold_discipline", "bool", "style",
+          T("موقعیتِ برنامه‌دار تا شکست سطح ابطال نگه داشته شود",
+            "Hold a planned position until its invalidation breaks"),
+          T("کد فروش کوینی را که برنامه دارد انجام نمی‌دهد، مگر بسته‌شدن ساعتی زیر سطح ابطال، رسیدن به هدف برنامه یا "
+            "خبر مشخص همان کوین. پایان مهلت برنامه دلیل فروش نیست و سطح ابطال عوض نمی‌شود.",
+            "The code does not sell a coin with a plan unless an hourly close falls below its invalidation, the "
+            "plan's target is reached or there is news about that coin. A plan's expiry is no reason to sell, and the "
+            "invalidation level stays.")),
+    Field("kimi", "brain.reentry_cooldown_hours", "float", "style",
+          T("مکث خرید دوباره پس از فروش", "Pause before buying back after a sale"),
+          T("پس از فروش با حد ضرر یا تصمیم، همان کوین تا این مدت خریده نمی‌شود. فروش در هدف شامل نیست. صفر = خاموش.",
+            "After a stop or a decision's sale the coin is not bought again for this long. A sale at the target "
+            "does not count. 0 = off."),
+          unit=HOURS, lo=0, hi=168),
+    Field("kimi", "brain.reentry_waive_pct", "float", "style",
+          T("خرید دوباره در مکث، اگر این‌قدر ارزان‌تر شد", "Buy back during the pause when this much cheaper"),
+          T("درصد زیر قیمتِ فروش، به تتر.", "Percent below the sale price, in USDT."),
+          unit=P, lo=0, hi=20),
     Field("kimi", "brain.slot_reasoning_effort", "choice", "style",
           T("عمق فکر تصمیم روزانه", "Reasoning effort of the daily decision"),
           T("فقط برای مدل‌هایی که عمق فکر دارند (مثل kimi-k3).",

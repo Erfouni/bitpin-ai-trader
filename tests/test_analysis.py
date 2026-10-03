@@ -925,7 +925,8 @@ class TestBotState(unittest.TestCase):
         self.assertEqual(ctx["recent_exits"], [
             {"symbol": "BTC_IRT", "reason": "target", "ago_h": 30.0, "px": 72000, "entry": 64000, "pnl_pct": 12.5},
             {"symbol": "SOL_IRT", "reason": "stop", "ago_h": 11.0, "px": 132.0, "entry": 150.0, "pnl_pct": -12.0}])
-        self.assertIn("recent_exits: coins the CODE sold on purpose", ctx["legend"])
+        self.assertIn("recent_exits: the coins sold in the last days (reason stop / target = the CODE's sales",
+                      ctx["legend"])                                    # v3.11: a decision's sale is "sold"
         self.assertNotIn("recent_exits", self.builder().build(None, recent_exits=[]))
         self.assertNotIn("recent_exits", self.builder().build(None))
         many = [{"symbol": "BTC_IRT", "reason": "stop", "t": NOW - i * H} for i in range(20)]

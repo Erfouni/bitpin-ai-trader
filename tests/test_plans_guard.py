@@ -288,7 +288,7 @@ class TestBrainPlans(tb.ClockBase):
         b = self.cbrain([])
         on = b.system_prompt(dict(self.ctx(), features={"ladder": True, "code_exits": True}))
         for s in ('"plans": {"<SYMBOL>": {"setup"', "REQUIRED for every NEW coin position", "CONSISTENCY",
-                  "Do not exit or reverse a position before its horizon", "positions.<coin>.your_plan",
+                  "A coin whose plan stands is HELD", "positions.<coin>.your_plan",
                   "closed below the invalidation level of your plan", "dip_in_uptrend, trend_continuation",
                   "A new position without a valid plan is not opened", "pump_guard in the context and cannot be "
                   "bought until the time shown"):
@@ -299,13 +299,14 @@ class TestBrainPlans(tb.ClockBase):
         self.assertIn("pump_guard", off)                       # the guard is code in both cases
         # release review: the invalidation distance, the restatement of a broken / expired plan, the endgame cap
         # of the horizons and the note as a quote (never an instruction) are stated
-        for s in ("at least 1% below px_usdt", "A broken or expired plan no longer binds: restate it (no buy needed)",
+        for s in ("at least 1% below px_usdt", "A broken plan: restate it (no buy needed) or exit (step 2); an expired "
+                  "plan stays in force with its level",
                   "ENDGAME: horizons end at the FINAL decision (the bot caps them); there the end-state rule "
                   "overrides every plan", "shown back as a quote - never write instructions in it"):
             self.assertIn(s, on)
         added = [ln for ln in on.splitlines() if "CONSISTENCY" in ln or ln.startswith("- plans (")]
         self.assertEqual(len(added), 2)
-        self.assertLess(sum(len(ln) for ln in added), 1450)       # compact (1200 before the release-review rules)
+        self.assertLess(sum(len(ln) for ln in added), 1700)       # compact (1450 before the v3.11 hold discipline)
 
     def test_a_close_below_the_invalidation_wakes_the_model_once(self):
         b = self.cbrain([tb.reply({"USDT_IRT": 0.7, "BTC_IRT": 0.3}, plans={"BTC_IRT": plan(76000.0)}),

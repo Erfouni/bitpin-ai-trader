@@ -183,6 +183,7 @@ SLOT_KINDS = ("first", "scheduled", "final")      # with clock slots: exempt fro
 RESERVE_PROMPT_TOKENS = 12000     # prompt part of one decision call's token estimate (the token reserve)
 REENTRY_BLOCK_SECONDS = 24 * HOUR  # no Kimi buy of a coin a code STOP sold within this long (anti-churn); a
 #                                   TARGET sale blocks only the early (non-slot) decisions for this long
+REENTRY_COOLDOWN_MAX_HOURS = 168   # brain.reentry_cooldown_hours at most (the runner keeps its sales this long)
 MAX_PRICE_INT = 10 ** 15          # larger integers in an exit price are rejected before float()
 PRICE_SANITY = (0.1, 5.0)         # an exit price outside [0.1x, 5x] of the coin's USDT price is not a USDT price
 # Decision modes: what the validator lets a decision do (see MODE_RULES).
@@ -377,6 +378,18 @@ DEFAULT_BRAIN_CONFIG = {
     # week: read before enforcing), "block" = a reply whose analysis fails is sent back once, then the failing
     # coin's INCREASE is blocked (never a forced sale), "error" = rejected on every attempt
     "analysis_policy": "off",
+    # v3.11 (study 07, owner 2026-10-03): HOLD DISCIPLINE. A coin whose position carries the model's plan is
+    # not sold by a scheduled / held_move decision until the plan is broken (an hourly close below its
+    # invalidation), its take_profit_usdt is reached or the reply quotes a NEWS BRIEF headline about that
+    # coin in exit_news (hack, delisting, exchange incident); an expired plan stays in force with its
+    # invalidation level. The review / veto / risk_reduce / final modes keep their sales. Study 07: re-testing
+    # held coins every day (or at plan expiry) on the entry evidence churned 15-23 round trips a coin-year;
+    # holding to the invalidation cut that to about 8 and did better in TRAIN and HOLDOUT.
+    "hold_discipline": True,
+    # v3.11: after a stop or a decision's sale of a coin (not a target sale) a buy of it is cut for this long unless
+    # its USDT price is at least reentry_waive_pct below that sale's price (0 = off; a code STOP still blocks 24 h)
+    "reentry_cooldown_hours": 72,
+    "reentry_waive_pct": 3.0,
     # v3 (B1): the reasoning effort of the 13:00 slot call only (null = the client's llm.reasoning_effort);
     # wake-ups keep the client's value. Passed to LLMClient.chat(reasoning_effort=...) when the client takes it.
     "slot_reasoning_effort": None,
@@ -668,7 +681,8 @@ def validate_brain_config(config):
         raise ConfigError("brain.safe_asset must be %s (the context, prompt and triggers are built around it)" % SAFE)
     if cfg["event_scope"] not in ("universe", "held"):
         raise ConfigError("brain.event_scope must be 'universe' or 'held'")
-    for k in ("honor_next_review_hours", "web_search", "json_mode", "log_full_context", "require_plan"):
+    for k in ("honor_next_review_hours", "web_search", "json_mode", "log_full_context", "require_plan",
+              "hold_discipline"):
         check_bool("brain." + k, cfg[k])
     cfg["decision_interval_hours"] = check_number("brain.decision_interval_hours", cfg["decision_interval_hours"], 0,
                                                   168, lo_open=True)
@@ -726,6 +740,9 @@ def validate_brain_config(config):
     cfg["endgame"] = _validate_endgame(cfg["endgame"])
     if cfg["analysis_policy"] not in ANALYSIS_POLICIES:
         raise ConfigError("brain.analysis_policy must be one of %s (in quotes)" % ", ".join(ANALYSIS_POLICIES))
+    cfg["reentry_cooldown_hours"] = check_number("brain.reentry_cooldown_hours", cfg["reentry_cooldown_hours"], 0,
+                                                 REENTRY_COOLDOWN_MAX_HOURS)
+    cfg["reentry_waive_pct"] = check_number("brain.reentry_waive_pct", cfg["reentry_waive_pct"], 0, 20)
     sre = cfg["slot_reasoning_effort"]
     if sre is not None and (not isinstance(sre, str) or sre.strip().lower() not in REASONING_EFFORTS):
         raise ConfigError("brain.slot_reasoning_effort must be null or one of %s (in quotes)"
@@ -1146,6 +1163,109 @@ def plan_over(p, now):
     if at is not None and h is not None and now is not None and at + h * HOUR <= float(now):
         return "is past its horizon"
     return None
+
+
+# v3.11 HOLD DISCIPLINE: the decision modes in which a planned position is protected from the model's sales
+HOLD_MODES = ("scheduled", "held_move")
+# names a NEWS BRIEF headline may use for a coin besides its ticker (exit_news must quote a headline that names
+# the coin; a headline about the whole market does not unlock one coin)
+COIN_NAMES = {"BTC": ("bitcoin",), "ETH": ("ethereum", "ether"), "XRP": ("ripple",), "SOL": ("solana",),
+              "BNB": ("binance coin",), "DOGE": ("dogecoin",), "ADA": ("cardano",), "LINK": ("chainlink",),
+              "TRX": ("tron",), "LTC": ("litecoin",), "DOT": ("polkadot",), "AVAX": ("avalanche",),
+              "NEAR": ("near protocol",), "SUI": ("sui network",), "ARB": ("arbitrum",), "OP": ("optimism",),
+              "UNI": ("uniswap",), "SHIB": ("shiba inu",), "PEPE": ("pepe coin",), "TON": ("toncoin",),
+              "HBAR": ("hedera",), "XLM": ("stellar",), "FIL": ("filecoin",), "BCH": ("bitcoin cash",),
+              "PAXG": ("pax gold", "paxos gold"), "XAUT": ("tether gold",), "HYPE": ("hyperliquid",),
+              "INJ": ("injective",), "WLD": ("worldcoin",), "ZEC": ("zcash",), "DASH": ("dash coin",),
+              "CRV": ("curve",), "CAKE": ("pancakeswap",), "SEI": ("sei network",), "ASTER": ("aster dex",)}
+
+
+def protected_positions(positions, px_usdt, mode, hold_discipline=True):
+    """v3.11 HOLD DISCIPLINE (study 07): {symbol: why} of the coins a decision in `mode` may not sell. In the
+    full decision modes (HOLD_MODES) every allocation position that carries the model's plan is protected
+    while the plan is not broken (no hourly close below its invalidation: the runner's broken_at) and its
+    take_profit_usdt is not reached (the coin's USDT price below it). An expired plan protects too: re-testing
+    a held coin at plan expiry or every day on the entry evidence churned 15-23 round trips a coin-year in
+    study 07 and lost to holding it to its invalidation. review / veto / risk_reduce / final keep their sales;
+    a quoted NEWS BRIEF headline about the coin (exit_news) lifts the protection in validate_response."""
+    if not hold_discipline or mode not in HOLD_MODES or not isinstance(positions, dict):
+        return {}
+    px_usdt = px_usdt if isinstance(px_usdt, dict) else {}
+    out = {}
+    for s, pos in positions.items():
+        sym = str(s).strip().upper()
+        if not isinstance(pos, dict) or _ladder_lot_only(pos):
+            continue
+        plan = pos.get("plan")
+        if not isinstance(plan, dict) or _fnum(plan.get("broken_at")) is not None:
+            continue
+        inv = _fnum(plan.get("invalidation_usdt"))
+        if inv is None or inv <= 0:
+            continue
+        tp = _fnum(plan.get("take_profit_usdt"))
+        px = _fnum(px_usdt.get(sym))
+        if tp is not None and px is not None and px >= tp:
+            continue
+        out[sym] = ("its plan protects it (HOLD DISCIPLINE): sold only after an hourly close below its invalidation "
+                    "%s USDT, at its take profit%s, or with a quoted news headline about it in exit_news"
+                    % (_fmt_px_short(inv), " %s USDT" % _fmt_px_short(tp) if tp is not None else " (none set)"))
+    return out
+
+
+def _fmt_px_short(v):
+    v = _fnum(v)
+    if v is None:
+        return "?"
+    return ("%.6g" % v) if abs(v) < 1000 else ("%.0f" % v)
+
+
+def _norm_words(text):
+    return " ".join(re.findall(r"[a-z0-9]+", str(text or "").lower()))
+
+
+def names_coin(text, coin):
+    """True when a headline names the coin: its ticker as a word or one of COIN_NAMES."""
+    words = " %s " % _norm_words(text)
+    c = str(coin or "").strip().upper()
+    if not c:
+        return False
+    if (" %s " % c.lower()) in words:
+        return True
+    return any((" %s " % _norm_words(n)) in words for n in COIN_NAMES.get(c, ()))
+
+
+def parse_exit_news(raw, allowed, safe, headlines, notes):
+    """{symbol: headline} of exit_news entries that quote a headline of THIS decision's NEWS BRIEF (its
+    items; compared as lower-case words, the quote must be the whole headline or at least 6 words of it) that
+    names the coin (names_coin). Anything else is dropped with a note: a held coin's protection is lifted only
+    by news about that coin, never by a market-wide story or a paraphrase."""
+    out = {}
+    if raw is None:
+        return out
+    if not isinstance(raw, dict):
+        notes.append("exit_news ignored: it must be an object {SYMBOL: \"headline\"}")
+        return out
+    heads = [h for h in (_norm_words(x) for x in (headlines or [])) if h]
+    for k, v in list(raw.items())[:10]:
+        sym = str(k).strip().upper()
+        if sym not in allowed or sym == safe:
+            notes.append("exit_news %s ignored: not a coin of this account" % _short_repr(k))
+            continue
+        q = _norm_words(v)
+        coin = sym.split("_")[0]
+        if not q or not heads:
+            notes.append("exit_news %s ignored: %s" % (sym, "no headline quoted" if not q else
+                                                       "this decision has no NEWS BRIEF items"))
+            continue
+        match = [h for h in heads if q == h or (len(q.split()) >= 6 and q in h)]
+        if not match:
+            notes.append("exit_news %s ignored: the quote is not a headline of the NEWS BRIEF" % sym)
+            continue
+        if not names_coin(match[0], coin):
+            notes.append("exit_news %s ignored: the headline does not name %s" % (sym, coin))
+            continue
+        out[sym] = match[0][:200]
+    return out
 
 
 def plan_horizon_cap(endgame, now):
@@ -1906,7 +2026,8 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
                       rebalance_threshold=0.02, tradable=None, buy_cap=None, mode="scheduled", ladder_current=None,
                       veto_coins=None, positions=None, px_usdt=None, endgame=None, now=None,
                       ladder_coins=LADDER_COINS, held_move_pct=8.0, min_review_hours=1, blocked_increases=None,
-                      plan_policy=None, ladder_capped=None, analysis_policy=None, context=None, halt_pct=None):
+                      plan_policy=None, ladder_capped=None, analysis_policy=None, context=None, halt_pct=None,
+                      protected=None, news_headlines=None, hold_discipline=False):
     """Validate + constrain one parsed LLM reply.
 
     current: {symbol: weight} (allowed symbols; the rest of equity is IRT cash).
@@ -1935,6 +2056,12 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
           goes to USDT_IRT; never a forced sale) - see parse_analysis. context / halt_pct: the market
           context the reply answered (citations, spreads, the drawdown) and the runner's halt in % (the
           headroom rule).
+    protected: {symbol: why} (protected_positions, v3.11 HOLD DISCIPLINE): a target below the current weight
+          of such a coin is raised back to it with a note - the money the reply meant to free comes back from
+          USDT_IRT first, then IRT cash, then the other coins' increases, then their weights (pro rata) - unless
+          the reply's exit_news quotes a headline of news_headlines (this decision's NEWS BRIEF items) naming
+          the coin (parse_exit_news); a stop_pct whose price lies above the plan's invalidation is dropped.
+    hold_discipline: an expired (not broken) plan restated without a buy keeps its invalidation level.
     Returns a dict (targets over ALL allowed symbols, zeros included) whose changes are all
     executable by runner.plan_orders(threshold=rebalance_threshold) and within every cap, plus
     "ladder" ({coin: scale} for every ladder coin), "exits" ({symbol: spec} for every coin with a
@@ -2012,6 +2139,51 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
     low = conf < limits["min_confidence"]
     out["low_confidence"] = low
     t0 = {s: targets.get(s, 0.0) for s in allowed}
+    # v3.11 HOLD DISCIPLINE: a protected coin keeps its weight unless exit_news names it
+    lifted = parse_exit_news(obj.get("exit_news"), allowed_set, safe, news_headlines, notes)
+    if lifted:
+        out["exit_news"] = lifted
+    prot = {str(k).strip().upper(): str(v) for k, v in (protected or {}).items()}
+    prot = {k: v for k, v in prot.items() if k in t0 and k != safe and k not in lifted}
+    kept = [k for k in sorted(prot) if t0[k] < cur[k] - 1e-12]
+    if kept:
+        need = 0.0
+        for k in kept:
+            need += cur[k] - t0[k]
+            t0[k] = cur[k]
+            notes.append("%s kept at its current weight (no sale): %s" % (k, prot[k]))
+        take = min(need, t0.get(safe, 0.0))
+        t0[safe] -= take
+        need -= take
+        if need > 1e-12 and cash > 0:
+            take = min(need, cash)
+            cash -= take
+            need -= take
+        for pool in ("increases", "weights"):
+            if need <= 1e-12:
+                break
+            room = {k: (t0[k] - cur[k] if pool == "increases" else t0[k]) for k in coins
+                    if k not in prot and (t0[k] > cur[k] + 1e-12 if pool == "increases" else t0[k] > 1e-12)}
+            tot = sum(room.values())
+            if tot <= 1e-12:
+                continue
+            take = min(need, tot)
+            for k, r in room.items():
+                t0[k] = max(0.0, t0[k] - take * r / tot)
+            need -= take
+        if need > 1e-9:
+            log.error("validate_response: %.6f of equity could not be found for the protected coins" % need)
+    for k in sorted(prot):
+        spec = req_exits.get(k) if isinstance(req_exits, dict) else None
+        sp = _fnum(spec.get("stop_pct")) if isinstance(spec, dict) else None
+        pos = (positions or {}).get(k) if isinstance(positions, dict) else None
+        plan = pos.get("plan") if isinstance(pos, dict) else None
+        entry = _fnum(pos.get("entry_px_usdt")) if isinstance(pos, dict) else None
+        inv = _fnum(plan.get("invalidation_usdt")) if isinstance(plan, dict) else None
+        if sp and entry and inv and entry * (1.0 - sp / 100.0) > inv * (1.0 + 1e-9):
+            spec.pop("stop_pct", None)
+            notes.append("%s: stop_pct %g dropped: a stop above the plan's invalidation %s USDT would sell a protected "
+                         "position (HOLD DISCIPLINE)" % (k, sp, _fmt_px_short(inv)))
     no_entries = bool(eg.get("no_new_entries"))
     why_no_buys = []
     if mode in NO_BUY_MODES:
@@ -2118,6 +2290,12 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
             plan_notes.append("plan of %s recorded for the position it already holds (none was recorded)" % s)
         elif held is not None and over:
             plans[s] = req_plans[s]                     # a broken / expired thesis restated without a buy
+            old_inv = _fnum((held.get("plan") or {}).get("invalidation_usdt"))
+            if hold_discipline and over == "is past its horizon" and old_inv:
+                # v3.11: an expired plan keeps its invalidation (study 07: raising it lost the edge of holding)
+                plans[s] = dict(req_plans[s], invalidation_usdt=old_inv)
+                plan_notes.append("plan of %s: its invalidation stays %s USDT (HOLD DISCIPLINE: a restated plan "
+                                  "keeps the level; a new level comes with a buy)" % (s, _fmt_px_short(old_inv)))
             plan_notes.append("plan of %s restated for the position it holds (the plan in force %s)" % (s, over))
         else:
             plan_notes.append("plan of %s not recorded: a plan is recorded when a position is opened or added to, "
@@ -2197,6 +2375,12 @@ def cadence_lines(cfg, safe, ladder_active=True, exits_active=True):
     if cfg.get("honor_next_review_hours"):
         nr = (" Your own next_review_hours below 24 also wakes you (a full call that costs like any other and counts as "
               "an early call): ask for it only when a real event is due.")
+    # v3.11 (study 07): the re-entry cooldown after any sale and the hold discipline of planned positions
+    cool_h = float(cfg.get("reentry_cooldown_hours", 72) or 0)
+    cool_txt = (" After a stop or a decision's sale the code does not let you buy the coin back within %g hours "
+                "unless its USDT price is at least %g%% below that sale's price (study 07: buying back higher is the churn that cost this "
+                "account)." % (cool_h, float(cfg.get("reentry_waive_pct", 3.0) or 0))) if cool_h > 0 else ""
+    hold_on = bool(exits_active) and bool(cfg.get("hold_discipline", True))
     lines = [
         "HOW THE BOT RUNS",
         cadence,
@@ -2220,15 +2404,26 @@ def cadence_lines(cfg, safe, ladder_active=True, exits_active=True):
         "allocation's (to the ladder position when that is the only one), and a stop or target sells only its own "
         "position. A stop is protection against a crash that keeps going, not a rebound bet: after majors fell 8%% "
         "or more, the next 7 days averaged -3%% in the HOLDOUT; on the Bitpin stock / oil tokens a -12%% stop on the "
-        "hourly close fired in 6-11%% of weeks from quote noise alone (COINX / CRCLX 31%%). A coin the code SOLD "
-        "(stop or target) is listed in recent_exits of the context: that sale was on purpose; after a STOP the code "
-        "does not let you buy the coin back within 24 hours, after a TARGET sale not before the next daily "
-        "decision." % (STOP_PCT_MIN, STOP_PCT_MAX, MAX_HOLD_HOURS, cap_txt,
-                            ("A target is a resting maker sell on %s, and is sold with a market order at the hourly "
-                             "close that reaches it for any other coin." % tgt_mk) if tgt_mk else
-                            "A target is sold with a market order at the hourly close that reaches it.",
-                            STOP_PCT_MIN, STOP_PCT_MAX)
+        "hourly close fired in 6-11%% of weeks from quote noise alone (COINX / CRCLX 31%%). Every sale of a coin is "
+        "listed in recent_exits of the context (reason stop / target: the code's, on purpose; sold: a decision's or "
+        "any other sale); after a STOP the code does not let you buy the coin back within 24 hours, after a TARGET "
+        "sale not before the next daily decision.%s"
+        % (STOP_PCT_MIN, STOP_PCT_MAX, MAX_HOLD_HOURS, cap_txt,
+           ("A target is a resting maker sell on %s, and is sold with a market order at the hourly "
+            "close that reaches it for any other coin." % tgt_mk) if tgt_mk else
+           "A target is sold with a market order at the hourly close that reaches it.",
+           STOP_PCT_MIN, STOP_PCT_MAX, cool_txt)
         if exits_active else no_exits,
+    ] + ([
+        "- HOLD DISCIPLINE (code): in scheduled and held_move decisions a coin whose position carries your plan is NOT "
+        "sold - a lower target is cut back to its current weight - until (a) an hourly close below its "
+        "invalidation_usdt (the plan is broken and you are woken: keep it with a restated plan, or sell it), (b) its "
+        "take_profit_usdt is reached, or (c) exit_news quotes the exact headline of a NEWS BRIEF item that names the "
+        "coin. review, veto, risk_reduce and final keep their sales. An expired plan stays in force with its "
+        "invalidation level; a restated one keeps it (a new level comes only with a buy); a stop_pct whose price lies "
+        "above the invalidation is dropped. Study 07 (Bitpin 2024-02..2026-10, BTC/ETH/SOL/XRP): re-testing held "
+        "coins every day or at plan expiry on the entry evidence made 15-23 round trips a coin-year; holding them to "
+        "the invalidation made about 8 and returned more in TRAIN and HOLDOUT."] if hold_on else []) + [
         "- WAKE-UPS (you are called early, rarely): a ladder bid FILLED -> REVIEW; a ladder coin closed %g%% or more "
         "below its 48 h high -> VETO (with fresh news); a held coin moved +-%g%% (USDT terms) since your last "
         "decision, crossed one of your wake levels, reached its max hold%s -> HELD_MOVE; the drawdown worsened by %g "
@@ -2351,6 +2546,7 @@ def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=N
                        float(guard["pump_lookback_hours"])))
     plans_on = bool(exits_active)
     plan_req = plans_on and bool(cfg.get("require_plan", True))
+    hold_on = plans_on and bool(cfg.get("hold_discipline", True))
     breaker = []
     if dd:
         breaker = [
@@ -2475,6 +2671,31 @@ def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=N
         "{{TA_SCHEMA}}": technical.schema_text(),
         "{{OWNER}}": (("ADDITIONAL INSTRUCTIONS FROM THE ACCOUNT OWNER\n" + str(cfg["extra_instructions"]).strip())
                       if str(cfg.get("extra_instructions") or "").strip() else ""),
+        # v3.11 HOLD DISCIPLINE (study 07): a held coin whose plan stands is not re-tested and not sold
+        "{{HELD_CANDIDATES}}": ("one per held coin whose plan is broken or at its take profit (HOLD DISCIPLINE: a coin "
+                                "whose plan stands is not re-tested and needs no candidate)" if hold_on else
+                                "one per held coin whose plan is broken or expired"),
+        "{{HELD_RETEST}}": ("A held coin whose plan is broken (or at its take profit) stays only with a restated plan "
+                            "whose ev_pct >= 0, else is sold." if hold_on else
+                            "A re-tested held coin stays if ev_pct >= 0, else is sold."),
+        "{{CONSISTENCY_TEXT}}": (
+            "AND HOLD DISCIPLINE (code-enforced; they win over THE HURDLE): every coin you open needs a plan (\"plans\" "
+            "below); positions.<coin>.your_plan shows it back, your OWN earlier thesis. A coin whose plan stands is "
+            "HELD: the code does not execute its sale until an hourly close breaks its invalidation level, its take "
+            "profit is reached, or you quote a NEWS BRIEF headline about that coin in exit_news; a daily re-test, a "
+            "weaker setup, a quiet day or an expired plan are no reasons (study 07: re-testing held coins churned 15-23 "
+            "round trips a coin-year and lost to holding them to the invalidation). A broken plan: restate it (no buy "
+            "needed) or exit (step 2); an expired plan stays in force with its level." if hold_on else
+            "(it wins over THE HURDLE): every coin you open needs a plan (\"plans\" below); positions.<coin>.your_plan "
+            "shows it back, your OWN earlier thesis. Do not exit or reverse a position before its horizon unless an "
+            "hourly close broke its invalidation level, its stop / target fired, or you name in reasoning the NEW "
+            "information that breaks the thesis; a daily re-test is not new information. A broken or expired plan no "
+            "longer binds: restate it (no buy needed) or exit (step 2)."),
+        "{{EXIT_NEWS_SCHEMA}}": '"exit_news": {"<SYMBOL>": "<headline>"}, ' if hold_on else "",
+        "{{EXIT_NEWS_NOTE}}": (" exit_news (optional): a held coin's protection ends early only with the exact headline "
+                               "of a NEWS BRIEF item that names the coin (hack, exploit, delisting, exchange trouble, "
+                               "legal action against it); a market-wide story or a paraphrase never qualifies."
+                               if hold_on else ""),
     }
     out = load_prompt_template()
     if not plans_on:
@@ -2760,6 +2981,10 @@ class KimiBrain:
             "decision": decision.to_dict(with_raw=False),
             "response": decision.raw,
             "news": news_meta,
+            # v3.11: the anti-churn rules in force (the panel's position cards and pauses read them)
+            "rules": {"hold_discipline": bool(self.cfg.get("hold_discipline", True)),
+                      "reentry_cooldown_hours": self.cfg.get("reentry_cooldown_hours", 72),
+                      "reentry_waive_pct": self.cfg.get("reentry_waive_pct", 3.0)},
         }
         if self.cfg.get("log_full_context"):
             rec["context"] = context
@@ -3327,7 +3552,11 @@ class KimiBrain:
           straight back. A TARGET sale blocks only the early decisions within that time: the next daily
           slot may buy the coin again (a profit taken is not a reason to skip the next allocation);
         * a coin the context marks pump_guard (the anti-pump buy guard, every mode): no buy until the time
-          shown - chasing 30%+ pumps lost money in every month of the pump study."""
+          shown - chasing 30%+ pumps lost money in every month of the pump study;
+        * v3.11: a coin SOLD by a stop or by a decision (reason "sold": the decision's own sales, or by hand)
+          within brain.reentry_cooldown_hours, unless its USDT price is at least reentry_waive_pct below that
+          sale's price (study 07: a short cooldown is cheap insurance against buying back higher); a TARGET
+          sale keeps the rule above (a profit taken is not churn)."""
         out = {}
         if mode not in NO_BUY_MODES:
             for e in events or []:
@@ -3353,8 +3582,32 @@ class KimiBrain:
                 continue
             if str(r.get("reason") or "") == "target" and slot:
                 continue
+            if str(r.get("reason") or "") == "sold":
+                continue                         # a decision's sale: only the cooldown below applies
             out.setdefault(sym, "a code exit (%s) sold it %.0f h ago: no buy back within %d h (anti-churn)"
                            % (str(r.get("reason") or "exit")[:10], max(0.0, ago), REENTRY_BLOCK_SECONDS // HOUR))
+        # v3.11 (study 07): after ANY sale of a coin no buy back for reentry_cooldown_hours unless its USDT price is
+        # at least reentry_waive_pct below that sale's price (buying back higher is the churn the owner saw)
+        cd_h = float(self.cfg.get("reentry_cooldown_hours") or 0.0)
+        waive = float(self.cfg.get("reentry_waive_pct") or 0.0)
+        px_now = usdt_prices(context) if isinstance(context, dict) else {}
+        for r in exits if (isinstance(exits, list) and cd_h > 0) else []:
+            if not isinstance(r, dict):
+                continue
+            sym = str(r.get("symbol") or "").strip().upper()
+            ago, sold = _fnum(r.get("ago_h")), _fnum(r.get("px"))
+            if sym not in self.allowed or sym == self.safe or ago is None or ago >= cd_h:
+                continue
+            if str(r.get("reason") or "") == "target":
+                continue                         # a profit taken at the target is not churn (the rule above)
+            free = sold * (1.0 - waive / 100.0) if sold else None
+            p = _fnum(px_now.get(sym)) if isinstance(px_now, dict) else None
+            if free is not None and p is not None and p <= free:
+                continue
+            out.setdefault(sym, "sold %.0f h ago%s: no buy back within %g h unless its price is at or below %s USDT "
+                                "(%g%% under the sale; anti-churn)"
+                           % (max(0.0, ago), " at %s USDT" % _fmt_px_short(sold) if sold else "", cd_h,
+                              _fmt_px_short(free) if free else "?", waive))
         # the anti-pump buy guard: the context builder marked the coins whose USDT price rose guard.pump_rise_pct
         # within guard.pump_window_hours in the last guard.pump_lookback_hours (analysis.pump_guard)
         syms = (context or {}).get("symbols") if isinstance(context, dict) else None
@@ -3403,6 +3656,14 @@ class KimiBrain:
         blocked = self._blocked_increases(now, mode, events, context, kind)
         ladder_capped = self._ladder_capped(context, ladder)
         px_usdt = usdt_prices(context)
+        # v3.11 HOLD DISCIPLINE: the planned positions this decision may not sell (scheduled / held_move), and the
+        # headlines of this decision's NEWS BRIEF that an exit_news quote must match
+        hold_on = bool(self.cfg.get("hold_discipline", True)) and positions is not None
+        protected = protected_positions(positions, px_usdt, mode, hold_on)
+        headlines = []
+        for it in (getattr(news, "items", None) or []) if news is not None else []:
+            if isinstance(it, dict) and isinstance(it.get("headline"), str):
+                headlines.append(it["headline"])
         thr = self.exec_threshold(min_trade_weight)
         # plans are kept with the position and fed back only with the runner's code exits (positions given)
         require_plan = bool(self.cfg.get("require_plan", True)) and positions is not None
@@ -3488,7 +3749,9 @@ class KimiBrain:
                                       held_move_pct=float(self.cfg["held_move_pct"]),
                                       min_review_hours=float(self.cfg["next_review_min_hours"]),
                                       blocked_increases=blocked, plan_policy=policy, ladder_capped=ladder_capped,
-                                      analysis_policy=a_policy, context=context, halt_pct=halt_pct)
+                                      analysis_policy=a_policy, context=context, halt_pct=halt_pct,
+                                      protected=protected, news_headlines=headlines,
+                                      hold_discipline=hold_on)
             except ValidationError as e:
                 err, err_kind = "validation: %s" % e, "validation"
                 log.warning("LLM reply rejected (attempt %d/%d): %s", attempt + 1, tries, e)

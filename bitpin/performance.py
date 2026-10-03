@@ -44,6 +44,10 @@ RUNNER_LOG = "kimi_runner.jsonl"
 EQUITY_FILE = "kimi_equity.json"
 ORDERS_FILE = "live_orders.json"
 DECISIONS_FILE = "kimi_decisions.jsonl"
+RUNNER_STATE_FILE = "runner_state_live.json"     # v3.11: the runner's sales (recent_exits) and its plans' state
+# v3.11: the anti-churn rules when no decision record carries them (bitpin.brain DEFAULT_BRAIN_CONFIG)
+DEFAULT_RULES = {"hold_discipline": True, "reentry_cooldown_hours": 72.0, "reentry_waive_pct": 3.0}
+PAUSE_REASONS = ("stop", "sold")                  # a target sale starts no pause (a profit taken is not churn)
 MAX_DECISIONS_BYTES = 8 * 1024 * 1024  # the tail read for Kimi's newest analysis of each coin
 MAX_RUNNER_BYTES = 128 * 1024 * 1024
 MAX_SMALL_FILE_BYTES = 16 * 1024 * 1024
@@ -418,10 +422,14 @@ def _thin(points, n=CHART_POINTS):
 
 
 # --------------------------------------------------------------------------- the report
-def report(records, start_equity, prices, t_from, t_to, now, orders=None, analyses=None, ta=None):
+def report(records, start_equity, prices, t_from, t_to, now, orders=None, analyses=None, ta=None, rules=None,
+           runner_state=None):
     """Everything the panel shows for (t_from, t_to]; see the module docstring. Never raises on odd data.
     analyses: read_analyses() - Kimi's newest analysis of each coin, for the outlook of the open positions;
-    ta: {asset: technical.chart_data()} - v3.9, the indicators of the open positions' charts."""
+    ta: {asset: technical.chart_data()} - v3.9, the indicators of the open positions' charts;
+    rules: read_rules() - v3.11, the anti-churn rules of the newest decision; runner_state: the runner's
+    runner_state_live.json (its sales and its plans' broken marks) - every position says when it may be sold
+    ("hold") and a coin sold lately when it may be bought again ("pause", the report's "pauses")."""
     fills = parse_fills(records)
     pts = equity_points(records)
     warnings = []
@@ -540,9 +548,12 @@ def report(records, start_equity, prices, t_from, t_to, now, orders=None, analys
         chart.append([now, e, (e / u) if u else None, (v_from * u / u_from) if (u and u_from) else None])
 
     # the open positions and the resting orders, each with its price chart in USDT (a range that ends now)
-    positions = []
+    positions, pauses = [], []
     if live:
+        rules = dict(DEFAULT_RULES, **(rules or {}))
+        pauses = sales_pauses(runner_state, rules, prices, now)
         positions = _positions(rows, open_plans(records), orders or [], prices, t_to, now, analyses or {}, ta or {})
+        hold_rules(positions, runner_state, rules, pauses)
 
     history = []
     for f in reversed(in_range[-MAX_HISTORY:]):
@@ -553,8 +564,93 @@ def report(records, start_equity, prices, t_from, t_to, now, orders=None, analys
                             value_irt=value_irt, value_usdt=(value_irt / u_t) if (value_irt and u_t) else None))
     return {"generated": now, "from": t_from, "to": t_to, "live": live, "start_equity_irt": start_equity,
             "first_record": first_t, "totals": totals, "assets": rows, "equity": chart, "positions": positions,
-            "history": history, "history_total": len(in_range), "warnings": warnings,
+            "pauses": pauses, "history": history, "history_total": len(in_range), "warnings": warnings,
             "rebuilt_value_to_irt": rebuilt_to}
+
+
+def read_rules(path, limit=MAX_DECISIONS_BYTES):
+    """v3.11: the anti-churn rules ("rules": hold_discipline, reentry_cooldown_hours, reentry_waive_pct) of the
+    newest decision record in kimi_decisions.jsonl that carries them; {} when none does (DEFAULT_RULES apply)."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            if size > limit:
+                f.seek(size - limit)
+                f.readline()
+            lines = f.read().splitlines()
+    except OSError:
+        return {}
+    for raw in reversed(lines):
+        try:
+            rec = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError):
+            continue
+        r = rec.get("rules") if isinstance(rec, dict) else None
+        if not isinstance(r, dict):
+            continue
+        out = {}
+        if isinstance(r.get("hold_discipline"), bool):
+            out["hold_discipline"] = r["hold_discipline"]
+        for k in ("reentry_cooldown_hours", "reentry_waive_pct"):
+            v = _f(r.get(k))
+            if v is not None and 0 <= v <= 1000:
+                out[k] = v
+        return out
+    return {}
+
+
+def sales_pauses(state, rules, prices, now):
+    """v3.11: [{asset, reason, t, price_usdt, until, free_price_usdt, price_now_usdt, free}] - the coins a stop or a
+    decision sold within the cooldown (the runner's recent_exits), newest first: no buy back before "until" unless
+    the price is at or below free_price_usdt (free: it is now)."""
+    cd = _f((rules or {}).get("reentry_cooldown_hours")) or 0.0
+    waive = _f((rules or {}).get("reentry_waive_pct")) or 0.0
+    exits = state.get("recent_exits") if isinstance(state, dict) else None
+    rows = [x for x in exits if isinstance(x, dict)] if isinstance(exits, list) else []
+    out, seen = [], set()
+    for r in sorted(rows, key=lambda x: -(_f(x.get("t")) or 0.0)):
+        asset = str(r.get("symbol") or "").split("_")[0].upper()
+        t, px = _f(r.get("t")), _f(r.get("px_usdt"))
+        if (cd <= 0 or not asset or asset in seen or t is None or str(r.get("reason") or "") not in PAUSE_REASONS
+                or now - t >= cd * HOUR):
+            continue
+        seen.add(asset)
+        free_px = px * (1.0 - waive / 100.0) if px else None
+        try:
+            cur = prices.usdt(asset, now, now)
+        except Exception:  # noqa: BLE001 - a pause without the price now, not a broken page
+            cur = None
+        out.append({"asset": asset, "reason": str(r.get("reason")), "t": t, "price_usdt": px, "until": t + cd * HOUR,
+                    "free_price_usdt": free_px, "price_now_usdt": cur,
+                    "free": bool(free_px and cur is not None and cur <= free_px)})
+    return out
+
+
+def hold_rules(positions, state, rules, pauses):
+    """v3.11: each position's "hold" - when the bot may sell it under the hold discipline: "protected" (its plan
+    stands: only an hourly close below the invalidation, the target or news about the coin), "broken" (an hourly
+    close fell below the invalidation: Kimi may sell or restate it), "target" (at or above its take profit),
+    "off" (the rule is switched off) or None (no plan) - and "pause" (sales_pauses) for a coin sold lately."""
+    plans = state.get("positions") if isinstance(state, dict) and isinstance(state.get("positions"), dict) else {}
+    by_asset = dict((p["asset"], p) for p in pauses)
+    for p in positions:
+        a = p.get("asset")
+        p["pause"] = by_asset.get(a)
+        if not p.get("held") or p.get("invalidation_usdt") is None:
+            p["hold"] = None
+            continue
+        if not (rules or {}).get("hold_discipline", True):
+            p["hold"] = "off"
+            continue
+        live = plans.get("%s_IRT" % a) if isinstance(plans.get("%s_IRT" % a), dict) else {}
+        lp = live.get("plan") if isinstance(live.get("plan"), dict) else {}
+        tp, now_px = _f(p.get("target_usdt")), _f(p.get("price_usdt"))
+        if _f(lp.get("broken_at")) is not None:
+            p["hold"] = "broken"
+        elif tp is not None and now_px is not None and now_px >= tp:
+            p["hold"] = "target"
+        else:
+            p["hold"] = "protected"
 
 
 def _chart_span(plan, now):
@@ -681,7 +777,9 @@ def collect(state_dir, t_from, t_to, now=None, fetch=None):
             d = None
         if d:
             ta[a] = d
+    state = _read_json(os.path.join(state_dir, RUNNER_STATE_FILE)) or {}
     out = report(records, start_equity, prices_from_bars(fine, now, coarse), t_from, t_to, now, orders,
-                 read_analyses(os.path.join(state_dir, DECISIONS_FILE)), ta)
+                 read_analyses(os.path.join(state_dir, DECISIONS_FILE)), ta,
+                 read_rules(os.path.join(state_dir, DECISIONS_FILE)), state if isinstance(state, dict) else {})
     out["warnings"] = errors + out["warnings"]
     return out

@@ -2842,9 +2842,10 @@ class TestLadderReviewFixes(ClockBase):
         user = self.llm.calls[-1]["messages"][1]["content"]
         self.assertIn("NOT BUYABLE in this decision", user)
         self.assertIn("recent_exits", self.llm.calls[-1]["messages"][0]["content"])
-        # 25 h after the exit it may be bought again
-        ctx["recent_exits"][0]["ago_h"] = 25.0
-        self.t = T0 + 26 * H
+        # v3.11: after the 24 h block the re-entry cooldown (72 h) still holds while the price is not 3% under the
+        # sale; 73 h after the exit it may be bought again
+        ctx["recent_exits"][0]["ago_h"] = 73.0
+        self.t = T0 + 74 * H
         b.should_decide(self.t, b.last_decision, ctx)
         d = self.decide_now(b, ctx, now=self.t)
         self.assertAlmostEqual(d.targets["ETH_IRT"], 0.4)

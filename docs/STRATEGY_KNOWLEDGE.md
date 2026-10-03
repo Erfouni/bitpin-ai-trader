@@ -59,6 +59,15 @@ worst plan from about -26..-31% to -10..-19% at a similar mean. A take_profit_us
 resistance in res did no better than holding to the horizon (-0.5 to -1.3 points per plan in three of four
 samples, about 0 in the fourth): res is where the price may stall, not a cap on g.
 
+Holding and re-entry (study 07, 2026-10-03: the bot's own setup entries on BTC/ETH/SOL/XRP with SUP invalidations,
+111 overlapping 90-day windows each from USDT, 1% round trip; mean per window TRAIN / HOLDOUT): re-testing a held
+coin every day on the entry evidence (a pos30 that slips under 0.8 for a day sells the coin, the next day buys it
+back higher) made 23 round trips a coin-year and +7.6% / -2.4%; re-testing at plan expiry 15 and
++8.5% / +0.1%; holding to the invalidation 8 and +12.1% / +6.5% (buy and hold +11.6% / +9.6%) - its gain comes
+from the big trends (it trailed daily re-testing in 56% of the TRAIN windows); raising the invalidation weekly lost
+that gain; a 72 h pause after a sale helped only a churning policy; an ev margin of +1 / +2% was mixed (TRAIN
+better, HOLDOUT worse). At a 1.8% round trip holding to the invalidation led daily re-testing by 7.7 / 13.1 points.
+
 Lessons: No edge, no trade: without a view whose expected gain clearly beats the round-trip cost the capital stays
 in USDT_IRT; with one, size it - holding USDT is itself a view (B1), not a safe default, and over a year it is the
 benchmark, not a refuge. Measure coin trends in USDT terms, never in raw IRT. Returns from coin bets are concentrated

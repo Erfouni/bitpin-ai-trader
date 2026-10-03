@@ -190,7 +190,10 @@ LOT_MAIN, LOT_LADDER = "main", "ladder"   # the two positions a coin can have (a
 LADDER_REFILL_REVIEW = 0.25           # a disarmed ladder order that filled this much more of its size gets a new W1
 EXIT_SPEC_TTL = 6 * HOUR              # a Kimi exit spec applies to a position its decision opened within this long
 PLAN_SPEC_TTL = EXIT_SPEC_TTL         # ... and so does its entry plan (Decision.plans) to the Kimi buy it opens / adds
-RECENT_EXITS_KEEP = 72 * HOUR         # code exits shown to Kimi (context recent_exits; no re-entry within 24 h)
+RECENT_EXITS_KEEP = 168 * HOUR        # sales shown to Kimi (context recent_exits): code exits (no re-entry within 24 h
+#                                       after a stop) and, v3.11, every other sale ("sold"): the brain's re-entry
+#                                       cooldown (brain.reentry_cooldown_hours, at most 168 h) reads them
+SALE_AFTER_EXIT = 3 * HOUR            # a position closed this soon after a code exit of the coin: that exit was the sale
 REJECT_BACKOFF = 6 * HOUR             # a resting order the exchange rejected (4xx) is not re-sent on that market for this long
 
 # The crash ladder (research spec: resting USDT-backed maker bids at -20% / -25% below the highest of
@@ -3338,9 +3341,10 @@ class Runner:
             left -= take
 
     def _note_exit(self, sym, why, px_usdt, pos, ident=None):
-        """Remember a code exit (stop / target) for RECENT_EXITS_KEEP: Kimi is told about it in the
-        context (recent_exits); after a STOP the coin may not be bought back within 24 h (anti-churn,
-        brain)."""
+        """Remember a sale for RECENT_EXITS_KEEP: a code exit (stop / target) or, v3.11, any other sale
+        ("sold", _note_sale). Kimi is told about it in the context (recent_exits); after a STOP the coin may
+        not be bought back within 24 h, after any sale not within brain.reentry_cooldown_hours unless it is
+        reentry_waive_pct cheaper (anti-churn, brain)."""
         try:
             now = float(self.clock())
             if ident and any(r.get("ident") == ident for r in self._recent_exits):
@@ -3361,6 +3365,20 @@ class Runner:
             self._save_bot_state()
         except Exception as e:  # noqa: BLE001 - informational for the brain; never breaks an exit
             log.warning("recent exit of %s not recorded: %s", sym, e)
+
+    def _note_sale(self, sym, px_usdt, lots):
+        """v3.11: a position whose coins the bot no longer manages was SOLD - by a decision, or by hand - and is
+        remembered like a code exit with reason "sold" (context recent_exits) for the brain's re-entry cooldown,
+        unless a code exit of the coin was noted within SALE_AFTER_EXIT (then that exit was the sale)."""
+        try:
+            now = float(self.clock())
+            for r in self._recent_exits:
+                if isinstance(r, dict) and r.get("symbol") == sym and now - float(r.get("t") or 0) < SALE_AFTER_EXIT:
+                    return
+            pos = next((p for _, lot, p in lots if lot == LOT_MAIN), lots[0][2] if lots else None)
+            self._note_exit(sym, "sold", px_usdt, pos)
+        except Exception as e:  # noqa: BLE001 - informational for the brain; never breaks the reconciliation
+            log.warning("sale of %s not recorded: %s", sym, e)
 
     def _recent_exits_view(self, now):
         """The code exits of the last RECENT_EXITS_KEEP for the brain / context builder (oldest first)."""
@@ -3457,6 +3475,7 @@ class Runner:
             lots = self._lots(sym)
             if value < floor or u <= 0:
                 if lots:
+                    self._note_sale(sym, (float(D(px)) / rate) if rate else None, lots)
                     self._pos_close(sym, "sold (holding below one minimum order)")
                 continue
             if not lots:

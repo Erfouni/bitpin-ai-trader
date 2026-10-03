@@ -431,6 +431,21 @@ def te(msg):
     return esc(tr(msg))
 
 
+# v3.11: the position card's selling rule when the plan no longer protects the coin, and the reasons of a sale
+HOLD_STATES = {"broken": N_("its invalidation broke: Kimi may sell it or restate the plan"),
+               "target": N_("its target is reached: Kimi may sell it"),
+               "off": N_("any decision (the hold rule is off)")}
+SALE_REASONS = {"stop": N_("stop loss"), "sold": N_("decision")}
+
+
+def pause_text(pz):
+    """v3.11: when a coin sold lately may be bought again (performance.sales_pauses)."""
+    free = ltr(price_text(pz.get("free_price_usdt")) + " USDT")
+    if pz.get("free"):
+        return tr("allowed now: the price is %s or lower") % free
+    return tr("not before %s, unless at %s or lower") % (fmt_time(pz.get("until")), free)
+
+
 def ltr(v):
     """A technical value (symbol, path, model id, number) inside Persian text."""
     return '<bdi dir="ltr">%s</bdi>' % esc(v)
@@ -3087,6 +3102,16 @@ class PanelApp(object):
                 "ladder fills only if the price falls to its level. The charts, the indicators and Kimi's last "
                 "analysis show what the bot is waiting for.")) + '<div class="positions">%s</div>' % "".join(
                 self._position_panel(p, show_ta) for p in other), "eye")
+        # v3.11: the coins a stop or a decision sold lately, and when they may be bought again
+        pauses = [x for x in data.get("pauses") or [] if isinstance(x, dict) and x.get("asset")]
+        if pauses:
+            rows = [[code(x["asset"]), te(SALE_REASONS.get(x.get("reason"), x.get("reason") or "")),
+                     fmt_time(x.get("t")), ltr(price_text(x.get("price_usdt"))), pause_text(x)] for x in pauses]
+            out += card(te("Sold lately: a pause before buying back"), help_p(te(
+                "After a stop or a decision's sale the bot does not buy the coin back for a while, unless its price "
+                "falls the set percent below the sale. This stops selling and then buying back higher.")) + table(
+                [N_("Coin"), N_("Reason"), N_("Sold"), N_("Sale price (USDT)"), N_("Buy back")], rows, num=(3,)),
+                "clock")
         return out
 
     @staticmethod
@@ -3172,6 +3197,17 @@ class PanelApp(object):
                 (N_("Hold until"), fmt_time(p.get("max_hold_until")))]
         if not held:
             rows = rows[:1]
+        # v3.11 hold discipline: when the bot may sell this position; a coin sold lately: when it may be bought again
+        hold, inv, tgt = p.get("hold"), p.get("invalidation_usdt"), p.get("target_usdt")
+        if held and hold == "protected" and _is_num(inv):
+            usd = lambda v: ltr(price_text(v) + " USDT")    # noqa: E731
+            rows.append((N_("Sold only on"), (tr("an hourly close below %s, its target %s or news about this coin")
+                                               % (usd(inv), usd(tgt))) if _is_num(tgt) else
+                         tr("an hourly close below %s or news about this coin") % usd(inv)))
+        elif held and hold in HOLD_STATES:
+            rows.append((N_("Sold only on"), te(HOLD_STATES[hold])))
+        if isinstance(p.get("pause"), dict):
+            rows.append((N_("Buy back"), pause_text(p["pause"])))
         return '<article class="position%s"><div class="position-h">%s%s</div>%s%s%s%s%s</article>' % (
             "" if held else " watch", code(asset + " / USDT"), badge, chart, legend(items), fc_html, facts(rows),
             analysis_html(p))

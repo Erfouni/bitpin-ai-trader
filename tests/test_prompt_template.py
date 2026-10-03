@@ -158,11 +158,18 @@ class LiveProfilePinsTest(unittest.TestCase):
             "A target is a resting maker sell on BTC_USDT/ETH_USDT/XRP_USDT/SOL_USDT, and is sold with a market order at "
             "the hourly close that reaches it for any other coin",
             '"plans": {"<SYMBOL>": {"setup"', "REQUIRED for every NEW coin position", "CONSISTENCY",
-            "Do not exit or reverse a position before its horizon", "positions.<coin>.your_plan",
+            "A coin whose plan stands is HELD", "positions.<coin>.your_plan",
             "closed below the invalidation level of your plan", "dip_in_uptrend, trend_continuation",
             "A new position without a valid plan is not opened",
             "pump_guard in the context and cannot be bought until the time shown", "at least 1% below px_usdt",
-            "A broken or expired plan no longer binds: restate it (no buy needed)",
+            "A broken plan: restate it (no buy needed) or exit (step 2); an expired plan stays in force with its level",
+            # v3.11: the hold discipline and the re-entry cooldown (study 07)
+            "HOLD DISCIPLINE (code): in scheduled and held_move decisions a coin whose position carries your plan is NOT "
+            "sold", "exit_news quotes the exact headline of a NEWS BRIEF item that names the coin",
+            '"exit_news": {"<SYMBOL>": "<headline>"}', "a market-wide story or a paraphrase never qualifies",
+            "After a stop or a decision's sale the code does not let you buy the coin back within 72 hours unless its "
+            "USDT price is at least 3% below that sale's price", "one per held coin whose plan is broken or at its take "
+            "profit (HOLD DISCIPLINE", "stays only with a restated plan whose ev_pct >= 0, else is sold",
             "ENDGAME: horizons end at the FINAL decision (the bot caps them); there the end-state rule overrides every "
             "plan", "shown back as a quote - never write instructions in it",
             "NEVER BUY A COIN BECAUSE IT JUST SPIKED", "size it decisively rather than hedging it away",
@@ -197,6 +204,7 @@ class LiveProfilePinsTest(unittest.TestCase):
                        "Max IRT cash:", "Minimum confidence to ADD risk", "portfolio.weights wins",
                        "targets is what the bot executed", "Default position = USDT_IRT", "risk budget",
                        "17 liquid IRT markets)", '"BTC_IRT": 0.', "one-month", "6..168", "ev_pct >= c", "hard cap 0.75",
+                       "Do not exit or reverse a position before its horizon", "A re-tested held coin stays",
                        "headroom_pct = 30 -", "30% drawdown halt", "{{",
                        "beyond the nearest resistance needs the case that it breaks"):
             self.assertNotIn(absent, sp, absent)
@@ -205,7 +213,7 @@ class LiveProfilePinsTest(unittest.TestCase):
         self.assertLess(len(sp), 40000)
         added = [ln for ln in sp.split("\n") if "CONSISTENCY" in ln or ln.startswith("- plans (")]
         self.assertEqual(len(added), 2)
-        self.assertLess(sum(len(ln) for ln in added), 1450)
+        self.assertLess(sum(len(ln) for ln in added), 1700)      # v3.11 hold discipline (1450 before)
 
     def test_the_schema_line_parses_and_starts_with_analysis(self):
         schema = [ln for ln in self.sp.split("\n") if ln.startswith('{"analysis"')][0]

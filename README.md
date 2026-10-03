@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.10.1` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.11.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -74,7 +74,10 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 - **Guards the model cannot override:**
   - strict JSON and symbol validation, and a minimum order size;
   - no buying a coin that rose 30 % or more in 24 hours;
-  - a minimum hold, and no re-entry for 24 hours after an exit;
+  - a minimum hold, and no re-entry for 24 hours after a stop;
+  - hold discipline (3.11): a position with the model's plan is sold only when an hourly close breaks its
+    invalidation, at its target or on a news headline about that coin, never because the plan expired; after a
+    stop or a decision's sale the coin is not bought back for 72 hours unless it is 3 % cheaper;
   - a trading halt at a 50 % drawdown from the highest account value of the last 90 days;
   - a `STOP` kill switch;
   - no new entries from 2027-09-16, five days before the end;
@@ -137,7 +140,7 @@ sudo ufw allow 8443/tcp            # only if ufw is active: the panel never open
 | Page | What you can do |
 |---|---|
 | Dashboard | services, account value, profit or loss, drawdown, the last decision with its report, positions, spend |
-| Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it |
+| Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it; on each position chart the bot's own indicators (EMA 20 / 50 / 200, Bollinger, Donchian, support and resistance) with RSI, MACD and traded-value panes |
 | Trade history | every buy and sell of the bot, with filters, pages and a CSV download |
 | Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it; on each position chart the bot's own indicators (EMA 20 / 50 / 200, Bollinger, Donchian, support and resistance) with RSI, MACD and traded-value panes; the positions the account holds apart from the coins with only a resting order |
 | Trade history | every buy and sell of the bot, with filters, pages and a CSV download |
@@ -351,6 +354,11 @@ unseen period. Their code and data are not in this repository;
   average plan, but any stop cut the worst plan from about −26…−31 % to −10…−19 %. The tightest stop (2 × ATR) was
   hit in more than half of the plans and did worst, and targets at the next resistance were no better than fixed
   ones. So resistance is shown to the model as a place where the price may stall, not as a cap on its targets.
+- Re-testing a held coin every day (or when its plan expires) on the entry evidence made 15-23 round trips per
+  coin a year; holding it until its invalidation broke made about 8 and returned more in both the training and
+  the later period (111 overlapping 90-day windows). Raising the invalidation as the price rose lost that edge, a
+  72-hour pause after a sale was cheap insurance, and an extra expected-value margin gave mixed results. This set
+  the hold discipline of 3.11.
 
 ## License
 
