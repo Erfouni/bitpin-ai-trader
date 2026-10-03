@@ -438,6 +438,22 @@ HOLD_STATES = {"broken": N_("its invalidation broke: Kimi may sell it or restate
 SALE_REASONS = {"stop": N_("stop loss"), "sold": N_("decision")}
 
 
+def confirmation_html(c):
+    """v3.12: the second run of a decision that buys: confirmed, cut (what was not bought) or failed."""
+    kept = c.get("kept") if isinstance(c.get("kept"), dict) else {}
+    cut = c.get("cut") if isinstance(c.get("cut"), dict) else {}
+    pairs = lambda m, sign: ", ".join("%s %s%s" % (code(s), sign, ltr(pct_text(w * 100.0, 1)))   # noqa: E731
+                                      for s, w in sorted(m.items()) if _is_num(w))
+    if not cut:
+        return '<span class="badge ok">%s</span> %s' % (te("Confirmed"), pairs(kept, "+"))
+    out = '<span class="badge warn">%s</span> %s' % (te("Buy cut"), pairs(cut, "-"))
+    if kept:
+        out += " &middot; %s %s" % (te("bought"), pairs(kept, "+"))
+    if c.get("error"):
+        out += '<br><span class="muted small">%s</span>' % bdi(c["error"])
+    return out
+
+
 def pause_text(pz):
     """v3.11: when a coin sold lately may be bought again (performance.sales_pauses)."""
     free = ltr(price_text(pz.get("free_price_usdt")) + " USDT")
@@ -1787,6 +1803,8 @@ class PanelApp(object):
         rows = [(N_("Result"), result), (N_("Mode"), ltr(d.get("mode")) if d.get("mode") else dash()),
                 (N_("Confidence"), conf_html), (N_("Model"), code(d.get("model")) if d.get("model") else dash()),
                 (N_("Valid"), yes_no(d.get("valid"))), (N_("Fallback"), yes_no(d.get("fallback")))]
+        if isinstance(d.get("confirmation"), dict):                      # v3.12: a decision that bought
+            rows.append((N_("Second run"), confirmation_html(d["confirmation"])))
         out = [facts(rows)]
         if d.get("error"):
             kind = (" (%s)" % ltr(d.get("error_kind"))) if d.get("error_kind") else ""
@@ -2901,8 +2919,9 @@ class PanelApp(object):
                      '"ta-method">%s</ul><p class="muted small">%s</p></div></details>' % (
                          icon("spark"), te("How the reading works"),
                          "".join("<li>%s</li>" % te(x) for x in TA_METHOD_LINES),
-                         te("Kimi reads the same numbers by the same rules in every decision; the code checks each "
-                            "field. The reading describes the chart: it is not a buy or sell signal of its own.")))
+                         te("From version 3.12 the code computes this reading and gives it to Kimi; Kimi adds only "
+                            "its overall view (bullish, bearish or neutral). The reading describes the chart: it is not "
+                            "a buy or sell signal of its own.")))
         return self._page(req, title, "".join(parts), active="/technical", sub=sub)
 
     def _ta_reading_card(self, data):
@@ -2919,6 +2938,8 @@ class PanelApp(object):
                    ("<b>%s</b>" % ta_label("read", ta["read"])) if ta.get("read") else dash()]
             if not ta:
                 row.append('<span class="muted">%s</span>' % te("No reading"))
+            elif c.get("ta_source") == "code":                   # v3.12: the code's reading + Kimi's overall view
+                row.append('<span class="badge ok">%s</span>' % te("By the code"))
             elif checks:
                 row.append('<span class="badge warn">%s</span>' % esc(tr("%s differ") % len(checks)))
             else:

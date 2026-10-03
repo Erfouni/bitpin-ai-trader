@@ -840,7 +840,8 @@ class RunnerNewsTest(unittest.TestCase):
 # --------------------------------------------------------------------------- real KimiBrain end to end
 
 def kimi_config(**brain):
-    b = {"allowed_symbols": SYMS, "web_search": False, "risk_profile": "balanced"}
+    b = {"allowed_symbols": SYMS, "web_search": False, "risk_profile": "balanced",
+         "confirm_buys": False}                         # v3.12: one fake reply per decision (tested in test_confirm)
     b.update(brain)
     return {"llm": {"model": "kimi-test", "max_retries": 0, "backoff_seconds": 0, "backoff_max_seconds": 0},
             "brain": b,

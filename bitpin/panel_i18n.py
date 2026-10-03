@@ -189,14 +189,20 @@ FA = {
     "No decision with a market context is recorded yet.": u"هنوز تصمیمی با دادهٔ بازار ثبت نشده است.",
     "Decision of %s": u"تصمیم %s",
     "How the reading works": u"خوانش چطور انجام می‌شود",
-    "Kimi reads the same numbers by the same rules in every decision; the code checks each field. The reading "
-    "describes the chart: it is not a buy or sell signal of its own.":
-        u"کیمی در هر تصمیم همین عددها را با همین قاعده‌ها می‌خواند و کد تک‌تک فیلدها را بررسی می‌کند. این خوانش وضع نمودار را "
-        u"توصیف می‌کند و به‌تنهایی سیگنال خرید یا فروش نیست.",
     "Kimi's technical reading": u"خوانش تکنیکال کیمی",
     "Coin": u"کوین",
     # v3.11 hold discipline and the pause after a sale
     "Sold only on": u"فروش فقط با",
+    # v3.12 the second run of a buying decision and the code's technical reading
+    "Second run": u"پرسش دوم",
+    "Confirmed": u"تأیید شد",
+    "Buy cut": u"خرید کم شد",
+    "bought": u"خریده شد",
+    "By the code": u"با کد",
+    "From version 3.12 the code computes this reading and gives it to Kimi; Kimi adds only its overall view (bullish, "
+    "bearish or neutral). The reading describes the chart: it is not a buy or sell signal of its own.":
+        u"از نسخهٔ ۳٫۱۲ این خوانش را کد حساب می‌کند و به کیمی می‌دهد؛ کیمی فقط جمع‌بندی خودش را (صعودی، نزولی یا خنثی) "
+        u"اضافه می‌کند. این خوانش وضع نمودار را توصیف می‌کند و به‌تنهایی سیگنال خرید یا فروش نیست.",
     "an hourly close below %s, its target %s or news about this coin":
         u"بسته‌شدن ساعتی زیر %s، رسیدن به هدف %s یا خبری درباره‌ی همین کوین",
     "an hourly close below %s or news about this coin": u"بسته‌شدن ساعتی زیر %s یا خبری درباره‌ی همین کوین",

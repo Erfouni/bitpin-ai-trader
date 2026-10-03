@@ -386,6 +386,10 @@ DEFAULT_BRAIN_CONFIG = {
     # held coins every day (or at plan expiry) on the entry evidence churned 15-23 round trips a coin-year;
     # holding to the invalidation cut that to about 8 and did better in TRAIN and HOLDOUT.
     "hold_discipline": True,
+    # v3.12 (B1, owner 2026-10-03): a scheduled / held_move decision that BUYS is asked a second time (the same system
+    # and user message, a fresh call); a coin is bought only as far as both replies raise it. Re-running the same
+    # prompt changes many of an LLM's picks (research 2026-10-03): acting only when two samples agree is the remedy.
+    "confirm_buys": True,
     # v3.11: after a stop or a decision's sale of a coin (not a target sale) a buy of it is cut for this long unless
     # its USDT price is at least reentry_waive_pct below that sale's price (0 = off; a code STOP still blocks 24 h)
     "reentry_cooldown_hours": 72,
@@ -682,7 +686,7 @@ def validate_brain_config(config):
     if cfg["event_scope"] not in ("universe", "held"):
         raise ConfigError("brain.event_scope must be 'universe' or 'held'")
     for k in ("honor_next_review_hours", "web_search", "json_mode", "log_full_context", "require_plan",
-              "hold_discipline"):
+              "hold_discipline", "confirm_buys"):
         check_bool("brain." + k, cfg[k])
     cfg["decision_interval_hours"] = check_number("brain.decision_interval_hours", cfg["decision_interval_hours"], 0,
                                                   168, lo_open=True)
@@ -794,6 +798,8 @@ class Decision:
     endgame: dict = field(default_factory=dict)    # KimiBrain.endgame_flags() at decision time
     plans: dict = field(default_factory=dict)      # {symbol: plan} the model's entry thesis for the coins it opens /
     #                                                adds to (validate_response): kept with the position by the runner
+    confirmation: dict = field(default_factory=dict)   # v3.12 (B1): the second run of a decision that buys: buys,
+    #                                                kept, cut, the second reply's targets / confidence, error
     analysis: dict = field(default_factory=dict)   # the reply's "analysis" block as parse_analysis kept it: numbers,
     #                                                row ids, verdicts, cleaned strings, the bot's recomputed book and
     #                                                its problems; display / log only, never fed back as text
@@ -1907,9 +1913,15 @@ def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_us
             problems.append((s, "verdict must be one of %s" % ", ".join(ANALYSIS_VERDICTS)))
         # v3.8: the technical reading - the model's "ta" next to the same rules applied by the code; a field read
         # differently is shown to the owner (panel), never a problem: the reading describes, it does not decide
-        ta, ta_dropped = technical.parse_ta(c.get("ta"))
         code = technical.reading(ctx_syms.get(s), s)
-        cands[s].update(ta=ta, ta_code=code or None, ta_check=technical.check_ta(ta, code))
+        if isinstance(c.get("ta"), dict):
+            # an old-style reply (v3.8..v3.11): the model's own reading, checked field by field
+            ta, ta_dropped = technical.parse_ta(c.get("ta"))
+            cands[s].update(ta=ta, ta_code=code or None, ta_check=technical.check_ta(ta, code), ta_source="model")
+        else:
+            # v3.12: the code gave the reading (context "ta"); the model only added its overall read
+            ta, ta_dropped = technical.code_ta(code, c.get("read")), []
+            cands[s].update(ta=ta, ta_code=code or None, ta_check=[], ta_source="code")
         if ta_dropped:
             cands[s]["ta_dropped"] = ta_dropped
         if cands[s]["ta_check"] or ta_dropped:
@@ -2421,9 +2433,10 @@ def cadence_lines(cfg, safe, ladder_active=True, exits_active=True):
         "take_profit_usdt is reached, or (c) exit_news quotes the exact headline of a NEWS BRIEF item that names the "
         "coin. review, veto, risk_reduce and final keep their sales. An expired plan stays in force with its "
         "invalidation level; a restated one keeps it (a new level comes only with a buy); a stop_pct whose price lies "
-        "above the invalidation is dropped. Study 07 (Bitpin 2024-02..2026-10, BTC/ETH/SOL/XRP): re-testing held "
-        "coins every day or at plan expiry on the entry evidence made 15-23 round trips a coin-year; holding them to "
-        "the invalidation made about 8 and returned more in TRAIN and HOLDOUT."] if hold_on else []) + [
+        "above the invalidation is dropped (study 07 in the KNOWLEDGE)."] if hold_on else []) + ([
+        "- CONFIRMATION (code): a scheduled or held_move decision that buys is asked a second time with the same "
+        "message; a coin is bought only as far as both answers raise it (the rest stays in %s)." % safe]
+        if cfg.get("confirm_buys", True) else []) + [
         "- WAKE-UPS (you are called early, rarely): a ladder bid FILLED -> REVIEW; a ladder coin closed %g%% or more "
         "below its 48 h high -> VETO (with fresh news); a held coin moved +-%g%% (USDT terms) since your last "
         "decision, crossed one of your wake levels, reached its max hold%s -> HELD_MOVE; the drawdown worsened by %g "
@@ -3704,6 +3717,15 @@ class KimiBrain:
         chat_kw = self._chat_kwargs(kind)
         apol = str(self.cfg.get("analysis_policy") or "off")
         halt_pct = (float(self.cfg["drawdown_breaker"]) * 100.0) if self.cfg.get("drawdown_breaker") else None
+        vargs = (cur, self.allowed, self.safe, self.limits, float(self.cfg["sum_tolerance"]),
+                 self._default_review_hours(), thr, tradable)
+        vkw = dict(buy_cap=buy_cap, mode=mode, ladder_current=ladder_cur, veto_coins=veto_coins, positions=positions,
+                   px_usdt=px_usdt, endgame=eg, now=now, ladder_coins=self.ladder_coins,
+                   held_move_pct=float(self.cfg["held_move_pct"]),
+                   min_review_hours=float(self.cfg["next_review_min_hours"]), blocked_increases=blocked,
+                   ladder_capped=ladder_capped, context=context, halt_pct=halt_pct, protected=protected,
+                   news_headlines=headlines, hold_discipline=hold_on)
+        obj_ok = None
         for attempt in range(tries):
             left = budget_s - (self.monotonic() - t_start)
             if attempt > 0 and left < MIN_RETRY_SECONDS:
@@ -3741,17 +3763,7 @@ class KimiBrain:
             a_policy = ("error" if can_retry else "block") if apol == "block" else apol
             try:
                 obj = self._parse_reply(raw, res)
-                v = validate_response(obj, cur, self.allowed, self.safe, self.limits,
-                                      float(self.cfg["sum_tolerance"]), self._default_review_hours(),
-                                      thr, tradable, buy_cap=buy_cap, mode=mode, ladder_current=ladder_cur,
-                                      veto_coins=veto_coins, positions=positions, px_usdt=px_usdt, endgame=eg,
-                                      now=now, ladder_coins=self.ladder_coins,
-                                      held_move_pct=float(self.cfg["held_move_pct"]),
-                                      min_review_hours=float(self.cfg["next_review_min_hours"]),
-                                      blocked_increases=blocked, plan_policy=policy, ladder_capped=ladder_capped,
-                                      analysis_policy=a_policy, context=context, halt_pct=halt_pct,
-                                      protected=protected, news_headlines=headlines,
-                                      hold_discipline=hold_on)
+                v = validate_response(obj, *vargs, plan_policy=policy, analysis_policy=a_policy, **vkw)
             except ValidationError as e:
                 err, err_kind = "validation: %s" % e, "validation"
                 log.warning("LLM reply rejected (attempt %d/%d): %s", attempt + 1, tries, e)
@@ -3795,8 +3807,17 @@ class KimiBrain:
                                 adjustments=adj, proposed=v["proposed"], ladder=v["ladder"], exits=v["exits"],
                                 report_fa=v["report_fa"], plans=dict(v.get("plans") or {}),
                                 analysis=dict(v.get("analysis") or {}))
+            obj_ok = obj
             err, err_kind = "", ""
             break
+        # v3.12 (B1): a full decision that buys is asked a second time; only what both replies buy is bought
+        if (decision is not None and decision.valid and obj_ok is not None and mode in HOLD_MODES
+                and bool(self.cfg.get("confirm_buys", True)) and messages is not None):
+            buys = sorted(s for s, w in decision.targets.items() if s != self.safe and w > cur.get(s, 0.0) + 1e-9)
+            if buys:
+                attempts += 1
+                decision = self._confirm_buys(decision, obj_ok, buys, messages, cur, now, usage, t_start, budget_s,
+                                              abort, chat_kw, vargs, vkw, require_plan, apol, attempts)
         if decision is None:
             decision = Decision(valid=False, raw=raw, error=err or "no valid reply", error_kind=err_kind or "validation")
         decision.decided_at = now
@@ -3826,6 +3847,78 @@ class KimiBrain:
                      else "", " (HOLD: no target change)" if decision.hold else "", decision.ladder)
         else:
             log.error("Kimi decision INVALID (%s): %s - not trading", decision.error_kind, decision.error)
+        return decision
+
+    def _confirm_buys(self, decision, obj1, buys, messages, cur, now, usage, t_start, budget_s, abort, chat_kw, vargs,
+                      vkw, require_plan, apol, attempt_no):
+        """v3.12 (B1, owner 2026-10-03): a scheduled / held_move decision that BUYS is asked a second time - the same
+        system and user message in a fresh call, no tools - and a coin is bought only as far as BOTH replies raise
+        it (the smaller increase; the rest stays in USDT_IRT). A failed, invalid or late second call buys nothing:
+        the sales and the rest of the first decision stand. The first reply is validated again with the confirmed
+        targets, so the caps, the executable step and the plans follow the usual rules. Research 2026-10-03:
+        re-running the same prompt changed 42-79% of an LLM's stock picks; acting only when samples agree is the
+        usual remedy."""
+        left = budget_s - (self.monotonic() - t_start)
+        v2, why = None, ""
+        if left < MIN_RETRY_SECONDS:
+            why = "no time left for the second run (%.0f s of decision_deadline_seconds)" % max(0.0, left)
+        else:
+            try:
+                res = self.llm.chat(messages[:2], json_mode=bool(self.cfg["json_mode"]), web_search=False,
+                                    time_limit=max(0.0, left), abort=abort, **chat_kw)
+                _add_usage(usage, res.get("usage") or {})
+                self._write_reasoning(now, res.get("reasoning"), attempt_no)
+                v2 = validate_response(self._parse_reply(res.get("content") or "", res), *vargs,
+                                       plan_policy="block" if require_plan else None,
+                                       analysis_policy="block" if apol == "block" else apol, **vkw)
+            except ValidationError as e:
+                why = "the second reply was rejected (%s)" % _short_repr(str(e), 200)
+            except LLMError as e:
+                why = "the second call failed (%s)" % _short_repr(str(e), 200)
+            except Exception as e:  # noqa: BLE001 - a broken second run means no buy, never a crash
+                log.exception("the confirmation call failed")
+                why = "the second call failed (%s)" % type(e).__name__
+        t1 = dict(decision.targets)
+        t2 = dict(v2["targets"]) if v2 else {}
+        new_t, kept, cut = dict(t1), {}, {}
+        for s in buys:
+            c = cur.get(s, 0.0)
+            w2 = t2.get(s, 0.0) if v2 else c
+            w = c + max(0.0, min(t1[s] - c, w2 - c))
+            if w < t1[s] - 1e-9:
+                cut[s] = round(t1[s] - w, 6)
+            if w > c + 1e-9:
+                kept[s] = round(w - c, 6)
+            new_t[s] = w
+        conf = {"buys": dict((s, round(t1[s] - cur.get(s, 0.0), 6)) for s in buys), "kept": kept, "cut": cut,
+                "second": dict((s, round(w, 6)) for s, w in t2.items() if w > 1e-6) if v2 else None,
+                "second_confidence": v2["confidence"] if v2 else None, "error": why or None}
+        decision.confirmation = conf
+        if not cut:
+            decision.adjustments = list(decision.adjustments) + [
+                "buys confirmed by a second run: %s" % ", ".join("%s +%s" % (s, _pct(w)) for s, w in sorted(kept.items()))]
+            log.info("second run confirmed the buys %s", kept)
+            return decision
+        new_t[self.safe] = new_t.get(self.safe, 0.0) + sum(cut.values())
+        obj = dict(obj1, targets=dict((s, w) for s, w in new_t.items() if w > 1e-12), cash_irt=decision.cash_irt)
+        try:
+            v = validate_response(obj, *vargs, plan_policy="block" if require_plan else None,
+                                  analysis_policy="block" if apol == "block" else apol, **vkw)
+        except ValidationError as e:                    # cannot happen for a reply that validated; buy nothing then
+            log.error("the confirmed targets did not validate (%s): no buys", e)
+            v = None
+        note = ("buy cut by the second run (%s): %s" % (why or "it did not buy as much",
+                                                        ", ".join("%s -%s" % (s, _pct(w)) for s, w in sorted(cut.items()))))
+        if v is None:
+            keep = dict((s, min(w, cur.get(s, 0.0)) if s != self.safe else w) for s, w in t1.items())
+            keep[self.safe] = keep.get(self.safe, 0.0) + sum(t1[s] - keep[s] for s in buys)
+            decision.targets = keep
+            decision.plans = {}
+        else:
+            decision.targets, decision.cash_irt, decision.hold = v["targets"], round(v["cash_irt"], 8), v["hold"]
+            decision.plans, decision.exits = dict(v.get("plans") or {}), v["exits"]
+        decision.adjustments = list(decision.adjustments) + [note]
+        log.warning("Kimi decision: %s", note)
         return decision
 
     @staticmethod

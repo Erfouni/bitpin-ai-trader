@@ -68,8 +68,9 @@ class TestRules(unittest.TestCase):
         usdt = {"px": 257000.0, "ema_dev_pct": [1.0, 2.0, 9.0], "don20_4h": [240000.0, 256000.0], "rsi4h": 75.3,
                 "sup": [251000.0], "res": []}
         self.assertEqual(reading(usdt, "USDT_IRT"), {})
-        self.assertIn("USDT_IRT (the toman's price) get \"ta\": null", method_text())
+        self.assertIn("USDT_IRT (the toman's price) get \"ta\": null", ta_mod.method_text_v38())
         self.assertNotIn("USDT_IRT: px", method_text())
+        self.assertEqual(ta_mod.context_text(reading(usdt, "USDT_IRT")), "")         # v3.12: no "ta" in the context
         self.assertEqual(reading(None), {})
         self.assertEqual(reading({"px_usdt": "x", "rsi4h": True, "ema_dev_pct": "1,2"}), {})
 
@@ -91,13 +92,33 @@ class TestModelReading(unittest.TestCase):
         self.assertEqual(check_ta(None, reading(BTC)), [])
 
     def test_the_prompt_text_and_schema_come_from_the_constants(self):
-        m = method_text()
+        m = method_text()                                       # v3.12: the code's reading, the model adds "read"
+        for frag in ("beyond +-0.02% of the price = rising / falling", "rsi4h 70 / 55 / 45 / 30", "from 0.8 upper",
+                     "vol_ratio 1.5 / 0.7 = high / low", "no setup and no row of its own (B7, B8, study 08)",
+                     "Take it as given, never recompute it", "goes into its \"read\""):
+            self.assertIn(frag, m)
+        self.assertEqual(json.loads("{" + schema_text() + "}"), {"read": "<bullish|bearish|neutral>"})
+        m38 = ta_mod.method_text_v38()                          # the v3.8..v3.11 text (the model filled "ta")
         for frag in ("> 0.02 = rising", ">= 70 overbought", ">= 0.8 upper", "vol_ratio >= 1.5 high, <= 0.7 low",
                      "no setup and no row of its own, B7, B8", "\"ta\": null"):
-            self.assertIn(frag, m)
-        obj = json.loads(schema_text().replace("<price>", "1"))
+            self.assertIn(frag, m38)
+        obj = json.loads(ta_mod.schema_text_v38().replace("<price>", "1"))
         self.assertEqual(list(obj), list(ta_mod.TA_KEYS[:7]) + ["support", "resistance", "read"])
         self.assertEqual(obj["rsi"], "<overbought|strong|neutral|weak|oversold>")
+
+    def test_the_code_reading_for_the_context_and_the_candidate(self):
+        """v3.12: the context's compact "ta" and the candidate's "ta" built from the code's reading + the model's read."""
+        r = reading(BTC, "BTC_IRT")
+        txt = ta_mod.context_text(r)
+        self.assertEqual(txt.split("/"), [r[k] for k in ta_mod.TA_FIELDS])
+        self.assertEqual(ta_mod.context_text({"trend": "up"}), "up/?/?/?/?/?/?")
+        self.assertEqual(ta_mod.context_text({}), "")
+        c = ta_mod.code_ta(r, " Bullish ")
+        self.assertEqual(c["read"], "bullish")
+        self.assertEqual(c["support"], r["support"])
+        self.assertNotIn("tone", c)
+        self.assertNotIn("read", ta_mod.code_ta(r, "to the moon"))
+        self.assertIsNone(ta_mod.code_ta({}, "bullish"))
 
 
 class TestInTheDecision(unittest.TestCase):

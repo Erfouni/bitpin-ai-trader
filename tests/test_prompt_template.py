@@ -225,14 +225,14 @@ class LiveProfilePinsTest(unittest.TestCase):
         self.assertEqual(list(obj)[-1], "report_fa")
         self.assertEqual(list(obj["analysis"]), ["candidates", "clusters", "headroom_pct", "scenario_loss_pct",
                                                  "usdt_case", "would_flip"])
-        self.assertEqual(list(obj["analysis"]["candidates"]["X"]),
-                         ["setup", "row", "ta", "evidence", "bear", "p0", "p", "gain_pct", "loss_pct", "cost_pct",
+        self.assertEqual(list(obj["analysis"]["candidates"]["X"]),          # v3.12: the code gives the reading
+                         ["setup", "row", "read", "evidence", "bear", "p0", "p", "gain_pct", "loss_pct", "cost_pct",
                           "ev_pct", "pass", "verdict"])
-        self.assertEqual(list(obj["analysis"]["candidates"]["X"]["ta"]),      # v3.8: the technical reading
-                         ["trend", "long", "momentum", "rsi", "bands", "channel", "volume", "support", "resistance",
-                          "read"])
-        self.assertIn("TECHNICAL READING (a fixed method", self.sp)
-        self.assertIn("rsi4h >= 70 overbought, >= 55 strong, > 45 neutral, > 30 weak, else oversold", self.sp)
+        self.assertEqual(obj["analysis"]["candidates"]["X"]["read"], "X")
+        self.assertIn("TECHNICAL READING (computed by the code, exact)", self.sp)
+        self.assertIn("rsi: rsi4h 70 / 55 / 45 / 30 = overbought / strong / neutral / weak / oversold", self.sp)
+        self.assertIn("Take it as given, never recompute it", self.sp)
+        self.assertNotIn("Fill \"ta\" from the coin's context", self.sp)
         self.assertEqual(list(obj["analysis"]["clusters"]),
                          ["crypto", "crypto_beta", "gold", "silver", "oil", "us_equity", "bond"])
         self.assertEqual(obj["next_review_hours"], 1)     # <6..24> rendered from next_review_min_hours 6 -> "6" is not 1

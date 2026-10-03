@@ -11,6 +11,12 @@ The panel's technical page shows the numbers, the model's reading and the check.
 The reading describes the chart; it is no setup and no base-rate row of its own (B7, B8: mechanical signals did not
 beat the costs) and it never blocks a decision: a wrong field is a note for the owner, not a rejection.
 
+v3.12 (owner 2026-10-03): the CODE gives the reading. Every full-detail coin of the market context carries "ta" =
+context_text(reading()) and the model no longer recomputes it (in the live decisions it read every field right;
+its weak point was turning the reading into a probability, study 08). A candidate carries only the model's overall "read";
+parse_analysis stores code_ta() (the code's fields + that read) as the candidate's "ta". A reply with an old-style
+"ta" object is still parsed and checked field by field (parse_ta / check_ta).
+
 Fields, all on the USDT price px_usdt like the levels in the context (v3.10: USDT_IRT gets no reading - it is the
 toman's price, not a coin's chart):
     trend      ema_dev_pct[0] (EMA20) and [1] (EMA50) both > 0: up, both < 0: down, else mixed
@@ -172,8 +178,45 @@ def check_ta(ta, code):
     return out
 
 
+def context_text(read):
+    """v3.12: the context's compact "ta" of one coin: the TA_FIELDS values of reading() in order, "/"-joined ("?" for a
+    field whose input is missing); "" without any field."""
+    if not isinstance(read, dict) or not any(read.get(k) for k in TA_FIELDS):
+        return ""
+    return "/".join(str(read.get(k) or "?") for k in TA_FIELDS)
+
+
+def code_ta(code, read=None):
+    """v3.12: a candidate's "ta" when the code gave the reading: the code's TA_FIELDS values and its support /
+    resistance (reading()), plus the model's overall read (bullish / bearish / neutral; anything else is left out).
+    None when the code has no reading (a compact row, USDT_IRT)."""
+    if not isinstance(code, dict) or not code:
+        return None
+    out = {k: code[k] for k in TA_FIELDS + TA_LEVELS if code.get(k) is not None}
+    r = read.strip().lower() if isinstance(read, str) else None
+    if r in TA_VALUES["read"]:
+        out["read"] = r
+    return out or None
+
+
 def method_text():
-    """The TECHNICAL READING paragraph of the system prompt (rendered from the constants above)."""
+    """The TECHNICAL READING paragraph of the system prompt (v3.12: the code computes the reading; the model adds its
+    overall read)."""
+    return ("TECHNICAL READING (computed by the code, exact): every full-detail coin's ta in the context = "
+            "trend/long/momentum/rsi/bands/channel/volume of its 4h chart in USDT by fixed rules - trend: EMA20 and EMA50 "
+            "both above = up, both below = down, else mixed; long: above / below EMA200; momentum: the MACD histogram "
+            "beyond +-%g%% of the price = rising / falling, else flat; rsi: rsi4h %g / %g / %g / %g = overbought / "
+            "strong / neutral / weak / oversold; bands: the Bollinger place above 1 = above_upper, from %g upper, above "
+            "%g middle, from 0 lower, else below_lower; channel: the 20-bar 4h Donchian (breakout, upper_half, "
+            "lower_half, breakdown); volume: vol_ratio %g / %g = high / low. Take it as given, never recompute it; "
+            "support / resistance are sup[0] / res[0]. Your own overall view of a candidate's chart goes into its "
+            "\"read\" (bullish / bearish / neutral), consistent with the setup and the bear case. The reading describes "
+            "the chart; it is no setup and no row of its own (B7, B8, study 08)."
+            % (MACD_FLAT, RSI_OVERBOUGHT, RSI_STRONG, RSI_NEUTRAL, RSI_WEAK, BB_UPPER, BB_LOWER, VOL_HIGH, VOL_LOW))
+
+
+def method_text_v38():
+    """The TECHNICAL READING paragraph of v3.8..v3.11 (the model filled "ta" itself); kept for reference and tests."""
     return ("TECHNICAL READING (a fixed method: it describes each candidate's chart; it is no setup and no row of its "
             "own, B7, B8). Fill \"ta\" from the coin's context, on px_usdt like its levels (all in USDT): trend: "
             "ema_dev_pct[0] and [1] both > 0 = up, both < 0 = down, else mixed; long: ema_dev_pct[2] > 0 = above (EMA200), "
@@ -191,7 +234,12 @@ def method_text():
 
 
 def schema_text():
-    """The "ta" object of the output schema line."""
+    """The candidate's technical field of the output schema line (v3.12: only the model's overall read)."""
+    return '"read": "<%s>"' % "|".join(TA_VALUES["read"])
+
+
+def schema_text_v38():
+    """The "ta" object of the v3.8..v3.11 output schema line (the model filled every field)."""
     parts = ['"%s": "<%s>"' % (k, "|".join(TA_VALUES[k])) for k in TA_FIELDS]
     parts += ['"support": <price>', '"resistance": <price>', '"read": "<%s>"' % "|".join(TA_VALUES["read"])]
     return "{" + ", ".join(parts) + "}"
@@ -274,7 +322,8 @@ def collect(state_dir):
         candidates.append({"symbol": str(s)[:24], "verdict": c.get("verdict"), "setup": c.get("setup"),
                            "row": c.get("row"), "p": _num(c.get("p")), "p0": _num(c.get("p0")),
                            "ev_pct": _num(c.get("ev_pct")), "pass": c.get("pass") is True, "ta": ta,
-                           "ta_code": code, "ta_check": [x for x in checks if isinstance(x, dict)][:12]})
+                           "ta_code": code, "ta_check": [x for x in checks if isinstance(x, dict)][:12],
+                           "ta_source": c.get("ta_source") if c.get("ta_source") in ("code", "model") else None})
     first = held + [c["symbol"] for c in candidates if c["symbol"] not in held]
     coins = []
     for s in first + sorted(k for k in syms if k not in first):

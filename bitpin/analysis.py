@@ -242,6 +242,8 @@ LEGEND_BOT = (" ladder: per coin scale (0..1), dd48 = last hourly close vs the h
 LEGEND_EXITS = (" recent_exits: the coins sold in the last days (reason stop / target = the CODE's sales, on purpose; "
                 "sold = a decision's or any other sale), ago_h hours ago, px = sale price and entry in USDT, pnl_pct "
                 "realised; the re-entry rules (24 h after a stop, the cooldown after any sale) are in HOW THE BOT RUNS.")
+LEGEND_TA = (" ta: the CODE's reading of the coin's 4h chart in USDT by the fixed rules of TECHNICAL READING, as "
+             "trend/long/momentum/rsi/bands/channel/volume (exact; ? = an input missing).")
 LEGEND_PLAN = (" your_plan = YOUR OWN plan of the position from when you opened / last added to it (checked by the "
                "bot): setup, horizon_h, age_h / left_h (h since it / left of its horizon; expired = past it), invalid "
                "(USDT; a close below = thesis wrong), tp, px_then, since_plan_pct, to_invalid_pct / to_tp_pct (px "
@@ -1493,6 +1495,11 @@ class MarketContextBuilder:
         except Exception as e:  # noqa: BLE001 - a full-detail context is still a valid context
             self.errors["compact"] = ("%s: %s" % (type(e).__name__, e))[:200]
             log.warning("compact rows failed (%s): full detail for every symbol", e)
+        try:
+            self._ta_readings(ctx)
+        except Exception as e:  # noqa: BLE001 - a context without the code's readings is still a valid context
+            self.errors["ta"] = ("%s: %s" % (type(e).__name__, e))[:200]
+            log.warning("technical readings failed (%s): the context has none", e)
         if self.cfg.get("rule_signals"):
             ctx["rule_signals"] = self._rule_signals(bars)
         if recent_decisions:
@@ -1581,6 +1588,22 @@ class MarketContextBuilder:
             n += 1
         if n:
             ctx["legend"] = ctx.get("legend", LEGEND) + LEGEND_COMPACT
+
+    @staticmethod
+    def _ta_readings(ctx):
+        """v3.12: every full-detail coin (ema_dev_pct; not USDT_IRT) gets "ta" = the code's technical reading
+        (bitpin.technical.reading, compact), so the model takes it as given instead of recomputing it."""
+        from . import technical
+        n = 0
+        for s, f in (ctx.get("symbols") or {}).items():
+            if not isinstance(f, dict) or f.get("ema_dev_pct") is None or str(s).upper().startswith("USDT_"):
+                continue
+            txt = technical.context_text(technical.reading(f, s))
+            if txt:
+                f["ta"] = txt
+                n += 1
+        if n:
+            ctx["legend"] = ctx.get("legend", LEGEND) + LEGEND_TA
 
     # ---- bot state (ladder, positions, endgame, focus)
     def _bot_sections(self, ctx, bot, bars, usdt_ts, usdt_close, symbols, now):

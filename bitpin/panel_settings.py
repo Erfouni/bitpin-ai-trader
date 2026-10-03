@@ -134,6 +134,12 @@ FIELDS = [
             "The code does not sell a coin with a plan unless an hourly close falls below its invalidation, the "
             "plan's target is reached or there is news about that coin. A plan's expiry is no reason to sell, and the "
             "invalidation level stays.")),
+    Field("kimi", "brain.confirm_buys", "bool", "style",
+          T("خرید فقط با تأیید دوم کیمی", "Buy only when a second run of Kimi agrees"),
+          T("روزی که تصمیم خرید دارد، کیمی یک بار دیگر با همان داده پرسیده می‌شود و فقط آنچه هر دو جواب می‌خرند خریده "
+            "می‌شود. فقط روزهای خرید هزینهٔ یک درخواست اضافه دارد.",
+            "On a day the decision buys, Kimi is asked again with the same data and only what both answers buy is "
+            "bought. Only buying days cost one more request.")),
     Field("kimi", "brain.reentry_cooldown_hours", "float", "style",
           T("مکث خرید دوباره پس از فروش", "Pause before buying back after a sale"),
           T("پس از فروش با حد ضرر یا تصمیم، همان کوین تا این مدت خریده نمی‌شود. فروش در هدف شامل نیست. صفر = خاموش.",

@@ -1047,8 +1047,16 @@ class TestBotState(unittest.TestCase):
                       positions=pos, endgame=eg, events=[{"kind": "veto", "coin": "BTC"}, {"kind": "fill", "coin": "ETH"}])
         self.assertEqual(len(ctx["symbols"]), 17)
         self.assertNotIn("rule_signals", ctx)          # off by default in v3
-        # v3.4: + MACD / Bollinger / Donchian / support-resistance of the full-detail coins (was 14000)
-        self.assertLess(len(dumps(ctx)), 16000, len(dumps(ctx)))
+        # v3.4: + MACD / Bollinger / Donchian / support-resistance of the full-detail coins (was 14000); v3.12: + the
+        # code's technical reading "ta" of every full-detail coin (was 16000)
+        self.assertLess(len(dumps(ctx)), 16800, len(dumps(ctx)))
+        full = [s for s, f in ctx["symbols"].items() if isinstance(f, dict) and f.get("ema_dev_pct") is not None
+                and not s.startswith("USDT_")]
+        self.assertTrue(full)
+        for s in full:
+            self.assertRegex(ctx["symbols"][s]["ta"], r"^(up|down|mixed|\?)(/[a-z_?]+){6}$", s)
+        self.assertNotIn("ta", ctx["symbols"]["USDT_IRT"])
+        self.assertIn("ta: the CODE's reading of the coin's 4h chart", ctx["legend"])
 
     def test_the_wide_38_symbol_universe_is_compact_and_short_histories_degrade(self):
         """The owner's wide universe (USDT_IRT + 37 coins): full detail only for USDT_IRT, the ladder coins

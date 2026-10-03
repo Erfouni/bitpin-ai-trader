@@ -1123,7 +1123,8 @@ def collect_bot_state(state_dir, notify_state_dir, notify_conf, now):
                                     "confidence": v["confidence"], "model": v["model"],
                                     "targets": dict((s, w) for s, w in (v["targets"] or {}).items() if w > 0),
                                     "report_fa": v["report_fa"], "error": v["error"][:400] or None,
-                                    "error_kind": v["error_kind"] or None}
+                                    "error_kind": v["error_kind"] or None,
+                                    "confirmation": v.get("confirmation")}
         st = nt._dict(n._read_json("runner_state"))
         rows = []
         for kind, key in (("allocation", "positions"), ("ladder", "ladder_positions")):

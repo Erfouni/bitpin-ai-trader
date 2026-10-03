@@ -1369,6 +1369,18 @@ def decision_view(rec):
         return None
 
 
+def _confirmation(c):
+    """v3.12: a decision's second run (brain Decision.confirmation) as {kept, cut, error}, or None."""
+    if not isinstance(c, dict) or not c:
+        return None
+    out = {}
+    for k in ("kept", "cut"):
+        v = c.get(k)
+        out[k] = dict((str(s)[:20], float(w)) for s, w in v.items() if _fnum(w) is not None) if isinstance(v, dict) else {}
+    out["error"] = str(c.get("error") or "")[:200] or None
+    return out
+
+
 def _decision_view(rec):
     if not isinstance(rec, dict) or not isinstance(rec.get("decision"), dict):
         return None
@@ -1398,6 +1410,7 @@ def _decision_view(rec):
         "equity": _fnum(cs.get("equity_irt")) or _fnum(snap.get("equity_irt")),
         "usdt_irt": _fnum(cs.get("usdt_irt")) or _fnum(snap.get("usdt_irt")),
         "news": news, "report_fa": rf if (rf and mostly_persian(rf)) else None,
+        "confirmation": _confirmation(d.get("confirmation")),
         "adjustments": [str(a) for a in adj if a] if isinstance(adj, list) else [],
         "origin": str(d.get("origin") or "")[:40], "usage": _dict(d.get("usage")),
         "risk_profile": str(rec.get("risk_profile") or "")[:20],

@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.11.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.12.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -60,6 +60,8 @@ risk that implies: the model stays the decision maker, and the code adds discipl
     (setup, horizon, invalidation, optional target or stop) and an expected-value analysis after costs; every
     analysed coin also gets a technical reading by one fixed method (trend, momentum, RSI, Bollinger, Donchian,
     volume, support, resistance) that the code re-checks on the same numbers.
+    Since 3.12 the code computes that reading and hands it to the model, which adds only its overall view; a
+    decision that buys is asked a second time, and only what both answers buy is bought.
 - **53 markets:** USDT, 34 liquid coins and 18 tokenized real-world assets (gold, silver, oil, gas, copper miners,
   US stocks, US equity and bond ETFs). Tokenized stocks, ETFs and commodity funds are bought only while the US
   market is open and below a 1 % spread; the gold tokens PAXG and XAUT trade around the clock.
@@ -78,6 +80,8 @@ risk that implies: the model stays the decision maker, and the code adds discipl
   - hold discipline (3.11): a position with the model's plan is sold only when an hourly close breaks its
     invalidation, at its target or on a news headline about that coin, never because the plan expired; after a
     stop or a decision's sale the coin is not bought back for 72 hours unless it is 3 % cheaper;
+  - a second run (3.12): a decision that buys is asked twice; a failed or disagreeing second answer buys less or
+    nothing;
   - a trading halt at a 50 % drawdown from the highest account value of the last 90 days;
   - a `STOP` kill switch;
   - no new entries from 2027-09-16, five days before the end;
@@ -140,6 +144,8 @@ sudo ufw allow 8443/tcp            # only if ufw is active: the panel never open
 | Page | What you can do |
 |---|---|
 | Dashboard | services, account value, profit or loss, drawdown, the last decision with its report, positions, spend |
+| Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it |
+| Trade history | every buy and sell of the bot, with filters, pages and a CSV download |
 | Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it; on each position chart the bot's own indicators (EMA 20 / 50 / 200, Bollinger, Donchian, support and resistance) with RSI, MACD and traded-value panes |
 | Trade history | every buy and sell of the bot, with filters, pages and a CSV download |
 | Performance | profit and loss of any time range in toman and in USDT (the rial's fall taken out), per asset and against holding USDT; live charts of the portfolio and of every open position with its entry, stop, target and resting orders, the model's two scenarios and the normal range ahead, and the strategy and analysis methods behind it; on each position chart the bot's own indicators (EMA 20 / 50 / 200, Bollinger, Donchian, support and resistance) with RSI, MACD and traded-value panes; the positions the account holds apart from the coins with only a resting order |
@@ -359,6 +365,10 @@ unseen period. Their code and data are not in this repository;
   the later period (111 overlapping 90-day windows). Raising the invalidation as the price rose lost that edge, a
   72-hour pause after a sale was cheap insurance, and an extra expected-value margin gave mixed results. This set
   the hold discipline of 3.11.
+- A probability fitted on the training period from the same technical fields the model sees predicted worse than
+  the no-edge probability in the later period, and weekly or daily trend fields made it worse; on setup days the
+  target came first half as often as on other days. So the technical reading describes the chart and the code
+  computes it; it is not treated as an edge of its own (3.12).
 
 ## License
 
