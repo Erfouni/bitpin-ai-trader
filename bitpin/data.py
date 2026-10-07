@@ -8,12 +8,17 @@ by `closed_only`.
 """
 import csv
 import json
+import logging
+import math
 import os
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from collections import Counter
 from dataclasses import dataclass
+
+log = logging.getLogger(__name__)
 
 BARS_URL = "https://api.bitpin.org/v1/mkt/tv/get_bars/"
 MAX_BARS = 10000
@@ -73,10 +78,16 @@ def fetch_bars(symbol, res="60", start=None, end=None):
             raise RuntimeError("get_bars %s %s: %s" % (symbol, res, rows))
         if not rows:
             break
+        bad = 0
         for r in rows:
             b = Bar(int(float(r["ts"])), float(r["open"]), float(r["high"]), float(r["low"]),
                     float(r["close"]), float(r["volume"]))
-            out[b.ts] = b
+            if bar_ok(b):
+                out[b.ts] = b
+            else:
+                bad += 1
+        if bad:
+            log.warning("get_bars %s %s: %d bar(s) with a non-finite or non-positive price dropped", symbol, res, bad)
         oldest = min(int(float(r["ts"])) for r in rows)
         if oldest >= hi:
             break
@@ -96,20 +107,54 @@ def csv_path(symbol, res="60"):
     return os.path.join(DATA_DIR, "%s_%s.csv" % (symbol, res))
 
 
+def bar_ok(b):
+    """v3.13: a usable bar - finite numbers, positive prices, a volume that is not negative (a NaN / inf or a zero
+    price from a broken answer or a damaged cache would poison every indicator after it)."""
+    vals = (b.open, b.high, b.low, b.close, b.volume)
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in vals):
+        return False
+    return min(b.open, b.high, b.low, b.close) > 0 and b.volume >= 0
+
+
 def save_csv(bars, symbol, res="60"):
+    """Write the cache atomically (v3.13: a temporary file, fsync, rename - a crash mid-write left a cut CSV
+    before); unusable bars (bar_ok) are not written."""
     os.makedirs(DATA_DIR, exist_ok=True)
-    with open(csv_path(symbol, res), "w", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(["ts", "open", "high", "low", "close", "volume"])
-        for b in bars:
-            w.writerow([b.ts, repr(b.open), repr(b.high), repr(b.low), repr(b.close), repr(b.volume)])
+    path = csv_path(symbol, res)
+    tmp = "%s.tmp%d" % (path, os.getpid())
+    try:
+        with open(tmp, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(["ts", "open", "high", "low", "close", "volume"])
+            for b in bars:
+                if bar_ok(b):
+                    w.writerow([b.ts, repr(b.open), repr(b.high), repr(b.low), repr(b.close), repr(b.volume)])
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 def load_csv(symbol, res="60"):
+    """The cached bars; a row that does not parse or is not usable (bar_ok) is skipped with a warning."""
+    out, bad = [], 0
     with open(csv_path(symbol, res), newline="") as f:
-        r = csv.DictReader(f)
-        return [Bar(int(x["ts"]), float(x["open"]), float(x["high"]), float(x["low"]),
-                    float(x["close"]), float(x["volume"])) for x in r]
+        for x in csv.DictReader(f):
+            try:
+                b = Bar(int(x["ts"]), float(x["open"]), float(x["high"]), float(x["low"]), float(x["close"]),
+                        float(x["volume"]))
+            except (KeyError, TypeError, ValueError):
+                bad += 1
+                continue
+            if bar_ok(b):
+                out.append(b)
+            else:
+                bad += 1
+    if bad:
+        log.warning("%s: %d unusable row(s) skipped", csv_path(symbol, res), bad)
+    return out
 
 
 def available_symbols(res="60"):
@@ -122,10 +167,15 @@ def available_symbols(res="60"):
 def resample(bars, factor):
     """Aggregate consecutive bars into bars `factor` times longer (e.g. 1h -> 4h with factor=4).
     Buckets are aligned to multiples of the new period in epoch time; partial buckets are kept
-    only if complete (all `factor` source bars present)."""
+    only if complete (all `factor` source bars present). The source step is the most common gap
+    between consecutive bars (v3.13: before, the gap of the first two bars - a missing bar right
+    at the start gave the whole series a wrong period); fewer than two bars give no bucket."""
     if factor == 1 or not bars:
         return list(bars)
-    step = bars[1].ts - bars[0].ts if len(bars) > 1 else 0
+    gaps = Counter(b.ts - a.ts for a, b in zip(bars, bars[1:]) if b.ts > a.ts)
+    if not gaps:
+        return []
+    step = max(gaps.items(), key=lambda kv: (kv[1], -kv[0]))[0]     # the most common; a tie: the shorter
     period = step * factor
     buckets = {}
     for b in bars:

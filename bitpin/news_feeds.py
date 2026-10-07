@@ -75,6 +75,11 @@ LINK_CHARS = 400
 MAX_ENTRIES = 300                   # entries read from one feed
 MAX_EXTRA_FEEDS = 30                # news.feeds
 FAILED_KEEP = 12                    # failed feeds listed in the stats
+# v3.13 (external review 2026-10-07): a source that dies or goes stale was only in that day's stats; now every read
+# updates state_dir/news_feed_health.json (feed_health) and the notifier alerts after FEED_ALERT_DAYS bad days
+FEED_HEALTH_FILE = "news_feed_health.json"
+FEED_ALERT_DAYS = 3                 # UTC days in a row without a usable read before the owner is told
+FEED_STALE_HOURS = 168              # a feed whose newest entry is older than this gives nothing usable
 
 Feed = namedtuple("Feed", "site url route")
 Headline = namedtuple("Headline", "site title link published summary")
@@ -406,6 +411,36 @@ def select_headlines(results, sources, now, max_age_hours=FEED_MAX_AGE_HOURS, pe
     chosen = [x[3] for x in ranked[:max(0, int(total))]]
     chosen.sort(key=lambda h: (-h.published, h.site))
     return chosen
+
+
+def feed_health(prev, results, now, stale_hours=FEED_STALE_HOURS):
+    """v3.13: the feeds' health after one read of them - {url: record} for the feeds of `results` (a feed that is no
+    longer read is dropped). A read is good when the feed answered with an entry dated within stale_hours; bad_days
+    counts the UTC days since the last good read on which every read was bad (research reads the feeds once or
+    twice a day), so a source that died or went stale shows within days instead of silently.
+    record: site, route, bad_days, day (UTC date of the last read), day_bad, last_good, last_bad, error."""
+    prev = prev if isinstance(prev, dict) else {}
+    day = datetime.fromtimestamp(float(now), tz=timezone.utc).strftime("%Y-%m-%d")
+    lo = float(now) - float(stale_hours) * 3600.0
+    out = {}
+    for r in results:
+        url = r.feed.url
+        old = prev.get(url) if isinstance(prev.get(url), dict) else {}
+        n = old.get("bad_days")
+        rec = {"site": r.feed.site, "route": r.route or r.feed.route,
+               "bad_days": n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0,
+               "day": old.get("day") if isinstance(old.get("day"), str) else None, "day_bad": old.get("day_bad") is True,
+               "last_good": old.get("last_good"), "last_bad": old.get("last_bad"), "error": old.get("error")}
+        fresh = bool(r.ok) and any(e[2] is not None and e[2] >= lo for e in (r.entries or []))
+        if fresh:
+            rec.update(bad_days=0, day=day, day_bad=False, last_good=round(float(now), 3), error=None)
+        else:
+            if rec["day"] != day:                       # the first read of a new day, and it is bad
+                rec.update(bad_days=rec["bad_days"] + 1, day=day, day_bad=True)
+            rec.update(last_bad=round(float(now), 3),
+                       error=str(r.error)[:120] if not r.ok else "no entry of the last %d days" % (stale_hours // 24))
+        out[url] = rec
+    return out
 
 
 def feed_stats(results, headlines):

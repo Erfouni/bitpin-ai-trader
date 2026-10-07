@@ -1124,7 +1124,7 @@ def collect_bot_state(state_dir, notify_state_dir, notify_conf, now):
                                     "targets": dict((s, w) for s, w in (v["targets"] or {}).items() if w > 0),
                                     "report_fa": v["report_fa"], "error": v["error"][:400] or None,
                                     "error_kind": v["error_kind"] or None,
-                                    "confirmation": v.get("confirmation")}
+                                    "confirmation": v.get("confirmation"), "p_rule": v.get("p_rule") or None}
         st = nt._dict(n._read_json("runner_state"))
         rows = []
         for kind, key in (("allocation", "positions"), ("ladder", "ladder_positions")):
@@ -1149,6 +1149,13 @@ def collect_bot_state(state_dir, notify_state_dir, notify_conf, now):
             out["news"] = news_view(n._read_json("news_cache"))
         except Exception as e:  # noqa: BLE001 - the rest of the dashboard does not depend on it
             log.warning("news cache not readable: %s: %s", type(e).__name__, e)
+        try:
+            # v3.13: the trusted sources whose feed gave nothing usable lately (news_feed_health.json)
+            fh = nt.feed_health_view(n._read_json("feed_health"))
+            if fh is not None and isinstance(out.get("news"), dict):
+                out["news"]["feed_health"] = fh
+        except Exception as e:  # noqa: BLE001
+            log.warning("feed health not readable: %s: %s", type(e).__name__, e)
     except Exception as e:  # noqa: BLE001 - the dashboard still shows the services
         log.warning("bot state not readable: %s: %s", type(e).__name__, e)
         out["state_error"] = "%s: %s" % (type(e).__name__, str(e)[:200])

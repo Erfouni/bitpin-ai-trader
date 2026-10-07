@@ -858,9 +858,19 @@ def us_session_next_open(ts_utc):
 
 def hourly_log_returns(series, hours):
     """The last `hours` log returns of consecutive closes in [(ts, close)] (non-positive closes
-    skipped; a gap in the candles counts as one step - the series is closed hourly bars)."""
-    closes = [c for _, c in series if c is not None and c > 0][-(int(hours) + 1):]
-    return [math.log(b / a) for a, b in zip(closes, closes[1:])]
+    skipped). A return across a gap of k hours in the candles is divided by sqrt(k), so it weighs
+    like one hourly return (v3.13: before, it counted as one step and nudged sig_d / quote_noise_pct
+    up after an exchange-wide outage - two missing hours in 70 days on every market in 2026-10)."""
+    pts = [(t, c) for t, c in series if c is not None and c > 0][-(int(hours) + 1):]
+    out = []
+    for (ta, a), (tb, b) in zip(pts, pts[1:]):
+        r = math.log(b / a)
+        try:
+            k = (float(tb) - float(ta)) / HOUR
+        except (TypeError, ValueError):
+            k = 1.0
+        out.append(r / math.sqrt(k) if k > 1.0 else r)
+    return out
 
 
 def _std(xs):

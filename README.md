@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.12.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.13.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -80,6 +80,9 @@ risk that implies: the model stays the decision maker, and the code adds discipl
   - hold discipline (3.11): a position with the model's plan is sold only when an hourly close breaks its
     invalidation, at its target or on a news headline about that coin, never because the plan expired; after a
     stop or a decision's sale the coin is not bought back for 72 hours unless it is 3 % cheaper;
+  - a probability rule (3.13): a coin's weight rises only when the model's p is at most 0.02 above the no-edge p0
+    (from the plan's own price levels), more only on a research row whose condition the code can see or on dated
+    news about that coin; nothing is ever sold by it;
   - a second run (3.12): a decision that buys is asked twice; a failed or disagreeing second answer buys less or
     nothing;
   - a trading halt at a 50 % drawdown from the highest account value of the last 90 days;
@@ -369,6 +372,8 @@ unseen period. Their code and data are not in this repository;
   the no-edge probability in the later period, and weekly or daily trend fields made it worse; on setup days the
   target came first half as often as on other days. So the technical reading describes the chart and the code
   computes it; it is not treated as an edge of its own (3.12).
+- After 3.12 the model still put p about 0.14 above p0 on a row without an edge, and its buys rested on that alone.
+  Words in the prompt did not change it, so 3.13 has the code enforce the prompt's own rule.
 
 ## License
 

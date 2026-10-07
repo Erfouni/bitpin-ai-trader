@@ -390,6 +390,10 @@ DEFAULT_BRAIN_CONFIG = {
     # and user message, a fresh call); a coin is bought only as far as both replies raise it. Re-running the same
     # prompt changes many of an LLM's picks (research 2026-10-03): acting only when two samples agree is the remedy.
     "confirm_buys": True,
+    # v3.13 P RULE (owner 2026-10-07): a coin's weight rises only when its candidate's p is at most p0 + 0.02, or
+    # more on a reason the code can check (p_rule_check). Study 08, and the bot's own decisions after v3.12: the model
+    # added about +0.14 to p0 on B10, a row without an edge, and its buys rested on that alone.
+    "p_rule": True,
     # v3.11: after a stop or a decision's sale of a coin (not a target sale) a buy of it is cut for this long unless
     # its USDT price is at least reentry_waive_pct below that sale's price (0 = off; a code STOP still blocks 24 h)
     "reentry_cooldown_hours": 72,
@@ -455,6 +459,11 @@ HEADROOM_GAP = 5.0                      # headroom_pct = halt_pct - |drawdown_pc
 P_CAP = 0.80                            # hard cap of p (v3: 0.80, the aggressive objective)
 P_SHIFT_ROW = 0.15                      # p at most p0 + this on a positive row (advisory)
 P_SHIFT_EVENT = 0.20                    # p at most p0 + this with a dated coin-specific event (hard)
+# v3.13 P RULE (owner 2026-10-07, brain.p_rule): p above p0 + P_SHIFT_FREE (rounding) raises a coin only on a reason
+# the code can see - B3 with ret_usdt[0] >= B3_RISE_PCT, B11 on a gold token, or a dated event in the evidence plus a
+# NEWS BRIEF headline naming the coin (p_rule_check)
+P_SHIFT_FREE = 0.02
+B3_RISE_PCT = 15.0
 LOSS_MAX_PCT = 12.0                     # l at most this (a wider bracket cannot buy a pass)
 EV_TOLERANCE = 0.3                      # |ev stated - ev recomputed| tolerated (rounding)
 P0_TOLERANCE = 0.02
@@ -686,7 +695,7 @@ def validate_brain_config(config):
     if cfg["event_scope"] not in ("universe", "held"):
         raise ConfigError("brain.event_scope must be 'universe' or 'held'")
     for k in ("honor_next_review_hours", "web_search", "json_mode", "log_full_context", "require_plan",
-              "hold_discipline", "confirm_buys"):
+              "hold_discipline", "confirm_buys", "p_rule"):
         check_bool("brain." + k, cfg[k])
     cfg["decision_interval_hours"] = check_number("brain.decision_interval_hours", cfg["decision_interval_hours"], 0,
                                                   168, lo_open=True)
@@ -800,6 +809,8 @@ class Decision:
     #                                                adds to (validate_response): kept with the position by the runner
     confirmation: dict = field(default_factory=dict)   # v3.12 (B1): the second run of a decision that buys: buys,
     #                                                kept, cut, the second reply's targets / confidence, error
+    p_rule: dict = field(default_factory=dict)     # v3.13: {symbol: p_rule_check()} of the increases the P RULE
+    #                                                blocked (p, p0, max, basis, reason: bot-authored numbers)
     analysis: dict = field(default_factory=dict)   # the reply's "analysis" block as parse_analysis kept it: numbers,
     #                                                row ids, verdicts, cleaned strings, the bot's recomputed book and
     #                                                its problems; display / log only, never fed back as text
@@ -1812,7 +1823,65 @@ def _cited_mismatches(text, sym_ctx):
     return out
 
 
-def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_usdt, context, notes, halt_pct=None):
+def p_rule_check(symbol, cand, plan, px, ctx_sym, headlines):
+    """v3.13 P RULE (owner 2026-10-07): may the weight of `symbol` rise on this candidate's p? None when it may, else
+    {"p", "p0", "max", "basis", "reason"} (bot-authored numbers for the note, the panel and the log; reason "missing"
+    = no candidate with p and p0, "above" = p above the most the code allows).
+    p0 is recomputed from the plan's levels (px_usdt -> invalidation_usdt / take_profit_usdt) when they are usable,
+    else the candidate's own p0. p may exceed it by P_SHIFT_FREE (rounding) without a reason; by P_SHIFT_ROW on a
+    positive row (BASE_RATE_POSITIVE) whose condition the code can see - B3: ret_usdt[0] (r_usdt[0] in a compact
+    row) at least B3_RISE_PCT, B11: a gold token - and whose horizon covers the plan's; by P_SHIFT_EVENT with a dated
+    event in the evidence AND a NEWS BRIEF headline that names the coin; never above P_CAP. Study 08: setup days
+    reached the target first half as often as other days, yet the model kept adding about +0.14 to p0 on rows
+    without an edge (B10, B7)."""
+    if not isinstance(cand, dict) or _fnum(cand.get("p")) is None:
+        return {"p": None, "p0": None, "max": None, "basis": "none", "reason": "missing"}
+    p = float(cand["p"])
+    p0, src = _fnum(cand.get("p0")), "reply"
+    plan = plan if isinstance(plan, dict) else {}
+    inv, tp, px = _fnum(plan.get("invalidation_usdt")), _fnum(plan.get("take_profit_usdt")), _fnum(px)
+    if px and inv and tp and tp > px > inv > 0:
+        loss, gain = (px - inv) / px, (tp - px) / px
+        p0, src = loss / (gain + loss), "plan"
+    if p0 is None:
+        return {"p": round(p, 4), "p0": None, "max": None, "basis": "none", "reason": "missing"}
+    shift, basis = P_SHIFT_FREE, "none"
+    sc = ctx_sym if isinstance(ctx_sym, dict) else {}
+    horizon = _fnum(plan.get("horizon_hours"))
+    for row in sorted(set(re.findall(r"B\d{1,2}", str(cand.get("row") or "").upper())) & set(BASE_RATE_POSITIVE)):
+        if horizon is not None and BASE_RATE_ROWS.get(row, 0) < horizon:
+            continue
+        if row == "B3":
+            ret = sc.get("ret_usdt") if isinstance(sc.get("ret_usdt"), list) else sc.get("r_usdt")
+            r24 = _fnum(ret[0]) if isinstance(ret, list) and ret else None
+            ok = r24 is not None and r24 >= B3_RISE_PCT
+        else:
+            ok = cluster_of(symbol) == "gold"
+        if ok:
+            shift, basis = P_SHIFT_ROW, row
+    coin = str(symbol).split("_")[0]
+    if _DATED_EVENT_RE.search(str(cand.get("evidence") or "")) and any(names_coin(h, coin) for h in headlines or []):
+        shift, basis = P_SHIFT_EVENT, "event"
+    top = min(P_CAP, p0 + shift)
+    if p <= top + 1e-9:
+        return None
+    return {"p": round(p, 4), "p0": round(p0, 4), "p0_from": src, "max": round(top, 4), "basis": basis,
+            "reason": "above"}
+
+
+def p_rule_text(r):
+    """The bot's words for a p_rule_check() result (adjustment notes, recent_decisions, the log)."""
+    if r.get("reason") == "missing":
+        return "no analysis candidate with numbers for p and p0"
+    why = {"none": "no B3 (ret_usdt[0] >= %g) or B11 (gold) condition and no dated news naming the coin" % B3_RISE_PCT,
+           "event": "the most a dated coin event allows", "B3": "the most B3 allows", "B11": "the most B11 allows"}
+    return "p %.2f is above the %.2f the code allows (p0 %.3f%s; %s)" % (
+        r["p"], r["max"], r["p0"], " from the plan's levels" if r.get("p0_from") == "plan" else "",
+        why.get(r.get("basis"), "no accepted reason"))
+
+
+def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_usdt, context, notes, halt_pct=None,
+                   headlines=None):
     """The reply's "analysis" block (the prompt's PROCEDURE) -> (analysis, problems).
 
     analysis: what is kept on the decision (display / log only): per candidate the numbers (p0, p,
@@ -1840,10 +1909,13 @@ def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_us
       (halt_pct - |drawdown_pct| - HEADROOM_GAP, with the runner's halt) is a problem on the coins
       whose weight rises; the model's numbers are logged, the recomputed ones decide;
     * anti-fabrication: a field=value citation in evidence / bear whose field exists in the coin's
-      context must match its value within rounding.
+      context must match its value within rounding;
+    * v3.13 P RULE: out["p_rule"] = {symbol: p_rule_check()} of the coins whose weight rises without a candidate
+      whose p the code accepts (headlines: this decision's NEWS BRIEF headlines); validate_response enforces it
+      with p_rule=True, independently of the analysis policy.
     `notes` receives the advisory notes (bot-authored)."""
     problems = []
-    out = {"candidates": {}, "clusters": {}, "problems": []}
+    out = {"candidates": {}, "clusters": {}, "problems": [], "p_rule": {}}
     coins = [s for s in allowed if s != safe]
     posmap = {str(k).strip().upper(): v for k, v in positions.items()} if isinstance(positions, dict) else {}
     px_usdt = px_usdt or {}
@@ -1871,6 +1943,7 @@ def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_us
         problems.append((None, "analysis missing (the reply has no \"analysis\" block)"))
         for s in rising:
             problems.append((s, "no analysis: a coin whose weight rises needs a passing candidate"))
+            out["p_rule"][s] = p_rule_check(s, None, None, None, None, headlines)
         out["problems"] = [p for _, p in problems]
         return out, problems
     if not isinstance(raw, dict):
@@ -1952,6 +2025,9 @@ def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_us
 
     for s in rising:
         c = cands.get(s)
+        pr = p_rule_check(s, c, plan_of(s), px_usdt.get(s), ctx_syms.get(s), headlines)
+        if pr is not None:
+            out["p_rule"][s] = pr
         if c is None:
             problems.append((s, "no analysis candidate for a coin whose weight rises"))
             continue
@@ -2039,7 +2115,7 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
                       veto_coins=None, positions=None, px_usdt=None, endgame=None, now=None,
                       ladder_coins=LADDER_COINS, held_move_pct=8.0, min_review_hours=1, blocked_increases=None,
                       plan_policy=None, ladder_capped=None, analysis_policy=None, context=None, halt_pct=None,
-                      protected=None, news_headlines=None, hold_discipline=False):
+                      protected=None, news_headlines=None, hold_discipline=False, p_rule=False):
     """Validate + constrain one parsed LLM reply.
 
     current: {symbol: weight} (allowed symbols; the rest of equity is IRT cash).
@@ -2074,6 +2150,10 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
           the reply's exit_news quotes a headline of news_headlines (this decision's NEWS BRIEF items) naming
           the coin (parse_exit_news); a stop_pct whose price lies above the plan's invalidation is dropped.
     hold_discipline: an expired (not broken) plan restated without a buy keeps its invalidation level.
+    p_rule: v3.13 P RULE - with any analysis_policy, a coin whose weight rises without a candidate whose p the code
+          accepts (p_rule_check: p0 + 0.02, more only on B3 / B11 whose condition holds or a dated event named in a
+          news_headlines headline) is kept at its current weight with a note (the rest goes to USDT_IRT; never a
+          sale); "p_rule" in the result lists those coins.
     Returns a dict (targets over ALL allowed symbols, zeros included) whose changes are all
     executable by runner.plan_orders(threshold=rebalance_threshold) and within every cap, plus
     "ladder" ({coin: scale} for every ladder coin), "exits" ({symbol: spec} for every coin with a
@@ -2261,14 +2341,15 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
             raise ValueError("unknown analysis_policy %r" % (analysis_policy,))
         try:
             analysis, aproblems = parse_analysis(obj.get("analysis"), set(allowed), safe, t, cur, req_plans, posmap,
-                                                 px_usdt, context, plan_notes, halt_pct=halt_pct)
+                                                 px_usdt, context, plan_notes, halt_pct=halt_pct,
+                                                 headlines=news_headlines)
         except ValidationError:
             if analysis_policy == "error":
                 raise
             # "off" and the last "block" attempt: a malformed block counts as a missing one (a note under "off";
             # under "block" only the coins whose weight rises are held back) - never a lost decision
             analysis, aproblems = parse_analysis(None, set(allowed), safe, t, cur, req_plans, posmap, px_usdt,
-                                                 context, plan_notes, halt_pct=halt_pct)
+                                                 context, plan_notes, halt_pct=halt_pct, headlines=news_headlines)
             aproblems = [(None, "the analysis block is malformed (it must be an object of at most %d allowed "
                                 "candidates, each once): ignored" % ANALYSIS_MAX_CANDIDATES)] \
                 + [p for p in aproblems if p[0] is not None]
@@ -2288,6 +2369,16 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
             for s in blocked_now:
                 blk[s] = "analysis check failed (%s): not increased" % blocked_now[s]
             t, turnover, steps = pipeline(blk)
+        # v3.13 P RULE: whatever the analysis policy, an increase rests only on a p the code accepts
+        p_blocked = {}
+        if p_rule:
+            for s, r in sorted((analysis.get("p_rule") or {}).items()):
+                if s not in blk and t.get(s, 0.0) > cur.get(s, 0.0) + 1e-12:
+                    p_blocked[s] = r
+                    blk[s] = "P RULE: %s" % p_rule_text(r)
+            if p_blocked:
+                t, turnover, steps = pipeline(blk)
+        out["p_rule"] = p_blocked
     notes.extend(steps)
     plans = {}
     for s in sorted(req_plans):
@@ -2652,6 +2743,12 @@ def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=N
         "{{P_SHIFT_ROW}}": "%.2f" % P_SHIFT_ROW,
         "{{P_SHIFT_EVENT}}": "%.2f" % P_SHIFT_EVENT,
         "{{P_CAP}}": "%.2f" % P_CAP,
+        # v3.13 P RULE: what the code accepts above p0 (p_rule_check)
+        "{{P_RULE_NOTE}}": (" P RULE (code): above p0 (from the plan's levels) + %.2f a coin is increased only on B3 "
+                            "with ret_usdt[0] >= %g or B11 on a gold token (up to +%.2f), or a dated event in evidence "
+                            "plus a NEWS BRIEF headline naming the coin (+%.2f)." % (P_SHIFT_FREE, B3_RISE_PCT,
+                                                                                    P_SHIFT_ROW, P_SHIFT_EVENT)
+                            if cfg.get("p_rule", True) else ""),
         "{{HEADROOM_GAP}}": "%g" % HEADROOM_GAP,
         # the halt the runner enforces (config.json risk.max_drawdown, copied by build_kimi); without a breaker
         # the headroom formula degenerates to "no halt": the text says so
@@ -3053,12 +3150,14 @@ class KimiBrain:
         """The wake-up events this decision answered are done: a veto disarms its coin (until the coin is
         back above -veto_rearm_pct), a fill review advances the fill watermark, a max-hold expiry is not
         reported again. A clock-slot decision marks its slot as run (also a failed one: its retry
-        follows). A ladder fill or a veto is consumed only by a VALID decision: after a failed call
-        they stay pending, so the next due decision - whatever its kind - still answers them (with a
-        forced, focused news brief)."""
+        follows). A ladder fill, a veto, a max-hold expiry or a broken plan (invalidation) is consumed
+        only by a VALID decision: after a failed call they stay pending, so the next due decision -
+        whatever its kind - still answers them (a fill / veto with a forced, focused news brief).
+        v3.13: before, a failed call at a broken plan's wake-up used the event up (the external review
+        of 2026-10-07): the plan then waited for the next daily decision."""
         for ev in decision.events or []:
             k = ev.get("kind")
-            if k in ("veto", "fill") and not decision.valid:
+            if k in ("veto", "fill", "max_hold", "invalidation") and not decision.valid:
                 continue
             if k == "veto" and ev.get("coin"):
                 self._veto_armed[str(ev["coin"])] = False
@@ -3724,7 +3823,7 @@ class KimiBrain:
                    held_move_pct=float(self.cfg["held_move_pct"]),
                    min_review_hours=float(self.cfg["next_review_min_hours"]), blocked_increases=blocked,
                    ladder_capped=ladder_capped, context=context, halt_pct=halt_pct, protected=protected,
-                   news_headlines=headlines, hold_discipline=hold_on)
+                   news_headlines=headlines, hold_discipline=hold_on, p_rule=bool(self.cfg.get("p_rule", True)))
         obj_ok = None
         for attempt in range(tries):
             left = budget_s - (self.monotonic() - t_start)
@@ -3806,7 +3905,7 @@ class KimiBrain:
                                 low_confidence=v["low_confidence"], cash_irt=round(v["cash_irt"], 8),
                                 adjustments=adj, proposed=v["proposed"], ladder=v["ladder"], exits=v["exits"],
                                 report_fa=v["report_fa"], plans=dict(v.get("plans") or {}),
-                                analysis=dict(v.get("analysis") or {}))
+                                analysis=dict(v.get("analysis") or {}), p_rule=dict(v.get("p_rule") or {}))
             obj_ok = obj
             err, err_kind = "", ""
             break
@@ -4532,7 +4631,8 @@ class KimiBrain:
           their spacing is measured with the caller's slack (a decision cycle that started a few
           minutes late must not push the next hour's crash veto back by a whole hour).
         * Every OTHER decision may start only if that reserve is still whole after its own worst
-          case: 1 + max_validation_retries calls of one call's token estimate each.
+          case: 1 + max_validation_retries calls of one call's token estimate each, plus the second
+          run of confirm_buys (v3.13) when its mode may buy.
         * The priority decisions themselves do not count against the non-priority cap: a night of
           vetoes and fill reviews never blocks the next 13:00 slot.
         * With clock slots the SLOT decision (scheduled / final / first) is exempt from
@@ -4577,8 +4677,11 @@ class KimiBrain:
                     % self.cfg["max_early_decisions_per_day"]
         if not prio and reserve > 0:
             # a routine decision may itself take 1 + max_validation_retries calls of up to one call's token
-            # estimate each: it may start only if the reserve is still whole AFTER its worst case
+            # estimate each, and one more when it buys (v3.12 confirm_buys): it may start only if the reserve
+            # is still whole AFTER its worst case
             per = 1 + int(self.cfg["max_validation_retries"])
+            if self.cfg.get("confirm_buys", True) and mode not in NO_BUY_MODES:
+                per += 1
             left, limit = self._llm_calls_left()
             if left is not None:
                 keep = min(reserve, max(0, limit) // 2)

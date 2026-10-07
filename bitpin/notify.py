@@ -1381,6 +1381,21 @@ def _confirmation(c):
     return out
 
 
+def _p_rule_view(x):
+    """v3.13: {symbol: {"p", "p0", "max", "reason"}} of the increases the P RULE blocked (brain Decision.p_rule; the
+    bot's own numbers). reason "missing" = no candidate with p and p0, else "above"."""
+    out = {}
+    for s, r in list(_dict(x).items())[:12]:
+        sym = norm_symbol(s)
+        r = _dict(r)
+        if sym is None:
+            continue
+        vals = {"p": _fnum(r.get("p")), "p0": _fnum(r.get("p0")), "max": _fnum(r.get("max"))}
+        miss = r.get("reason") == "missing" or any(v is None for v in vals.values())
+        out[sym] = dict(vals, reason="missing" if miss else "above")
+    return out
+
+
 def _decision_view(rec):
     if not isinstance(rec, dict) or not isinstance(rec.get("decision"), dict):
         return None
@@ -1411,6 +1426,7 @@ def _decision_view(rec):
         "usdt_irt": _fnum(cs.get("usdt_irt")) or _fnum(snap.get("usdt_irt")),
         "news": news, "report_fa": rf if (rf and mostly_persian(rf)) else None,
         "confirmation": _confirmation(d.get("confirmation")),
+        "p_rule": _p_rule_view(d.get("p_rule")),
         "adjustments": [str(a) for a in adj if a] if isinstance(adj, list) else [],
         "origin": str(d.get("origin") or "")[:40], "usage": _dict(d.get("usage")),
         "risk_profile": str(rec.get("risk_profile") or "")[:20],
@@ -1451,6 +1467,45 @@ def analysis_view(x):
     return {"candidates": cands, "scenario_loss_pct": _fnum(x.get("scenario_loss_pct")),
             "headroom_pct": _fnum(x.get("headroom_pct")),
             "usdt_case": x.get("usdt_case") if isinstance(x.get("usdt_case"), str) else None}
+
+
+FEED_ALERT_DAYS_DEFAULT = 3       # news_feeds.FEED_ALERT_DAYS when the file does not say
+
+
+def _host_of(url):
+    """The host of a URL for a message (the URL itself when it has none)."""
+    try:
+        return (urllib.parse.urlsplit(str(url)).hostname or str(url))[:80]
+    except ValueError:
+        return str(url)[:80]
+
+
+def feed_health_view(doc):
+    """v3.13: news_feed_health.json (written by the news research, bitpin/news_feeds.feed_health) for the alert and the
+    panel: {"updated", "alert_days", "feeds": n, "bad": [{"url", "site", "bad_days", "last_good", "error"}, ...]} -
+    only the feeds without a usable read today or on earlier days (bad_days >= 1), the worst first. None without a
+    readable file. Only cleaned strings, numbers and an http(s) URL are taken."""
+    doc = _dict(doc)
+    feeds = _dict(doc.get("feeds"))
+    if not feeds:
+        return None
+    n = doc.get("alert_days")
+    days = n if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 30 else FEED_ALERT_DAYS_DEFAULT
+    bad = []
+    for url, r in list(feeds.items())[:100]:
+        r = _dict(r)
+        k = r.get("bad_days")
+        if not isinstance(url, str) or not re.match(r"^https?://[^\s\"'<>]{1,400}$", url) or isinstance(k, bool) \
+                or not isinstance(k, int) or k < 1:
+            continue
+        good = _fnum(r.get("last_good"))
+        bad.append({"url": url, "site": clean_text(r.get("site") or "", 60), "bad_days": min(k, 9999),
+                    "last_good": good if good is not None and ts_ok(good) else None,
+                    "error": clean_text(r.get("error") or "", 120)})
+    bad.sort(key=lambda x: (-x["bad_days"], x["site"], x["url"]))
+    upd = _fnum(doc.get("updated"))
+    return {"updated": upd if upd is not None and ts_ok(upd) else None, "alert_days": days, "feeds": len(feeds),
+            "bad": bad}
 
 
 def ladder_scales_view(x):
@@ -1809,7 +1864,8 @@ def bot_files(mode):
             "risk_state": "risk_state_%s.json" % mode, "equity": "kimi_equity.json",
             "brain_state": "kimi_brain_state.json", "news_cache": "news_cache.json",
             "kimi_budget": "kimi_budget.json", "news_budget": "news_budget.json", "log": "bot_%s.log" % mode,
-            "stop": KILL_SWITCH_FILE, "events": "bot_events.jsonl", "spend": "llm_spend.json"}
+            "stop": KILL_SWITCH_FILE, "events": "bot_events.jsonl", "spend": "llm_spend.json",
+            "feed_health": "news_feed_health.json"}
 
 
 # --------------------------------------------------------------------------- persistent state
@@ -2192,6 +2248,23 @@ class Renderer:
         L += self._untrusted_block("💵 <b>حالت تتر:</b>", a.get("usdt_case"), 300)
         return L if len(L) > 1 else []
 
+    def _p_rule_lines(self, v):
+        """v3.13: the coins whose increase the P RULE blocked, with Kimi's p and the most the code allowed."""
+        pr = v.get("p_rule") or {}
+        if not pr:
+            return []
+        L = ["🚫 <b>قانون احتمال:</b> سهم این کوین‌ها بالا نرفت؛ p کیمی بالاتر از حدی بود که کد بدون دلیل مجاز "
+             "می‌پذیرد:"]
+        for sym, r in sorted(pr.items()):
+            name = esc(self.coin(sym, with_code=False))
+            if r["reason"] == "missing":
+                L.append("• %s: تحلیلی با p و p0 نداشت" % name)
+            else:
+                L.append("• %s: p %s، حداکثر مجاز %s (p0 %s)" % (
+                    name, fa(_trim_zeros("%.2f" % r["p"])), fa(_trim_zeros("%.2f" % r["max"])),
+                    fa(_trim_zeros("%.3f" % r["p0"]))))
+        return L
+
     def _news_line(self, v):
         n = v.get("news")
         if not isinstance(n, dict):
@@ -2285,6 +2358,7 @@ class Renderer:
         L.append("")
         L += self._text_block(v, persian, translated, full=full)
         L += self._analysis_lines(v)
+        L += self._p_rule_lines(v)
         nl = self._news_line(v)
         if nl:
             L.append(nl)
@@ -3647,7 +3721,7 @@ class Notifier:
 
     def _check_alerts(self, now):
         for fn in (self._alert_stop, self._alert_halt, self._alert_heartbeat, self._alert_cycles, self._alert_kimi,
-                   self._alert_quota, self._alert_no_decision, self._alert_news, self._alert_orders,
+                   self._alert_quota, self._alert_no_decision, self._alert_news, self._alert_feeds, self._alert_orders,
                    self._alert_access):
             try:
                 fn(now)
@@ -3939,6 +4013,43 @@ class Notifier:
             if f.get("active"):
                 self.enqueue("a:newsok:%d" % int(fetched or now), "recovery", "✅ پژوهش اخبار دوباره کار می‌کند.")
             f.update(active=False, first=None, n=0, frozen=False, err_at=None)
+
+    def _alert_feeds(self, now):
+        """v3.13 (external review 2026-10-07): a trusted news source whose feed gave nothing usable (an error, or no
+        entry of the last days) for alert_days UTC days in a row - once per outage, and a recovery when it reads
+        again. The file changes only when the research reads the feeds, so a stopped bot repeats nothing."""
+        doc = self._read_json("feed_health")
+        v = feed_health_view(doc)
+        f = self._flag("feeds")
+        alerted = _dict(f.get("alerted"))
+        if v is None:
+            return
+        present = set(_dict(_dict(doc).get("feeds")))
+        for u in [u for u in alerted if u not in present]:
+            alerted.pop(u, None)                 # the owner took the source out: nothing to tell
+        bad = {x["url"]: x for x in v["bad"]}
+        new = [x for x in v["bad"] if x["bad_days"] >= v["alert_days"] and x["url"] not in alerted]
+        if new:
+            lines = ["📰 <b>%s منبع خبری چند روز است چیزی نمی‌دهد</b>" % fa(len(new))]
+            for x in new[:10]:
+                lines.append("• <code>%s</code>: %s روز%s" % (
+                    esc(x["site"] or x["url"]), fa(x["bad_days"]),
+                    (" · آخرین خطا: <code>%s</code>" % esc(x["error"])) if x["error"] else ""))
+            lines.append("خلاصهٔ خبر از بقیهٔ منبع‌ها ساخته می‌شود. منبع را در پنل (تنظیمات معامله ← اخبار) عوض یا حذف "
+                         "کنید، یا صبر کنید تا خودش برگردد.")
+            key = hashlib.sha1("|".join(sorted(x["url"] for x in new)).encode("utf-8")).hexdigest()[:10]
+            self.enqueue("a:feeds:%s:%d" % (key, int(now // 86400)), "alert", "\n".join(lines))
+            for x in new:
+                alerted[x["url"]] = int(now)
+        back = [u for u in alerted if u not in bad]
+        if back:
+            self.enqueue("a:feedsok:%s:%d" % (hashlib.sha1("|".join(sorted(back)).encode("utf-8")).hexdigest()[:10],
+                                              int(now // 86400)), "recovery",
+                         "✅ منبع خبری دوباره کار می‌کند: %s" % "، ".join(
+                             "<code>%s</code>" % esc(_host_of(u)) for u in sorted(back)[:10]))
+            for u in back:
+                alerted.pop(u, None)
+        f["alerted"] = alerted
 
     def _alert_orders(self, now):
         if self.cfg["mode"] != "live":

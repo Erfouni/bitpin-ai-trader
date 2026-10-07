@@ -3091,6 +3091,7 @@ class NewsResearcher:
         left = deadline - self._mono() - 30.0         # the model's request needs the rest
         results = news_feeds.fetch_feeds(feeds, self._feed_fetch, bool(self.proxy),
                                          deadline=max(5.0, min(news_feeds.FEED_DEADLINE, left)))
+        self._note_feed_health(results, now)
         headlines = news_feeds.select_headlines(results, sources, now)
         fs = stats["feeds"] = news_feeds.feed_stats(results, headlines)
         log.info("news: %d of %d feeds read, %d headlines from %d sites%s", fs["ok"], fs["tried"], fs["headlines"],
@@ -3115,6 +3116,21 @@ class NewsResearcher:
             stats["unref"] = unref
             log.warning("news: %d item(s) of the reply cited no listed headline (ref) and were left out", unref)
         return json.dumps(std, ensure_ascii=False)
+
+    def _note_feed_health(self, results, now):
+        """v3.13: state_dir/news_feed_health.json after every read of the feeds (news_feeds.feed_health): the notifier
+        tells the owner about a source that gave nothing usable for FEED_ALERT_DAYS days and the panel lists it.
+        Bookkeeping only: a failure is logged, the research goes on."""
+        if self.state_dir is None:
+            return
+        path = os.path.join(self.state_dir, news_feeds.FEED_HEALTH_FILE)
+        try:
+            prev = _read_json(path)
+            feeds = news_feeds.feed_health(prev.get("feeds") if isinstance(prev, dict) else None, results, now)
+            _atomic_write_json(path, {"version": 1, "updated": round(float(now), 3),
+                                      "alert_days": news_feeds.FEED_ALERT_DAYS, "feeds": feeds})
+        except Exception as e:  # noqa: BLE001
+            log.warning("news: %s not written: %s", news_feeds.FEED_HEALTH_FILE, e)
 
     def _feed_request(self, messages, stats, abort, deadline):
         """The request of feeds mode: no tools, JSON mode (off for the process when the API refuses it: an HTTP 400

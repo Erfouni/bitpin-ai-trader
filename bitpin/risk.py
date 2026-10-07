@@ -329,8 +329,26 @@ class RiskManager:
             raise ValueError("order kind must be one of %s, not %r" % (sorted(self._COUNTERS), kind))
 
     def _recent(self, kind="market"):
+        """The order times (epoch s) of the last 24 h. v3.13: an entry that is not a number (a hand-edited or
+        damaged state file) is dropped with a warning; before, one such entry made every order check raise, so
+        the bot stopped trading altogether (external review 2026-10-07)."""
         now = self.clock()
-        return [t for t in (float(x) for x in self._st.get(self._key(kind)) or []) if now - t < 86400]
+        raw = self._st.get(self._key(kind))
+        out, bad = [], 0
+        for x in raw if isinstance(raw, list) else []:
+            try:
+                t = float(x)
+            except (TypeError, ValueError):
+                bad += 1
+                continue
+            if t != t or t in (float("inf"), float("-inf")):
+                bad += 1
+            elif now - t < 86400:
+                out.append(t)
+        if bad or (raw is not None and not isinstance(raw, list)):
+            log.warning("%s: %d malformed %s order time(s) ignored", self.path, max(bad, 1), kind)
+            self._st[self._key(kind)] = list(out)      # warned once; written with the next order
+        return out
 
     def _recent_orders(self):
         return self._recent("market")
@@ -395,14 +413,17 @@ class RiskManager:
 
     # ---- per-order checks
     def vet_order(self, side, market, amount, book, ref_close, equity, ignore_halt=False, flatten=False,
-                  quote_irt_rate=None):
+                  quote_irt_rate=None, price_deviation=None):
         """Check / resize one TAKER (market) order. `amount` = quote to spend (buy; IRT on COIN_IRT,
         USDT on COIN_USDT) or base units to sell (sell). `equity` is in IRT; for a market quoted in
         anything but IRT, `quote_irt_rate` (IRT per quote unit, e.g. the USDT_IRT mid) is required for
         the max_order_fraction cap. `ref_close` is the last candle close of THIS market (its quote).
         `flatten=True` (opt-in flatten-on-drawdown sells only) ignores the halt, the order count,
         the price-sanity check and max_order_fraction; the slippage guard and minimum still apply.
-        `ignore_halt` is kept for backwards compatibility and means the same as flatten."""
+        `ignore_halt` is kept for backwards compatibility and means the same as flatten.
+        `price_deviation` (v3.13, a fraction): the price-sanity limit of THIS order when wider than
+        max_price_deviation - a code exit's sale in a fast crash (the book has moved on since the
+        hourly close) must not wait an hour; every other check stays."""
         notes = []
         flatten = flatten or ignore_halt
         quote = market.quote
@@ -436,9 +457,12 @@ class RiskManager:
             return no("order book empty on one side")
         if ref_close is not None and D(ref_close) > 0 and not flatten:
             dev = abs(mid / D(ref_close) - 1)
-            if dev > self.max_price_deviation:
+            lim = self.max_price_deviation
+            if price_deviation is not None:
+                lim = max(lim, D(repr(price_deviation)) if isinstance(price_deviation, float) else D(price_deviation))
+            if dev > lim:
                 return no("price sanity: book mid %s deviates %.2f%% from last close %s (limit %.1f%%)" % (
-                    fmt_amount(mid), dev * 100, fmt_amount(ref_close), self.max_price_deviation * 100))
+                    fmt_amount(mid), dev * 100, fmt_amount(ref_close), lim * 100))
         if not flatten:
             cap = self.max_order_fraction * D(equity) / rate   # in the market's quote currency
             if side == "buy" and amount > cap:

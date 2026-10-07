@@ -4,6 +4,83 @@
 
 ---
 
+## 3.13.0 — قانون احتمال، و اصلاح‌های بازبینی بیرونی (2026-10-07)
+
+مالک معماری را با یک هوش مصنوعی دیگر بازبینی کرد (دو سند: بازبینی معماری، و پلن استفاده از API کیمی). هر ادعا با کد، دادهٔ
+سرور و صفحهٔ رسمی Kimi K3 سنجیده شد. مهم‌ترین یافته از تصمیم‌های خود ربات بود: پس از ۳٫۱۲ کیمی p را حدود ۰٫۱۴ بالاتر از p0
+می‌گذاشت، با استناد به B10، سطری که طبق قانون خود پرامپت اجازهٔ بالا بردن p را ندارد؛ و خریدها فقط به همین افزایش بند بودند.
+مالک خواست سقف کدی همین حالا و سخت‌گیر ساخته شود، به‌اضافهٔ اصلاح‌های کوچکی که پذیرفته شد.
+
+- **قانون احتمال (کد):**
+  - سهم یک کوین فقط وقتی بالا می‌رود که p کیمی حداکثر ۰٫۰۲ بالاتر از p0 باشد. p0 از قیمت، سطح ابطال و هدفِ خود برنامه دوباره
+    حساب می‌شود، نه از عددی که کیمی نوشته.
+  - بیشتر از آن فقط با دلیلی که کد می‌بیند:
+    - B3 وقتی رشد ۲۴ ساعته دست‌کم ۱۵٪ است؛
+    - B11 برای توکن طلا (تا +۰٫۱۵)؛
+    - رویداد تاریخ‌دار در شواهد، به‌اضافهٔ تیتری از خلاصهٔ خبر که نام همان کوین را دارد (تا +۰٫۲۰).
+  - سقف ۰٫۸۰ همیشه برقرار است.
+  - کوینی که این قانون را رد کند در وزن فعلی‌اش می‌ماند و بقیه در تتر می‌ماند. چیزی فروخته نمی‌شود؛ موقعیت‌های فعلی زیر قانون
+    نگه‌داشتن می‌مانند.
+  - مستقل از analysis_policy کار می‌کند (که روی سرور «off» است).
+  - کیمی قانون را هم در پرامپت می‌بیند و هم در یادداشت ربات در تصمیم‌های اخیر.
+  - پنل: ردیف «قانون احتمال» در کارت «آخرین تصمیم کیمی»، و تنظیم «قانون احتمال: خرید فقط با دلیلی که کد می‌پذیرد» در
+    «تنظیمات معامله ← سبک».
+  - تلگرام: خط «🚫 قانون احتمال» زیر تحلیل کیمی.
+- **اصلاح‌های بازبینی:**
+  - اگر تماس کیمی در بیدارباشِ شکست سطح ابطال یا پایان مدت نگه‌داری شکست بخورد، بیدارباش مصرف نمی‌شود و دوباره می‌آید. قبلاً تا
+    تصمیم روزانهٔ بعد صبر می‌کرد.
+  - تماس پرسش دوم در حساب ذخیرهٔ تماس‌های روزانه دیده می‌شود.
+  - اگر چک دوبارهٔ پامپ در runner خطا بدهد، افزایش‌ها انجام نمی‌شود و فروش آزاد است (مثل نردبان).
+  - فروشِ حد ضرر یا هدفِ کد در بازار تومانی، تا ۲۵٪ فاصله از آخرین بسته‌شدن ساعتی پذیرفته می‌شود (به‌جای ۵٪)، تا در سقوط تند
+    یک ساعت عقب نیفتد. مسیر مستقیم تتری همان ۵٪ می‌ماند؛ اختلاف آنجا یعنی دفتر تتری به‌هم‌ریخته است.
+  - یک زمان خراب در فایل ریسک دیگر کل معاملات را متوقف نمی‌کند.
+  - کندل‌ها:
+    - کش کندل‌ها اتمیک نوشته می‌شود و کندل خراب (NaN یا قیمت صفر) کنار گذاشته می‌شود.
+    - گام کندل از رایج‌ترین فاصله حساب می‌شود.
+    - بازدهٔ روی یک شکاف چندساعته به یک ساعت نرمال می‌شود. روی سرور در ۷۰ روز فقط ۲ ساعت شکاف بود، هم‌زمان روی همهٔ بازارها.
+  - گامِ آخرِ کد ورود دومرحله‌ای پنل پس از ری‌استارت پنل هم یادش می‌ماند؛ همان کد دوباره پذیرفته نمی‌شود.
+  - سلامت فیدهای خبری:
+    - هر خواندن فیدها در `news_feed_health.json` ثبت می‌شود.
+    - منبعی که ۳ روز پیاپی خبر قابل استفاده نداده هشدار تلگرامی می‌گیرد، و وقتی برگشت پیام ✅.
+    - کارت خبر داشبورد «منبع‌های مشکل‌دار» را نشان می‌دهد.
+- **پذیرفته نشد (فعلاً):**
+  - حد ضرر کف ۲۵٪؛
+  - چک درون‌ساعتی حد ضرر؛
+  - فروش اجباری در پایان مدت نگه‌داری (برخلاف مطالعهٔ ۰۷)؛
+  - schema سخت‌گیر JSON، partial mode و کش یک‌ساعتهٔ کیمی؛
+  - تاریخچهٔ بیشتر در پرامپت؛
+  - شکستن runner و brain.
+- English:
+  - `bitpin/brain.py`:
+    - `P_SHIFT_FREE`, `B3_RISE_PCT`, `p_rule_check`, `p_rule_text`;
+    - `parse_analysis(headlines=)` -> `analysis["p_rule"]`;
+    - `validate_response(p_rule=)` -> `out["p_rule"]`;
+    - `Decision.p_rule`;
+    - config `brain.p_rule` (default true);
+    - `{{P_RULE_NOTE}}`;
+    - `_consume_events` keeps max_hold / invalidation events after a failed call;
+    - `pacing_problem` counts the confirm_buys call.
+  - `bitpin/prompt_template.txt`: "B7, B10 and the TA reading add nothing" and `{{P_RULE_NOTE}}` (prompt 39,882 chars).
+  - `bitpin/runner.py`: `_pump_clamp` fail-closed; `EXIT_PRICE_DEVIATION` for a code exit's sale on its toman market
+    (`_place` / `_vet`).
+  - `bitpin/risk.py`: `vet_order(price_deviation=)`; `_recent` skips malformed entries.
+  - `bitpin/data.py`: `bar_ok`; atomic `save_csv`; `load_csv` / `fetch_bars` skip unusable bars; `resample` takes the
+    step from the most common gap.
+  - `bitpin/analysis.py`: `hourly_log_returns` scales a gap's return by 1 / sqrt(hours).
+  - News feeds' health:
+    - `bitpin/news_feeds.py` `feed_health`;
+    - `bitpin/news.py` `_note_feed_health` (`news_feed_health.json`);
+    - `bitpin/notify.py` `feed_health_view` / `_alert_feeds`, and `_p_rule_view` / `_p_rule_lines`.
+  - `bitpin/panel_web.py`:
+    - the TOTP step persisted (`totp_last.json`, 0600, tied to the secret);
+    - `p_rule_html`, the decision card row;
+    - the news card's sources with problems.
+  - Also `bitpin/panel_settings.py`, `bitpin/panel_i18n.py`, `scripts/panel_helper.py`.
+  - Tests:
+    - new `tests/test_p_rule.py` and `tests/test_review_fixes.py`;
+    - `tests_naming` renamed (pytest collected it);
+    - the test brains run with `p_rule` off (fake replies without an analysis block).
+
 ## 3.12.0 — خوانش تکنیکال با کد، و تأیید دوم پیش از هر خرید (2026-10-03)
 
 مالک پرسید چطور تحلیل تکنیکال کیمی بهتر شود. بررسی تصمیم‌های واقعی نشان داد کیمی نمودار را درست می‌خواند (خوانشش با کد یکی

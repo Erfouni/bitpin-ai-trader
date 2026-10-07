@@ -140,6 +140,15 @@ FIELDS = [
             "می‌شود. فقط روزهای خرید هزینهٔ یک درخواست اضافه دارد.",
             "On a day the decision buys, Kimi is asked again with the same data and only what both answers buy is "
             "bought. Only buying days cost one more request.")),
+    # v3.13 (owner 2026-10-07): the probability rule
+    Field("kimi", "brain.p_rule", "bool", "style",
+          T("قانون احتمال: خرید فقط با دلیلی که کد می‌پذیرد", "Probability rule: buy only on a reason the code accepts"),
+          T("سهم یک کوین فقط وقتی بالا می‌رود که احتمال برد کیمی (p) حداکثر ۰٫۰۲ بالاتر از احتمال بی‌مزیت (p0) باشد؛ "
+            "بیشتر فقط با سطر B3 (رشد ۱۵٪ در ۲۴ ساعت) یا B11 (توکن طلا)، یا خبر تاریخ‌دارِ همان کوین در خلاصهٔ خبر. "
+            "چیزی فروخته نمی‌شود.",
+            "A coin's weight rises only when Kimi's probability (p) is at most 0.02 above the no-edge probability (p0); "
+            "more only on row B3 (a 15% rise in 24 h) or B11 (a gold token), or with dated news of that coin in the "
+            "news brief. Nothing is sold.")),
     Field("kimi", "brain.reentry_cooldown_hours", "float", "style",
           T("مکث خرید دوباره پس از فروش", "Pause before buying back after a sale"),
           T("پس از فروش با حد ضرر یا تصمیم، همان کوین تا این مدت خریده نمی‌شود. فروش در هدف شامل نیست. صفر = خاموش.",

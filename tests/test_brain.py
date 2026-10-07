@@ -87,7 +87,9 @@ class BrainBase(unittest.TestCase):
         shutil.rmtree(self.dir, ignore_errors=True)
 
     def brain(self, replies, **cfg):
-        base = {"allowed_symbols": ALLOWED, "confirm_buys": False}     # v3.12: one fake reply per decision
+        # v3.12: one fake reply per decision; v3.13: most fake replies carry no analysis block (the P RULE is
+        # tested in test_p_rule.py)
+        base = {"allowed_symbols": ALLOWED, "confirm_buys": False, "p_rule": False}
         base.update(cfg)
         self.llm = FakeLLM(replies)
         return KimiBrain(self.llm, base, self.dir, clock=lambda: self.t, monotonic=lambda: self.mono)

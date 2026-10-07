@@ -217,6 +217,11 @@ DEFAULT_EXITS = {
     "reprice_pct": 0.5,
     "resize_pct": 10.0,
 }
+# v3.13 (external review 2026-10-07): the price-sanity limit of a code exit's SALE (stop / target). The cycle runs
+# about half an hour after the hourly close that fired it; in a fast crash the book is then more than the usual 5%
+# (risk.max_price_deviation) from that close, and the stop would wait another hour. The slippage guard, the
+# minimum order and the halt stay; a book this far off the close is still refused (a broken quote).
+EXIT_PRICE_DEVIATION = D("0.25")
 # Execution through COIN_USDT when markets.best_route says it is cheaper than COIN_IRT + USDT_IRT.
 DEFAULT_ROUTING = {"enabled": True, "coins": ["BTC", "ETH", "XRP", "SOL"]}   # coins null = every coin
 SECTION_DEFAULTS = {"ladder": DEFAULT_LADDER, "exits": DEFAULT_EXITS, "routing": DEFAULT_ROUTING}
@@ -1800,12 +1805,16 @@ class Runner:
         recorded like a brain adjustment - in the decision's adjustments, the brain's record of it
         (KimiBrain.note_runner_adjustment: recent_decisions shows it to the model) and info["adjustments"]
         (kimi_runner.jsonl) - and as a bot event "pump_guard" (scope "allocation") for the owner.
-        Returns targets."""
+        v3.13: fail-closed like the ladder's bids (_ladder_pumped) - a coin whose re-check raised (or every coin,
+        when the whole re-check did) is not increased either; sales stay free. Returns targets."""
+        failed = set()
         try:
-            guarded = self._pump_guarded(now)
+            guarded = self._pump_guarded(now, failed)
         except Exception as e:  # noqa: BLE001
-            log.warning("pump guard re-check failed: %s", e)
-            return targets
+            log.warning("pump guard re-check failed: %s - no coin is increased this hour", e)
+            guarded, failed = {}, {s for s in targets if s != SAFE}
+        for s in failed:
+            guarded.setdefault(s, {"rise_pct": None, "until": None, "failed": True})
         clamped = []
         for s in sorted(guarded):
             t, c = targets.get(s), D(cur_dec.get(s, ZERO) or ZERO)
@@ -1816,14 +1825,18 @@ class Runner:
             clamped.append((s, float(t), float(c)))
         if not clamped:
             return targets
-        txt = "; ".join("%s rose %g%% within the guard window (until %s)" % (
-            s, guarded[s]["rise_pct"], fmt_ts(guarded[s]["until"])) for s, _, _ in clamped)
+
+        def why(s):
+            gd = guarded[s]
+            if gd.get("failed"):
+                return "the re-check of its candles failed"
+            return "+%g%% within the guard window on its own candles, until %s" % (gd["rise_pct"], fmt_ts(gd["until"]))
+        txt = "; ".join("%s (%s)" % (s, why(s)) for s, _, _ in clamped)
         log.error("PUMP GUARD (runner re-check): the decision would buy %s - kept at the current weight, the rest "
                   "to USDT_IRT", txt)
         info["pump_guard"] = [s for s, _, _ in clamped]
-        notes = ["%s: increase blocked by the runner's pump-guard re-check (+%g%% within the guard window on its own "
-                 "candles, until %s): kept at %.4f instead of %.4f, the rest to %s"
-                 % (s, guarded[s]["rise_pct"], fmt_ts(guarded[s]["until"]), c, t, SAFE) for s, t, c in clamped]
+        notes = ["%s: increase blocked by the runner's pump-guard re-check (%s): kept at %.4f instead of %.4f, the "
+                 "rest to %s" % (s, why(s), c, t, SAFE) for s, t, c in clamped]
         info["adjustments"] = list(info.get("adjustments") or []) + notes
         at = getattr(decision, "decided_at", None)
         adj = getattr(decision, "adjustments", None)
@@ -4517,20 +4530,21 @@ class Runner:
         return rep
 
     # ---- execution
-    def _vet(self, side, symbol, amount, last_close_1h, equity, flatten=False):
+    def _vet(self, side, symbol, amount, last_close_1h, equity, flatten=False, price_deviation=None):
         market = self.broker.markets.get(symbol)
         book = self.broker.order_book(symbol)
+        kw = {"price_deviation": price_deviation} if price_deviation is not None else {}
         if getattr(market, "quote", IRT) == IRT:
             ref = last_close_1h.get(symbol)
             ref = D(repr(ref)) if ref is not None else None
-            return self.risk.vet_order(side, market, amount, book, ref, equity, flatten=flatten), book
+            return self.risk.vet_order(side, market, amount, book, ref, equity, flatten=flatten, **kw), book
         # a COIN_USDT route: the reference is the COIN_IRT / USDT_IRT cross of the same hour, and the
         # order is sized against the IRT equity at the USDT_IRT close
         ref = self._ref_close(symbol, last_close_1h)
         u = last_close_1h.get(SAFE)
         rate = D(repr(u)) if u is not None else self._usdt_rate()
         return self.risk.vet_order(side, market, amount, book, ref, equity, flatten=flatten,
-                                   quote_irt_rate=rate), book
+                                   quote_irt_rate=rate, **kw), book
 
     def _must_stop(self, o, rep):
         """Checked before every order: the kill switch, and (brain mode) the decision's expiry."""
@@ -4615,10 +4629,16 @@ class Runner:
     def _place(self, o, side, amount, last_close_1h, equity, rep, flatten=False):
         """Vet + send one order. Returns False when the rest of the cycle must be aborted.
         Only orders that reached the exchange count toward max_orders_per_day. A skip caused by a
-        temporary failure sets self._transient_skip (the buy leg is then retried within the bar)."""
+        temporary failure sets self._transient_skip (the buy leg is then retried within the bar).
+        A code exit's sale (reason stop / target) on its TOMAN market gets the wider price-sanity limit
+        EXIT_PRICE_DEVIATION: there the reference is the market's own last close, so a gap means the price moved.
+        A direct COIN_USDT leg keeps the usual limit - its reference is the toman cross, so a gap there is a
+        dislocated USDT book, and the sale then takes the toman route instead (_sell_to_usdt)."""
+        dev = EXIT_PRICE_DEVIATION if (side == "sell" and getattr(o, "reason", None) in ("stop", "target")
+                                       and getattr(o, "route", None) != "direct") else None
         try:
             self.broker.prepare()   # a due token is renewed BEFORE the book snapshot, not before the POST
-            vet, book = self._vet(side, o.symbol, amount, last_close_1h, equity, flatten)
+            vet, book = self._vet(side, o.symbol, amount, last_close_1h, equity, flatten, price_deviation=dev)
         except FATAL_ERRORS:
             raise
         except Exception as e:  # noqa: BLE001 - nothing was sent: skip only this order

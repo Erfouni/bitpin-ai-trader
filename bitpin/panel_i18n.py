@@ -198,6 +198,13 @@ FA = {
     "Confirmed": u"تأیید شد",
     "Buy cut": u"خرید کم شد",
     "bought": u"خریده شد",
+    # v3.13 the probability rule and the health of the news feeds
+    "Probability rule": u"قانون احتمال",
+    "Buy held back": u"خرید انجام نشد",
+    "no analysis with p": u"تحلیلی با p نداشت",
+    "p %s, at most %s allowed": u"p برابر %s، حداکثر مجاز %s",
+    "%s day(s) without a usable read": u"%s روز بدون خبر قابل استفاده",
+    "Sources with problems: %s (%s of them for %s days or more)": u"منبع‌های مشکل‌دار: %s؛ %s منبع %s روز یا بیشتر",
     "By the code": u"با کد",
     "From version 3.12 the code computes this reading and gives it to Kimi; Kimi adds only its overall view (bullish, "
     "bearish or neutral). The reading describes the chart: it is not a buy or sell signal of its own.":

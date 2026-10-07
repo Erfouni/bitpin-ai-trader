@@ -454,6 +454,19 @@ def confirmation_html(c):
     return out
 
 
+def p_rule_html(pr):
+    """v3.13: the coins whose increase the P RULE blocked - Kimi's p next to the most the code allowed."""
+    parts = []
+    for s, r in sorted(pr.items()):
+        r = r if isinstance(r, dict) else {}
+        if r.get("reason") == "missing" or not (_is_num(r.get("p")) and _is_num(r.get("max"))):
+            parts.append("%s %s" % (code(s), te("no analysis with p")))
+        else:
+            parts.append("%s %s" % (code(s), tr("p %s, at most %s allowed") % (ltr("%.2f" % r["p"]),
+                                                                               ltr("%.2f" % r["max"]))))
+    return '<span class="badge warn">%s</span> %s' % (te("Buy held back"), " &middot; ".join(parts))
+
+
 def pause_text(pz):
     """v3.11: when a coin sold lately may be bought again (performance.sales_pauses)."""
     free = ltr(price_text(pz.get("free_price_usdt")) + " USDT")
@@ -824,6 +837,55 @@ def _totp_ok(secret):
         return len(base64.b32decode(s + "=" * (-len(s) % 8))) >= 10
     except (ValueError, TypeError, AttributeError, binascii.Error):
         return False
+
+
+# v3.13 (external review 2026-10-07): the last two-step login step survives a panel restart; before, a restart right
+# after a sign-in forgot it and the same code was accepted again within its 30 s window
+TOTP_LAST_FILE = "totp_last.json"
+
+
+def _secret_tag(secret):
+    """A short digest that ties a stored step to the secret it was used with (a new secret starts over)."""
+    return hashlib.sha256(("bitpin-panel-totp:%s" % secret).encode("utf-8")).hexdigest()[:16]
+
+
+def load_totp_last(path, secret):
+    """The last TOTP step used with `secret` (None: none stored, another secret, or an unreadable file)."""
+    if not secret:
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict) or doc.get("secret") != _secret_tag(secret):
+        return None
+    step = doc.get("step")
+    return step if isinstance(step, int) and not isinstance(step, bool) and step >= 0 else None
+
+
+def save_totp_last(path, secret, step):
+    """Store the step atomically (mode 0600); without a secret or a step the file goes. A failure is logged and
+    never stops a sign-in."""
+    tmp = "%s.tmp%d" % (path, os.getpid())
+    try:
+        if not secret or step is None:
+            if os.path.exists(path):
+                os.remove(path)
+            return
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"secret": _secret_tag(secret), "step": int(step)}, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except OSError as e:
+        log.warning("panel: cannot store the last two-step login step in %s: %s", path, e)
+        try:
+            if os.path.exists(tmp):
+                os.remove(tmp)
+        except OSError:
+            pass
 
 
 # ------------------------------------------------------------------------------------------------ charts (v3.6)
@@ -1213,9 +1275,11 @@ class PanelApp(object):
         self._password_hash = str(cfg.get("password_hash") or "")
         ts = cfg.get("totp_secret")
         self._totp_secret = ts if isinstance(ts, str) and _totp_ok(ts) else None
-        self._totp_last = None
         self.allowed_hosts = [str(h).strip().lower() for h in (cfg.get("allowed_hosts") or []) if str(h).strip()]
         self.audit_path = str(cfg.get("audit_log") or DEFAULT_AUDIT_LOG)
+        # v3.13: the last TOTP step used, next to the audit log in the panel's own state dir (survives a restart)
+        self._totp_path = os.path.join(os.path.dirname(os.path.abspath(self.audit_path)), TOTP_LAST_FILE)
+        self._totp_last = load_totp_last(self._totp_path, self._totp_secret)
         self.sessions = SessionStore(_num_or(cfg.get("session_idle_minutes"), 30), _num_or(cfg.get("session_max_hours"), 12))
         self.limiter = LoginLimiter()
         # trusted browsers (security review F1): the key next to the audit log, in the panel's own state dir
@@ -1670,6 +1734,7 @@ class PanelApp(object):
         with self._auth_lock:
             if self._totp_secret == secret:
                 self._totp_last = counter if self._totp_last is None else max(self._totp_last, counter)
+                save_totp_last(self._totp_path, secret, self._totp_last)
 
     def _logout(self, req):
         self.sessions.destroy(req.sid)
@@ -1719,7 +1784,7 @@ class PanelApp(object):
                 if ts != self._totp_secret:
                     log.warning("panel: totp_secret in %s differs from the one just set; using the file", self.config_path)
                     self._totp_secret = ts
-                    self._totp_last = None
+                    self._totp_last = load_totp_last(self._totp_path, ts)
 
     # ------------------------------------------------------------------ dashboard
     def _dashboard(self, req):
@@ -1805,6 +1870,8 @@ class PanelApp(object):
                 (N_("Valid"), yes_no(d.get("valid"))), (N_("Fallback"), yes_no(d.get("fallback")))]
         if isinstance(d.get("confirmation"), dict):                      # v3.12: a decision that bought
             rows.append((N_("Second run"), confirmation_html(d["confirmation"])))
+        if isinstance(d.get("p_rule"), dict) and d["p_rule"]:            # v3.13: the P RULE held a buy back
+            rows.append((N_("Probability rule"), p_rule_html(d["p_rule"])))
         out = [facts(rows)]
         if d.get("error"):
             kind = (" (%s)" % ltr(d.get("error_kind"))) if d.get("error_kind") else ""
@@ -1891,6 +1958,19 @@ class PanelApp(object):
                                                                                             or len(failed)), rows))
             else:
                 out.append('<p class="muted small">%s</p>' % line)
+        # v3.13: the sources whose feed gave nothing usable lately (news_feed_health.json, the alert's data)
+        fh = nv.get("feed_health") if isinstance(nv.get("feed_health"), dict) else {}
+        bad = [x for x in (fh.get("bad") or []) if isinstance(x, dict) and _is_num(x.get("bad_days"))]
+        if bad:
+            days = fh.get("alert_days") if _is_num(fh.get("alert_days")) else 3
+            lis = "".join('<li>%s %s%s</li>' % (
+                code(x.get("site") or x.get("url")), tr("%s day(s) without a usable read") % fmt_num(x.get("bad_days")),
+                (' <span class="muted small">%s</span>' % esc(x.get("error"))) if x.get("error") else "")
+                for x in bad[:20])
+            down = sum(1 for x in bad if x["bad_days"] >= days)
+            out.append('<details class="feeds"><summary>%s</summary><ul class="feeds-failed" dir="ltr">%s</ul></details>'
+                       % (tr("Sources with problems: %s (%s of them for %s days or more)") % (
+                           fmt_num(len(bad)), fmt_num(down), fmt_num(days)), lis))
         return card(title, "".join(out), "news")
 
     def _services_card(self, data, bot):
@@ -3559,6 +3639,7 @@ class PanelApp(object):
         with self._auth_lock:
             self._totp_secret = pending
             self._totp_last = counter
+            save_totp_last(self._totp_path, pending, counter)
         self._reload_auth()
         return self._new_session(req, tr("Two-step login is on: from now on every sign-in also asks for the app's "
                                          "code. Every other session was signed out."))
@@ -3579,6 +3660,7 @@ class PanelApp(object):
         with self._auth_lock:
             self._totp_secret = None
             self._totp_last = None
+            save_totp_last(self._totp_path, None, None)
         self._reload_auth()
         self._flash(req, box("warn", te("Two-step login is turned off.")))
         return self._redirect("/security")

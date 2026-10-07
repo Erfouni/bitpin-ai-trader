@@ -80,7 +80,7 @@ def _strings(node):
             yield n.s
 
 
-def tests_naming(basenames):
+def _tests_naming(basenames):
     """unittest ids of the test methods under tests/ that name one of `basenames` in a string literal."""
     found = []
     for fn in sorted(os.listdir(HERE)):
@@ -150,7 +150,7 @@ class TestSuiteRunsInTheStagedCopy(unittest.TestCase):
                     if "__pycache__" not in p and not p.endswith((".pyc", ".pyo")))
         if not names:
             self.skipTest("this is a deployed copy: nothing in it is left out by stage_code")
-        cands = tests_naming(names)
+        cands = _tests_naming(names)
         if os.path.exists(os.path.join(ROOT, "scripts", "kimi_check.py")):
             # the detector finds the test that broke the update
             self.assertIn("test_integration.DeployKitTest."
