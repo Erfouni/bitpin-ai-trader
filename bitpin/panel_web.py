@@ -455,15 +455,23 @@ def confirmation_html(c):
 
 
 def p_rule_html(pr):
-    """v3.13: the coins whose increase the P RULE blocked - Kimi's p next to the most the code allowed."""
+    """v3.13: the coins whose increase the P RULE blocked and why (v3.13.1 reasons: no usable plan levels, no
+    accepted reason, p above the bound, a negative ev at it, no analysis)."""
     parts = []
     for s, r in sorted(pr.items()):
         r = r if isinstance(r, dict) else {}
-        if r.get("reason") == "missing" or not (_is_num(r.get("p")) and _is_num(r.get("max"))):
-            parts.append("%s %s" % (code(s), te("no analysis with p")))
+        why = r.get("reason")
+        if why == "above" and _is_num(r.get("p")) and _is_num(r.get("max")):
+            t = tr("p %s, at most %s allowed") % (ltr("%.2f" % r["p"]), ltr("%.2f" % r["max"]))
+        elif why == "ev" and _is_num(r.get("ev")):
+            t = tr("negative ev (%s)") % ltr(pct_text(r["ev"], 2))
+        elif why == "unverifiable":
+            t = te("no usable plan levels")
+        elif why == "no_basis":
+            t = te("no accepted reason")
         else:
-            parts.append("%s %s" % (code(s), tr("p %s, at most %s allowed") % (ltr("%.2f" % r["p"]),
-                                                                               ltr("%.2f" % r["max"]))))
+            t = te("no analysis with p")
+        parts.append("%s %s" % (code(s), t))
     return '<span class="badge warn">%s</span> %s' % (te("Buy held back"), " &middot; ".join(parts))
 
 

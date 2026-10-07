@@ -390,9 +390,10 @@ DEFAULT_BRAIN_CONFIG = {
     # and user message, a fresh call); a coin is bought only as far as both replies raise it. Re-running the same
     # prompt changes many of an LLM's picks (research 2026-10-03): acting only when two samples agree is the remedy.
     "confirm_buys": True,
-    # v3.13 P RULE (owner 2026-10-07): a coin's weight rises only when its candidate's p is at most p0 + 0.02, or
-    # more on a reason the code can check (p_rule_check). Study 08, and the bot's own decisions after v3.12: the model
-    # added about +0.14 to p0 on B10, a row without an edge, and its buys rested on that alone.
+    # v3.13 P RULE (owner 2026-10-07; tightened in v3.13.1): a coin's weight rises only on a reason the code can
+    # check, with p0 from the plan's own levels, p within that reason's bound and ev_pct >= 0 at it (p_rule_check).
+    # Study 08, and the bot's own decisions after v3.12: the model added about +0.14 to p0 on B10, a row without an
+    # edge, and its buys rested on that alone.
     "p_rule": True,
     # v3.11: after a stop or a decision's sale of a coin (not a target sale) a buy of it is cut for this long unless
     # its USDT price is at least reentry_waive_pct below that sale's price (0 = off; a code STOP still blocks 24 h)
@@ -459,11 +460,10 @@ HEADROOM_GAP = 5.0                      # headroom_pct = halt_pct - |drawdown_pc
 P_CAP = 0.80                            # hard cap of p (v3: 0.80, the aggressive objective)
 P_SHIFT_ROW = 0.15                      # p at most p0 + this on a positive row (advisory)
 P_SHIFT_EVENT = 0.20                    # p at most p0 + this with a dated coin-specific event (hard)
-# v3.13 P RULE (owner 2026-10-07, brain.p_rule): p above p0 + P_SHIFT_FREE (rounding) raises a coin only on a reason
-# the code can see - B3 with ret_usdt[0] >= B3_RISE_PCT, B11 on a gold token, or a dated event in the evidence plus a
-# NEWS BRIEF headline naming the coin (p_rule_check)
-P_SHIFT_FREE = 0.02
-B3_RISE_PCT = 15.0
+# v3.13 P RULE (owner 2026-10-07, brain.p_rule; tightened in v3.13.1): a coin is raised only on a reason the code can
+# check - B11 on a gold token, or a NEWS BRIEF headline naming the coin quoted in the evidence - with p0 from the plan's
+# own levels, p within that reason's bound (P_ROUND: rounding) and ev_pct >= 0 at the bound (p_rule_check)
+P_ROUND = 0.01
 LOSS_MAX_PCT = 12.0                     # l at most this (a wider bracket cannot buy a pass)
 EV_TOLERANCE = 0.3                      # |ev stated - ev recomputed| tolerated (rounding)
 P0_TOLERANCE = 0.02
@@ -1823,61 +1823,102 @@ def _cited_mismatches(text, sym_ctx):
     return out
 
 
+def cost_floor_pct(symbol, ctx_sym):
+    """THE HURDLE's c for buying `symbol`: its route's round-trip floor (COST_FLOOR_PCT, else COST_FLOOR_OTHER) plus
+    2 x (sp - SPREAD_FREE_PCT) when the context's spread is wider than that."""
+    floor = COST_FLOOR_PCT.get(symbol, COST_FLOOR_OTHER)
+    sc = ctx_sym if isinstance(ctx_sym, dict) else {}
+    sp = _fnum(sc.get("sp"))
+    if sp is None:
+        sp = _ctx_value(sc, "book.spread_pct", None)
+    if sp is not None and sp > SPREAD_FREE_PCT:
+        floor += 2.0 * (float(sp) - SPREAD_FREE_PCT)
+    return floor
+
+
+def quoted_headline(text, headlines, coin):
+    """v3.13.1: the NEWS BRIEF headline naming `coin` (names_coin) that `text` quotes - the whole headline, or at
+    least 6 of its words in a row, compared as lower-case words like exit_news - or None. The headline's date is the
+    feed's own (the brief keeps recent items only); a date the model writes next to it proves nothing."""
+    t = " %s " % _norm_words(text)
+    for h in headlines or []:
+        words = _norm_words(h).split()
+        if not words or not names_coin(h, coin):
+            continue
+        spans = [words] if len(words) <= 6 else [words[i:i + 6] for i in range(len(words) - 5)]
+        if any((" %s " % " ".join(sp)) in t for sp in spans):
+            return h
+    return None
+
+
 def p_rule_check(symbol, cand, plan, px, ctx_sym, headlines):
-    """v3.13 P RULE (owner 2026-10-07): may the weight of `symbol` rise on this candidate's p? None when it may, else
-    {"p", "p0", "max", "basis", "reason"} (bot-authored numbers for the note, the panel and the log; reason "missing"
-    = no candidate with p and p0, "above" = p above the most the code allows).
-    p0 is recomputed from the plan's levels (px_usdt -> invalidation_usdt / take_profit_usdt) when they are usable,
-    else the candidate's own p0. p may exceed it by P_SHIFT_FREE (rounding) without a reason; by P_SHIFT_ROW on a
-    positive row (BASE_RATE_POSITIVE) whose condition the code can see - B3: ret_usdt[0] (r_usdt[0] in a compact
-    row) at least B3_RISE_PCT, B11: a gold token - and whose horizon covers the plan's; by P_SHIFT_EVENT with a dated
-    event in the evidence AND a NEWS BRIEF headline that names the coin; never above P_CAP. Study 08: setup days
-    reached the target first half as often as other days, yet the model kept adding about +0.14 to p0 on rows
-    without an edge (B10, B7)."""
+    """v3.13 P RULE (owner 2026-10-07; tightened in v3.13.1 after the external reviewer broke it three ways): may the
+    weight of `symbol` rise on this candidate? None when it may, else {"reason", "p", "p0", "max", "basis", "ev"} in
+    the bot's own numbers (the note, the panel, the log). In order:
+    * "missing": no candidate with a number for p;
+    * "unverifiable": the plan has no usable levels (take_profit_usdt above px_usdt above invalidation_usdt), so p0 =
+      l / (g + l) cannot come from it. The reply's own p0 is never used: with a target at or below the price, or
+      none (an add to a coin past its first target), the model could state any p0;
+    * "no_basis": no reason the code can check - B11 on a gold token, its 720 h row covering the plan (p up to p0 +
+      P_SHIFT_ROW), or a NEWS BRIEF headline naming the coin quoted in the evidence (quoted_headline; up to p0 +
+      P_SHIFT_EVENT). B3 is no buy signal (the knowledge's own words), and B7 / B10 / the TA reading have no edge;
+      without a reason ev at p0 is minus the cost anyway;
+    * "above": p more than P_ROUND above min(P_CAP, p0 + the reason's shift);
+    * "ev": ev_pct = p' g - (1 - p') l - c below 0 at p' = min(p, that bound), with g / l from the plan's levels and c
+      the route's cost floor (or the reply's cost_pct when higher): THE HURDLE's other half, which analysis_policy
+      "off" only notes. It also stops a lopsided plan - a tiny target, a distant invalidation - from buying on p0.
+    Study 08: setup days reached the target first half as often as other days, yet the model kept adding about +0.14
+    to p0 on rows without an edge (B10, B7)."""
     if not isinstance(cand, dict) or _fnum(cand.get("p")) is None:
-        return {"p": None, "p0": None, "max": None, "basis": "none", "reason": "missing"}
+        return {"reason": "missing", "p": None, "p0": None, "max": None, "basis": "none", "ev": None}
     p = float(cand["p"])
-    p0, src = _fnum(cand.get("p0")), "reply"
     plan = plan if isinstance(plan, dict) else {}
     inv, tp, px = _fnum(plan.get("invalidation_usdt")), _fnum(plan.get("take_profit_usdt")), _fnum(px)
-    if px and inv and tp and tp > px > inv > 0:
-        loss, gain = (px - inv) / px, (tp - px) / px
-        p0, src = loss / (gain + loss), "plan"
-    if p0 is None:
-        return {"p": round(p, 4), "p0": None, "max": None, "basis": "none", "reason": "missing"}
-    shift, basis = P_SHIFT_FREE, "none"
-    sc = ctx_sym if isinstance(ctx_sym, dict) else {}
+    if not (px and inv and tp and tp > px > inv > 0):
+        return {"reason": "unverifiable", "p": round(p, 4), "p0": None, "max": None, "basis": "none", "ev": None}
+    loss, gain = (px - inv) / px * 100.0, (tp - px) / px * 100.0
+    p0 = loss / (gain + loss)
+    shift, basis = None, "none"
     horizon = _fnum(plan.get("horizon_hours"))
-    for row in sorted(set(re.findall(r"B\d{1,2}", str(cand.get("row") or "").upper())) & set(BASE_RATE_POSITIVE)):
-        if horizon is not None and BASE_RATE_ROWS.get(row, 0) < horizon:
-            continue
-        if row == "B3":
-            ret = sc.get("ret_usdt") if isinstance(sc.get("ret_usdt"), list) else sc.get("r_usdt")
-            r24 = _fnum(ret[0]) if isinstance(ret, list) and ret else None
-            ok = r24 is not None and r24 >= B3_RISE_PCT
-        else:
-            ok = cluster_of(symbol) == "gold"
-        if ok:
-            shift, basis = P_SHIFT_ROW, row
-    coin = str(symbol).split("_")[0]
-    if _DATED_EVENT_RE.search(str(cand.get("evidence") or "")) and any(names_coin(h, coin) for h in headlines or []):
+    rows = set(re.findall(r"B\d{1,2}", str(cand.get("row") or "").upper()))
+    if "B11" in rows and cluster_of(symbol) == "gold" and (horizon is None or BASE_RATE_ROWS["B11"] >= horizon):
+        shift, basis = P_SHIFT_ROW, "B11"
+    if quoted_headline(cand.get("evidence"), headlines, str(symbol).split("_")[0]):
         shift, basis = P_SHIFT_EVENT, "event"
+    rec = {"p": round(p, 4), "p0": round(p0, 4), "basis": basis, "ev": None}
+    if shift is None:
+        return dict(rec, reason="no_basis", max=round(p0, 4))
     top = min(P_CAP, p0 + shift)
-    if p <= top + 1e-9:
-        return None
-    return {"p": round(p, 4), "p0": round(p0, 4), "p0_from": src, "max": round(top, 4), "basis": basis,
-            "reason": "above"}
+    if p > top + P_ROUND + 1e-9:
+        return dict(rec, reason="above", max=round(top, 4))
+    c = cost_floor_pct(symbol, ctx_sym)
+    stated = _fnum(cand.get("cost_pct"))
+    if stated is not None and stated > c:
+        c = stated
+    pa = min(p, top)
+    ev = pa * gain - (1.0 - pa) * loss - c
+    if ev < -1e-9:
+        return dict(rec, reason="ev", max=round(top, 4), ev=round(ev, 2))
+    return None
 
 
 def p_rule_text(r):
     """The bot's words for a p_rule_check() result (adjustment notes, recent_decisions, the log)."""
-    if r.get("reason") == "missing":
-        return "no analysis candidate with numbers for p and p0"
-    why = {"none": "no B3 (ret_usdt[0] >= %g) or B11 (gold) condition and no dated news naming the coin" % B3_RISE_PCT,
-           "event": "the most a dated coin event allows", "B3": "the most B3 allows", "B11": "the most B11 allows"}
-    return "p %.2f is above the %.2f the code allows (p0 %.3f%s; %s)" % (
-        r["p"], r["max"], r["p0"], " from the plan's levels" if r.get("p0_from") == "plan" else "",
-        why.get(r.get("basis"), "no accepted reason"))
+    reason = r.get("reason")
+    if reason == "missing":
+        return "no analysis candidate with a number for p"
+    if reason == "unverifiable":
+        return ("its plan has no usable levels (take_profit_usdt above px_usdt above invalidation_usdt), so the code "
+                "cannot compute p0")
+    if reason == "no_basis":
+        return ("no reason the code accepts (B11 on a gold token, or a NEWS BRIEF headline naming the coin quoted in "
+                "evidence); p0 %.3f from the plan's levels" % r["p0"])
+    basis = {"B11": "B11 on a gold token", "event": "the quoted headline"}.get(r.get("basis"), "its reason")
+    if reason == "above":
+        return "p %.2f is above the %.2f that %s allows (p0 %.3f from the plan's levels)" % (
+            r["p"], r["max"], basis, r["p0"])
+    return "ev_pct %.2f at p %.2f (p0 %.3f from the plan's levels + %s) after the cost: below 0" % (
+        r["ev"], min(r["p"], r["max"]), r["p0"], basis)
 
 
 def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_usdt, context, notes, halt_pct=None,
@@ -2040,13 +2081,7 @@ def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_us
             bad.append("row must be one of %s" % ", ".join(BASE_RATE_ROWS))
         elif horizon is not None and BASE_RATE_ROWS[c["row"]] < horizon:
             bad.append("row %s covers %d h, the plan's horizon is %g h" % (c["row"], BASE_RATE_ROWS[c["row"]], horizon))
-        floor = COST_FLOOR_PCT.get(s, COST_FLOOR_OTHER)
-        sc = ctx_syms.get(s) if isinstance(ctx_syms.get(s), dict) else {}
-        sp = _fnum(sc.get("sp"))
-        if sp is None:
-            sp = _ctx_value(sc, "book.spread_pct", None)
-        if sp is not None and sp > SPREAD_FREE_PCT:
-            floor += 2.0 * (float(sp) - SPREAD_FREE_PCT)
+        floor = cost_floor_pct(s, ctx_syms.get(s))
         c_pct = c["cost_pct"]
         if c_pct is None or c_pct < floor - 1e-9:
             bad.append("cost_pct %s is below the floor %.2f for %s" % ("%g" % c_pct if c_pct is not None else "missing",
@@ -2150,10 +2185,10 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
           the reply's exit_news quotes a headline of news_headlines (this decision's NEWS BRIEF items) naming
           the coin (parse_exit_news); a stop_pct whose price lies above the plan's invalidation is dropped.
     hold_discipline: an expired (not broken) plan restated without a buy keeps its invalidation level.
-    p_rule: v3.13 P RULE - with any analysis_policy, a coin whose weight rises without a candidate whose p the code
-          accepts (p_rule_check: p0 + 0.02, more only on B3 / B11 whose condition holds or a dated event named in a
-          news_headlines headline) is kept at its current weight with a note (the rest goes to USDT_IRT; never a
-          sale); "p_rule" in the result lists those coins.
+    p_rule: v3.13 P RULE - with any analysis_policy, a coin whose weight rises without a candidate the code accepts
+          (p_rule_check: a reason it can check - B11 on a gold token or a quoted news_headlines headline naming the
+          coin -, p0 from the plan's levels, p within the reason's bound, ev_pct >= 0 at it) is kept at its current
+          weight with a note (the rest goes to USDT_IRT; never a sale); "p_rule" in the result lists those coins.
     Returns a dict (targets over ALL allowed symbols, zeros included) whose changes are all
     executable by runner.plan_orders(threshold=rebalance_threshold) and within every cap, plus
     "ladder" ({coin: scale} for every ladder coin), "exits" ({symbol: spec} for every coin with a
@@ -2744,11 +2779,18 @@ def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=N
         "{{P_SHIFT_EVENT}}": "%.2f" % P_SHIFT_EVENT,
         "{{P_CAP}}": "%.2f" % P_CAP,
         # v3.13 P RULE: what the code accepts above p0 (p_rule_check)
-        "{{P_RULE_NOTE}}": (" P RULE (code): above p0 (from the plan's levels) + %.2f a coin is increased only on B3 "
-                            "with ret_usdt[0] >= %g or B11 on a gold token (up to +%.2f), or a dated event in evidence "
-                            "plus a NEWS BRIEF headline naming the coin (+%.2f)." % (P_SHIFT_FREE, B3_RISE_PCT,
-                                                                                    P_SHIFT_ROW, P_SHIFT_EVENT)
-                            if cfg.get("p_rule", True) else ""),
+        # v3.13.1 P RULE: the reasons the code accepts above p0 (p_rule_check); off: the advisory wording of v3
+        "{{P_SHIFT_TEXT}}": (("Add at most %.2f only on B11 for a gold token, at most %.2f only with a coin-specific "
+                              "event whose NEWS BRIEF headline names the coin, quoted word for word in evidence; every "
+                              "other row (B3, B7, B10 ...) and the TA reading add nothing, B4 / B6 push p below p0."
+                              % (P_SHIFT_ROW, P_SHIFT_EVENT)) if cfg.get("p_rule", True) else
+                             ("Add at most %.2f on a row with a positive result whose CONDITION holds now and whose "
+                              "horizon covers horizon_hours (cite its id and the field), at most %.2f with a "
+                              "coin-specific, dated event in the brief that ret_usdt[1] or vol_ratio corroborates; B7, "
+                              "B10 and the TA reading add nothing, B4 / B6 push p below p0." % (P_SHIFT_ROW, P_SHIFT_EVENT))),
+        "{{P_RULE_NOTE}}": (" P RULE (code): p0 comes from the plan's own levels (take_profit_usdt above px_usdt above "
+                            "invalidation_usdt); without such a reason, or with ev_pct < 0 at that p, the coin is not "
+                            "increased." if cfg.get("p_rule", True) else ""),
         "{{HEADROOM_GAP}}": "%g" % HEADROOM_GAP,
         # the halt the runner enforces (config.json risk.max_drawdown, copied by build_kimi); without a breaker
         # the headroom formula degenerates to "no halt": the text says so

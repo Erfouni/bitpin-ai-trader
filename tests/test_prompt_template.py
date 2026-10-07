@@ -176,7 +176,10 @@ class LiveProfilePinsTest(unittest.TestCase):
             "ADDITIONAL INSTRUCTIONS FROM THE ACCOUNT OWNER\n",
             # v3: the one-year wording, the aggressive hurdle, the caps, the halt-based headroom, the clusters, RWA
             "one-year trading competition", "pass = ev_pct >= 0", "hard cap %.2f" % P_CAP,
-            "Add at most %.2f on a row" % P_SHIFT_ROW, "at most %.2f with a coin-specific, dated event" % P_SHIFT_EVENT,
+            # v3.13.1 P RULE (on in the server profile): only B11 on gold or a quoted headline about the coin
+            "Add at most %.2f only on B11 for a gold token" % P_SHIFT_ROW,
+            "at most %.2f only with a coin-specific event whose NEWS BRIEF headline names the coin" % P_SHIFT_EVENT,
+            "P RULE (code): p0 comes from the plan's own levels",
             "at most %g, never above g" % LOSS_MAX_PCT, "p0 = l / (g + l)",
             "headroom_pct = %d - |portfolio.drawdown_pct| - %g" % (self.halt, HEADROOM_GAP),
             "crypto_beta (COINX / CRCLX / MSTRON / HOODX", "gold (PAXG / XAUT / GLDON)", "silver (SLVON)",

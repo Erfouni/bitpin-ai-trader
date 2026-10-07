@@ -1381,18 +1381,26 @@ def _confirmation(c):
     return out
 
 
+P_RULE_REASONS = ("missing", "unverifiable", "no_basis", "above", "ev")      # brain.p_rule_check (v3.13.1)
+
+
 def _p_rule_view(x):
-    """v3.13: {symbol: {"p", "p0", "max", "reason"}} of the increases the P RULE blocked (brain Decision.p_rule; the
-    bot's own numbers). reason "missing" = no candidate with p and p0, else "above"."""
+    """v3.13: {symbol: {"p", "p0", "max", "ev", "reason"}} of the increases the P RULE blocked (brain Decision.p_rule;
+    the bot's own numbers). reason: "missing" (no candidate with p), "unverifiable" (no usable plan levels),
+    "no_basis" (no reason the code accepts), "above" (p above the bound), "ev" (ev < 0 at the bound); a reason whose
+    numbers are missing becomes "missing"."""
     out = {}
     for s, r in list(_dict(x).items())[:12]:
         sym = norm_symbol(s)
         r = _dict(r)
         if sym is None:
             continue
-        vals = {"p": _fnum(r.get("p")), "p0": _fnum(r.get("p0")), "max": _fnum(r.get("max"))}
-        miss = r.get("reason") == "missing" or any(v is None for v in vals.values())
-        out[sym] = dict(vals, reason="missing" if miss else "above")
+        vals = {"p": _fnum(r.get("p")), "p0": _fnum(r.get("p0")), "max": _fnum(r.get("max")), "ev": _fnum(r.get("ev"))}
+        reason = r.get("reason") if r.get("reason") in P_RULE_REASONS else "missing"
+        need = {"above": ("p", "max", "p0"), "ev": ("ev",), "no_basis": ("p0",)}.get(reason, ())
+        if any(vals[k] is None for k in need):
+            reason = "missing"
+        out[sym] = dict(vals, reason=reason)
     return out
 
 
@@ -2253,16 +2261,22 @@ class Renderer:
         pr = v.get("p_rule") or {}
         if not pr:
             return []
-        L = ["🚫 <b>قانون احتمال:</b> سهم این کوین‌ها بالا نرفت؛ p کیمی بالاتر از حدی بود که کد بدون دلیل مجاز "
-             "می‌پذیرد:"]
+        L = ["🚫 <b>قانون احتمال:</b> سهم این کوین‌ها بالا نرفت:"]
         for sym, r in sorted(pr.items()):
             name = esc(self.coin(sym, with_code=False))
-            if r["reason"] == "missing":
-                L.append("• %s: تحلیلی با p و p0 نداشت" % name)
-            else:
+            why = r["reason"]
+            if why == "unverifiable":
+                L.append("• %s: برنامه هدف و سطح ابطالِ قابل‌استفاده نداشت (p0 حساب‌شدنی نبود)" % name)
+            elif why == "no_basis":
+                L.append("• %s: دلیل مجازی نداشت (B11 برای طلا، یا تیترِ نقل‌شده از خلاصهٔ خبر دربارهٔ همان کوین)" % name)
+            elif why == "above":
                 L.append("• %s: p %s، حداکثر مجاز %s (p0 %s)" % (
                     name, fa(_trim_zeros("%.2f" % r["p"])), fa(_trim_zeros("%.2f" % r["max"])),
                     fa(_trim_zeros("%.3f" % r["p0"]))))
+            elif why == "ev":
+                L.append("• %s: ارزش انتظاری با همان p منفی بود (%s)" % (name, fmt_pct(r["ev"] / 100.0, signed=True)))
+            else:
+                L.append("• %s: تحلیلی با p نداشت" % name)
         return L
 
     def _news_line(self, v):

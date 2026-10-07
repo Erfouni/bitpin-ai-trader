@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.13.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.13.1` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -80,9 +80,9 @@ risk that implies: the model stays the decision maker, and the code adds discipl
   - hold discipline (3.11): a position with the model's plan is sold only when an hourly close breaks its
     invalidation, at its target or on a news headline about that coin, never because the plan expired; after a
     stop or a decision's sale the coin is not bought back for 72 hours unless it is 3 % cheaper;
-  - a probability rule (3.13): a coin's weight rises only when the model's p is at most 0.02 above the no-edge p0
-    (from the plan's own price levels), more only on a research row whose condition the code can see or on dated
-    news about that coin; nothing is ever sold by it;
+  - a probability rule (3.13): a coin's weight rises only on a reason the code can check (gold on its research row,
+    or a news headline about that coin quoted word for word), with p0 from the plan's own price levels and a
+    non-negative expected value at the allowed probability; nothing is ever sold by it;
   - a second run (3.12): a decision that buys is asked twice; a failed or disagreeing second answer buys less or
     nothing;
   - a trading halt at a 50 % drawdown from the highest account value of the last 90 days;
