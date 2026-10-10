@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly collection of daily DefiLlama research data
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=1h
+AccuracySec=30s
+Unit=bitpin-defi-shadow.service
+
+[Install]
+WantedBy=timers.target

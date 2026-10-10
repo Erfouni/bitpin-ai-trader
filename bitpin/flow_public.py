@@ -49,8 +49,11 @@ class PublicFlowClient:
         self.timeout = timeout
         self.max_bytes = max_bytes
 
+    def _allowed_url(self, url):
+        return url == STABLECOINS or PUBLIC_URL.fullmatch(url)
+
     def get_json(self, url):
-        if url != STABLECOINS and not PUBLIC_URL.fullmatch(url):
+        if not self._allowed_url(url):
             raise ValueError("only approved public data endpoints are allowed")
         req = urllib.request.Request(url, headers={"User-Agent": "BitpinFlowShadow/1.0",
                                                   "Accept": "application/json"}, method="GET")
