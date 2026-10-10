@@ -52,7 +52,15 @@ sudo -u bitpin python3 -B /opt/bitpin-flow-public/scripts/preview_flow_context.p
 
 خروج صفر فقط موفقیت خواندن snapshot است؛ آماده‌بودن فشار روزانه با وجود `markets.<market>.daily` مشخص می‌شود. پیش از وجود آن، فشار روزانه وارد تحلیل نمی‌شود. آزمون کوتاه قبلی فقط مسیر دریافت را تأیید کرد؛ اثر بر بازده، کارمزد و لغزش هنوز مقایسه نشده است.
 
-۵. پس از تصمیم مالک برای اتصال به حساب واقعی، فقط این کلید را به شیء `context` در تنظیمات موجود اضافه کنید و بقیهٔ تنظیمات را حفظ کنید:
+۵. پس از تصمیم مالک برای اتصال به حساب واقعی، ابتدا سرویس معامله‌گر را متوقف و از تنظیمات نسخهٔ پشتیبان بگیرید. `confirm-live` تعاملی کنار سرویس روشن اجرا نمی‌شود. هنگام توقف، نظارت و خروج‌های نرم‌افزاری ربات اجرا نمی‌شوند؛ سفارش‌های موجود در صرافی همچنان ممکن است اجرا شوند.
+
+```bash
+flow_backup="/etc/bitpin-bot/kimi.json.before-public-flow-$(date -u +%Y%m%dT%H%M%SZ)"
+sudo cp -a /etc/bitpin-bot/kimi.json "$flow_backup" &&
+sudo systemctl stop bitpin-bot.service
+```
+
+فقط پس از موفقیت این دستورات، این کلید را به شیء `context` در تنظیمات موجود اضافه کنید و بقیهٔ تنظیمات را حفظ کنید:
 
 ```json
 "public_flow_snapshot": "/var/lib/bitpin-flow-public/snapshot.json"
@@ -61,12 +69,12 @@ sudo -u bitpin python3 -B /opt/bitpin-flow-public/scripts/preview_flow_context.p
 سپس روند تأیید خود پروژه را شخصاً اجرا کنید:
 
 ```console
-sudo bitpin-bot check
-sudo bitpin-bot confirm-live
-sudo systemctl restart bitpin-bot.service
+sudo bitpin-bot check &&
+sudo bitpin-bot confirm-live &&
+sudo systemctl start bitpin-bot.service
 ```
 
-عبارت تأیید را مالک وارد می‌کند؛ هیچ کلید، token یا فایل env لازم نیست در گفتگو ارسال شود. برای غیرفعال‌سازی، مقدار کلید را `null` کنید و همان روند check و تأیید را طی کنید. توقف سرویس عمومی نیز داده را حداکثر پس از ۹۰ ثانیه از مصرف خارج می‌کند، اما برای حذف قطعی بخش context، تنظیم را خاموش کنید.
+عبارت تأیید را مالک وارد می‌کند؛ هیچ کلید، token یا فایل env لازم نیست در گفتگو ارسال شود. اگر هر مرحله خطا داد، به مرحلهٔ بعد نروید. برای غیرفعال‌سازی، ابتدا سرویس معامله‌گر را متوقف کنید، مقدار کلید را `null` کنید و همان روند check، تأیید و start را طی کنید. توقف سرویس عمومی نیز داده را حداکثر پس از ۹۰ ثانیه از مصرف خارج می‌کند، اما برای حذف قطعی بخش context، تنظیم را خاموش کنید.
 
 ## بازبینی و آزمون
 
