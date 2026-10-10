@@ -182,6 +182,8 @@ DEFAULT_CONTEXT_CONFIG = {
     # v3: the public-trades "flow" block is gone (noise at the hourly scale, B8); the key is still accepted so an
     # older kimi.json starts, but true does nothing
     "matches": False,
+    # Opt-in read-only daily observations from the independent public collector. None = unchanged baseline.
+    "public_flow_snapshot": None,
     "market_status": True,
     "max_spread_pct": 1.0,
     "build_time_budget_seconds": 120,
@@ -1376,7 +1378,8 @@ class MarketContextBuilder:
         lookback = int(self.cfg["lookback_bars"] if self.cfg.get("rule_signals") else self.cfg["analysis_lookback_bars"])
         lookback = max(lookback, 800)
         budget = float(self.cfg["build_time_budget_seconds"])
-        t_end = self.monotonic() + budget
+        t_started = self.monotonic()
+        t_end = t_started + budget
         halt = {"why": None}
 
         def halted():
@@ -1524,6 +1527,12 @@ class MarketContextBuilder:
             log.warning("bot state sections failed: %s", e)
         if self.errors:
             ctx["data_errors"] = dict(self.errors)
+        if self.cfg.get("public_flow_snapshot"):
+            from .flow_context import load_public_flow
+            # Network collection can take minutes. Evaluate freshness when consuming the snapshot,
+            # retaining an explicit historical/simulation clock rather than substituting wall time.
+            flow_now = now + max(0.0, self.monotonic() - t_started)
+            ctx["public_flow"] = load_public_flow(self.cfg["public_flow_snapshot"], flow_now, self.cfg["universe"])
         ctx = clean(ctx)
         return self._shrink(ctx)
 
@@ -2107,6 +2116,13 @@ class MarketContextBuilder:
         if not limit or len(dumps(ctx)) <= limit:
             return ctx
         steps = []
+        # Optional unvalidated observations must not crowd out existing strategy/portfolio context.
+        if "public_flow" in ctx:
+            ctx.pop("public_flow")
+            steps.append("public_flow")
+            if len(dumps(ctx)) <= limit:
+                ctx["truncated"] = steps
+                return ctx
 
         def drop_desc(c):
             for r in ((c.get("rule_signals") or {}).get("strategies") or {}).values():
@@ -2195,6 +2211,10 @@ def validate_context_config(config):
     if cfg["matches"]:
         # v3 removed the public-trades "flow" block; an older kimi.json with matches true still starts
         log.warning("context.matches is true but the flow block was removed in v3: the key does nothing")
+    if cfg["public_flow_snapshot"] is not None:
+        from .flow_context import snapshot_path_valid
+        if not snapshot_path_valid(cfg["public_flow_snapshot"]):
+            raise ConfigError("context.public_flow_snapshot must be null or an absolute path to snapshot.json")
     cfg["max_spread_pct"] = check_number("context.max_spread_pct", cfg["max_spread_pct"], 0, 50, lo_open=True)
     cfg["build_time_budget_seconds"] = check_number("context.build_time_budget_seconds",
                                                     cfg["build_time_budget_seconds"], 10, 3600)

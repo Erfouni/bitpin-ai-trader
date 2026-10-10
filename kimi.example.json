@@ -167,6 +167,8 @@
     "_analysis_lookback_bars": "Hourly candles when rule_signals is off (enough for 30-day returns and EMA200 on 4h).",
     "orderbook": true,
     "_orderbook": "Fetch each symbol's order book (spread, depth within 1%/2% of mid).",
+    "public_flow_snapshot": null,
+    "_public_flow_snapshot": "Optional absolute path to the standalone public collector's snapshot.json. null leaves the baseline unchanged. Only fully covered 24h taker flow and daily/weekly/monthly stablecoin supply enter as unvalidated supporting observations. Never an independent P RULE buy basis; no extra decision triggers. Install the updated code before adding this key to a live config, then perform the owner's normal check/confirm-live workflow.",
     "matches": false,
     "_matches": "v3: ignored (the order-flow block of the context was removed; true is accepted with a startup warning and fetches nothing). Keep false.",
     "market_status": true,
