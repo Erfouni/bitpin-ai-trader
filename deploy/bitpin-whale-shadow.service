@@ -1,0 +1,34 @@
+[Unit]
+Description=Bitpin public Bitcoin wallet observation pilot (shadow only)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=bitpin-flow
+Group=bitpin-flow
+WorkingDirectory=/opt/bitpin-whale-shadow
+ExecStart=/usr/bin/python3 -B scripts/whale_shadow.py --state-dir /var/lib/bitpin-whale-shadow
+Environment=TZ=UTC PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+TimeoutStartSec=15min
+StateDirectory=bitpin-whale-shadow
+StateDirectoryMode=0755
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+InaccessiblePaths=-/etc/bitpin-bot -/var/lib/bitpin-bot -/var/lib/bitpin-bot-paper -/opt/bitpin-bot -/opt/xray -/var/lib/bitpin-flow-public -/var/lib/bitpin-defi-shadow
+ReadWritePaths=/var/lib/bitpin-whale-shadow
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=192M
+CPUQuota=20%

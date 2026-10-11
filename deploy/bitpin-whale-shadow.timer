@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly collection of public Bitcoin wallet research observations
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=1h
+AccuracySec=30s
+Unit=bitpin-whale-shadow.service
+
+[Install]
+WantedBy=timers.target
