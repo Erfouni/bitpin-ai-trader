@@ -309,6 +309,8 @@ FA = {
     "No news brief yet.": u"هنوز خلاصه‌ی خبری تهیه نشده.",
     "Made %s": u"تهیه‌شده در %s",
     "From the trusted sources' feeds": u"از فید منابع معتبر",
+    "Degraded news: feed headlines only. The news model is unavailable; no summary or implications were generated.":
+        u"اخبار محدود: فقط تیترهای فید. مدل خبر در دسترس نیست؛ خلاصه یا تفسیر پیامدها تولید نشده است.",
     "The model's web search": u"با جست‌وجوی وب مدل",
     "The last news attempt failed (%s): %s": u"آخرین تلاش برای تهیه‌ی خبر شکست خورد (%s): %s",
     "The brief has no news items.": u"این خلاصه هیچ خبری ندارد.",

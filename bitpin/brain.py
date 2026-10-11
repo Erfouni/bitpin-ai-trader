@@ -413,6 +413,10 @@ class ValidationError(ValueError):
     pass
 
 
+class SchemaValidationError(ValidationError):
+    """A field has the wrong JSON shape/type, rather than a rejected trading value or thesis."""
+
+
 class _DuplicateKey(ValueError):
     pass
 
@@ -844,7 +848,7 @@ class Decision:
 
 def _num(x, what):
     if isinstance(x, bool) or not isinstance(x, (int, float)):
-        raise ValidationError("%s must be a number, got %s" % (what, _short_repr(x)))
+        raise SchemaValidationError("%s must be a number, got %s" % (what, _short_repr(x)))
     if isinstance(x, int) and abs(x) > MAX_WEIGHT_INT:
         raise ValidationError("%s is out of range (a fraction between 0 and 1 is expected)" % what)
     try:
@@ -860,7 +864,7 @@ def _price_num(x, what):
     """A USDT price in an exit spec: a finite positive number (never the weight helper's "fraction"
     wording - a retry prompt must not tell the model that a price is a fraction)."""
     if isinstance(x, bool) or not isinstance(x, (int, float)):
-        raise ValidationError("%s must be a number (a USDT price), got %s" % (what, _short_repr(x)))
+        raise SchemaValidationError("%s must be a number (a USDT price), got %s" % (what, _short_repr(x)))
     if isinstance(x, int) and abs(x) > MAX_PRICE_INT:
         raise ValidationError("%s is out of range (a USDT price like the context's px_usdt is expected, not a toman "
                               "price)" % what)
@@ -948,7 +952,7 @@ def parse_ladder(raw, coins=LADDER_COINS):
     if raw is None:
         return {}
     if not isinstance(raw, dict):
-        raise ValidationError("'ladder' must be an object {COIN: scale 0..1} for %s" % ", ".join(coins))
+        raise SchemaValidationError("'ladder' must be an object {COIN: scale 0..1} for %s" % ", ".join(coins))
     out = {}
     for k, v in raw.items():
         c = _ladder_coin(k, coins)
@@ -983,7 +987,7 @@ def parse_exits(raw, allowed, safe, notes):
     if raw is None:
         return {}
     if not isinstance(raw, dict):
-        raise ValidationError("'exits' must be an object {SYMBOL: {stop_pct, target_price or target_rule, "
+        raise SchemaValidationError("'exits' must be an object {SYMBOL: {stop_pct, target_price or target_rule, "
                               "max_hold_hours, wake_up_pct, wake_levels}}")
     out = {}
     for k, spec in raw.items():
@@ -996,7 +1000,7 @@ def parse_exits(raw, allowed, safe, notes):
         if s in out:
             raise ValidationError("symbol %s appears twice in exits" % s)
         if not isinstance(spec, dict):
-            raise ValidationError("exits of %s must be an object" % s)
+            raise SchemaValidationError("exits of %s must be an object" % s)
         e = {}
         extra = [x for x in spec if x not in EXIT_KEYS]
         if extra:
@@ -1034,7 +1038,7 @@ def parse_exits(raw, allowed, safe, notes):
         if spec.get("wake_levels") is not None:
             lv = spec["wake_levels"]
             if not isinstance(lv, (list, tuple)):
-                raise ValidationError("exits.%s.wake_levels must be a list of USDT prices" % s)
+                raise SchemaValidationError("exits.%s.wake_levels must be a list of USDT prices" % s)
             vals = [_price_num(x, "exits.%s.wake_levels" % s) for x in lv]
             if len(vals) > MAX_WAKE_LEVELS:
                 notes.append("exits of %s: only the first %d wake levels kept" % (s, MAX_WAKE_LEVELS))
@@ -1076,7 +1080,7 @@ def parse_plans(raw, allowed, safe, px_usdt, notes, max_horizon_hours=None):
     if raw is None:
         return {}, {}
     if not isinstance(raw, dict):
-        raise ValidationError("'plans' must be an object {SYMBOL: {setup, horizon_hours, invalidation_usdt, "
+        raise SchemaValidationError("'plans' must be an object {SYMBOL: {setup, horizon_hours, invalidation_usdt, "
                               "take_profit_usdt, note}}")
     px_usdt = px_usdt or {}
     plans, invalid = {}, {}
@@ -2204,10 +2208,10 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
     now = time.time() if now is None else float(now)
     eg = endgame or {}
     if not isinstance(obj, dict):
-        raise ValidationError("reply must be a JSON object")
+        raise SchemaValidationError("reply must be a JSON object")
     raw_t = obj.get("targets")
     if not isinstance(raw_t, dict):
-        raise ValidationError("'targets' must be an object {SYMBOL: weight}")
+        raise SchemaValidationError("'targets' must be an object {SYMBOL: weight}")
     allowed = list(allowed)
     allowed_set = set(allowed)
     if safe not in allowed_set:
@@ -2232,7 +2236,7 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
         raise ValidationError("targets + cash_irt sum to %.4f; they must sum to 1 (fractions of equity, not %%)"
                               % total)
     if "confidence" not in obj:
-        raise ValidationError("missing 'confidence' (number 0..1)")
+        raise SchemaValidationError("missing 'confidence' (number 0..1)")
     conf = _num(obj.get("confidence"), "confidence")
     if not 0.0 <= conf <= 1.0:
         raise ValidationError("confidence %s must be between 0 and 1" % obj.get("confidence"))
@@ -3957,8 +3961,9 @@ class KimiBrain:
             buys = sorted(s for s, w in decision.targets.items() if s != self.safe and w > cur.get(s, 0.0) + 1e-9)
             if buys:
                 attempts += 1
-                decision = self._confirm_buys(decision, obj_ok, buys, messages, cur, now, usage, t_start, budget_s,
-                                              abort, chat_kw, vargs, vkw, require_plan, apol, attempts)
+                decision, attempts = self._confirm_buys(decision, obj_ok, buys, messages, cur, now, usage, t_start,
+                                                        budget_s, abort, chat_kw, vargs, vkw, require_plan, apol,
+                                                        attempts)
         if decision is None:
             decision = Decision(valid=False, raw=raw, error=err or "no valid reply", error_kind=err_kind or "validation")
         decision.decided_at = now
@@ -3994,7 +3999,9 @@ class KimiBrain:
                       vkw, require_plan, apol, attempt_no):
         """v3.12 (B1, owner 2026-10-03): a scheduled / held_move decision that BUYS is asked a second time - the same
         system and user message in a fresh call, no tools - and a coin is bought only as far as BOTH replies raise
-        it (the smaller increase; the rest stays in USDT_IRT). A failed, invalid or late second call buys nothing:
+        it (the smaller increase; the rest stays in USDT_IRT). A schema error may use one unused validation retry
+        with only the error and required shape, never the first proposal or either reply. The overall call,
+        deadline and daily reserves stay unchanged. A failed, invalid or late second call buys nothing:
         the sales and the rest of the first decision stand. The first reply is validated again with the confirmed
         targets, so the caps, the executable step and the plans follow the usual rules. Research 2026-10-03:
         re-running the same prompt changed 42-79% of an LLM's stock picks; acting only when samples agree is the
@@ -4004,21 +4011,65 @@ class KimiBrain:
         if left < MIN_RETRY_SECONDS:
             why = "no time left for the second run (%.0f s of decision_deadline_seconds)" % max(0.0, left)
         else:
-            try:
-                res = self.llm.chat(messages[:2], json_mode=bool(self.cfg["json_mode"]), web_search=False,
-                                    time_limit=max(0.0, left), abort=abort, **chat_kw)
-                _add_usage(usage, res.get("usage") or {})
-                self._write_reasoning(now, res.get("reasoning"), attempt_no)
-                v2 = validate_response(self._parse_reply(res.get("content") or "", res), *vargs,
-                                       plan_policy="block" if require_plan else None,
-                                       analysis_policy="block" if apol == "block" else apol, **vkw)
-            except ValidationError as e:
-                why = "the second reply was rejected (%s)" % _short_repr(str(e), 200)
-            except LLMError as e:
-                why = "the second call failed (%s)" % _short_repr(str(e), 200)
-            except Exception as e:  # noqa: BLE001 - a broken second run means no buy, never a crash
-                log.exception("the confirmation call failed")
-                why = "the second call failed (%s)" % type(e).__name__
+            second_messages = messages[:2]
+            for correction in range(2):
+                raw2, schema_error = "", False
+                try:
+                    res = self.llm.chat(second_messages, json_mode=bool(self.cfg["json_mode"]), web_search=False,
+                                        time_limit=max(0.0, left), abort=abort, **chat_kw)
+                    _add_usage(usage, res.get("usage") or {})
+                    self._write_reasoning(now, res.get("reasoning"), attempt_no)
+                    raw2 = res.get("content") or ""
+                    schema_error = True        # parsing failures are structural JSON failures
+                    obj2 = self._parse_reply(raw2, res)
+                    schema_error = False
+                    v2 = validate_response(obj2, *vargs, plan_policy="block" if require_plan else None,
+                                           analysis_policy="block" if apol == "block" else apol, **vkw)
+                    why = ""
+                    break
+                except ValidationError as e:
+                    why = "the second reply was rejected (%s)" % _short_repr(str(e), 200)
+                    # No model rewrite of a denied trading value/thesis, no truncation retry, and no
+                    # extra call beyond the worst case already reserved for this decision.
+                    if (correction or not (schema_error or isinstance(e, SchemaValidationError))
+                            or not raw2.strip() or res.get("finish_reason") == "length"
+                            or attempt_no >= 2 + int(self.cfg["max_validation_retries"])):
+                        break
+                    left = budget_s - (self.monotonic() - t_start)
+                    if left < MIN_RETRY_SECONDS:
+                        why += "; no time left for a schema correction"
+                        break
+                    if abort is not None and abort():
+                        why += "; schema correction aborted"
+                        break
+                    calls_left, call_limit = self._llm_calls_left()
+                    reserve = int(self.cfg["reserve_llm_calls"])
+                    if calls_left is not None and calls_left - 1 < min(reserve, max(0, call_limit) // 2):
+                        why += "; no daily call budget for a schema correction"
+                        break
+                    used, token_limit = self._tokens_left()
+                    if used is not None:
+                        estimate = self._call_tokens_estimate()
+                        keep_tokens = min(reserve * estimate, token_limit / 2.0)
+                        if used + estimate > token_limit - keep_tokens:
+                            why += "; no daily token budget for a schema correction"
+                            break
+                    second_messages = messages[:2] + [{
+                        "role": "user", "content": (
+                            "Your independent reply was REJECTED for an invalid JSON shape or field type.\n"
+                            "Return your independent decision as ONLY one JSON object in the original required "
+                            "format: \"targets\": {\"<SYMBOL>\": <numeric weight>}, \"cash_irt\": <number>, "
+                            "\"confidence\": <number 0..1>; targets + cash_irt sum to 1 with allowed symbols only. "
+                            "Use the original schema for analysis, plans, ladder and exits. Keep reasoning short. "
+                            "No tools are available for this answer.")}]
+                    attempt_no += 1
+                except LLMError as e:
+                    why = "the second call failed (%s)" % _short_repr(str(e), 200)
+                    break
+                except Exception as e:  # noqa: BLE001 - a broken second run means no buy, never a crash
+                    log.exception("the confirmation call failed")
+                    why = "the second call failed (%s)" % type(e).__name__
+                    break
         t1 = dict(decision.targets)
         t2 = dict(v2["targets"]) if v2 else {}
         new_t, kept, cut = dict(t1), {}, {}
@@ -4039,7 +4090,7 @@ class KimiBrain:
             decision.adjustments = list(decision.adjustments) + [
                 "buys confirmed by a second run: %s" % ", ".join("%s +%s" % (s, _pct(w)) for s, w in sorted(kept.items()))]
             log.info("second run confirmed the buys %s", kept)
-            return decision
+            return decision, attempt_no
         new_t[self.safe] = new_t.get(self.safe, 0.0) + sum(cut.values())
         obj = dict(obj1, targets=dict((s, w) for s, w in new_t.items() if w > 1e-12), cash_irt=decision.cash_irt)
         try:
@@ -4059,8 +4110,15 @@ class KimiBrain:
             decision.targets, decision.cash_irt, decision.hold = v["targets"], round(v["cash_irt"], 8), v["hold"]
             decision.plans, decision.exits = dict(v.get("plans") or {}), v["exits"]
         decision.adjustments = list(decision.adjustments) + [note]
+        final_buys = any(decision.targets.get(s, 0.0) > cur.get(s, 0.0) + 1e-9 for s in buys)
+        final_weights = ["%s %s" % (s, _pct(w)) for s, w in sorted(decision.targets.items()) if w > 1e-6]
+        if decision.cash_irt > 1e-6:
+            final_weights.append(u"تومان %s" % _pct(decision.cash_irt))
+        decision.report_fa = sanitize_report_fa(
+            (u"بخشی از خرید پیشنهادی در بررسی دوم تأیید نشد. " if final_buys else
+             u"خرید جدید در بررسی دوم تأیید نشد. ") + u"ترکیب هدف نهایی: " + u"، ".join(final_weights) + u".")
         log.warning("Kimi decision: %s", note)
-        return decision
+        return decision, attempt_no
 
     @staticmethod
     def _parse_reply(raw, res):

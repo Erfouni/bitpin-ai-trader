@@ -2627,6 +2627,44 @@ class TestLadderReviewNotify(Base):
         n.step()
         self.assertIn("پژوهش اخبار دوباره کار می‌کند", "\n".join(self.tg.texts()))
 
+    def test_degraded_headlines_preserve_news_model_outage_and_repeat_pacing(self):
+        n = self.started()
+        cache = {"brief": {"ok": True, "degraded": True, "fetched_at": T0,
+                            "source_kind": "feed_headlines"},
+                 "last_model_success_at": T0 - 24 * 3600, "last_error": "HTTP 400 content_filter",
+                 "last_error_at": T0, "error_since": T0 - 5 * 3600}
+        self.write_json("news_cache.json", cache)
+        n.step()
+        self.assertEqual(sum("پژوهش اخبار مدتی است" in x for x in self.tg.texts()), 1)
+        status = n.status_text(self.clock.t)
+        self.assertIn("اخبار: ⚠️", status)
+        self.assertNotIn("اخبار: ✅", status)
+        self.clock.t = T0 + 20 * 3600
+        n.step()
+        self.assertEqual(sum("پژوهش اخبار مدتی است" in x for x in self.tg.texts()), 1)
+        cache["brief"]["fetched_at"] = self.clock.t
+        cache["last_error_at"] = self.clock.t
+        self.write_json("news_cache.json", cache)
+        n.step()
+        self.assertEqual(sum("پژوهش اخبار مدتی است" in x for x in self.tg.texts()), 2)
+        self.assertFalse(any("پژوهش اخبار دوباره کار می‌کند" in x for x in self.tg.texts()))
+        self.write_json("news_cache.json", {"brief": {"ok": True, "fetched_at": self.clock.t},
+                                            "last_model_success_at": self.clock.t, "last_error": "",
+                                            "last_error_at": None, "error_since": None})
+        n.step()
+        self.assertTrue(any("پژوهش اخبار دوباره کار می‌کند" in x for x in self.tg.texts()))
+
+    def test_degraded_headlines_without_prior_model_success_never_report_recovery(self):
+        n = self.started()
+        self.write_json("news_cache.json", {"brief": {"ok": True, "degraded": True, "fetched_at": T0},
+                                            "last_error": "HTTP 400 content_filter", "last_error_at": T0,
+                                            "error_since": T0 - 5 * 3600})
+        n.step()
+        text = "\n".join(self.tg.texts())
+        self.assertIn("پژوهش اخبار مدتی است", text)
+        self.assertIn("هنوز هیچ خلاصهٔ خبری موفقی ثبت نشده است", text)
+        self.assertNotIn("آخرین خلاصهٔ موفق", text)
+
     def test_stop_texts_say_the_crash_bids_are_cancelled(self):
         with open(notify.__file__, encoding="utf-8") as f:
             src = f.read()

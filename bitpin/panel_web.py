@@ -1931,6 +1931,9 @@ class PanelApp(object):
             meta.append(code(nv.get("model")))
         if meta:
             out.append('<p class="muted small">%s</p>' % " &middot; ".join(meta))
+        if nv.get("degraded"):
+            out.append(box("warn", te("Degraded news: feed headlines only. The news model is unavailable; "
+                                      "no summary or implications were generated.")))
         err_at, made = nv.get("last_error_at"), nv.get("fetched_at")
         if nv.get("last_error") and _is_num(err_at) and (not _is_num(made) or err_at >= made):
             out.append(box("warn", tr("The last news attempt failed (%s): %s") % (fmt_time(err_at),

@@ -184,6 +184,7 @@ DEFAULT_CONTEXT_CONFIG = {
     "matches": False,
     # Opt-in read-only daily observations from the independent public collector. None = unchanged baseline.
     "public_flow_snapshot": None,
+    "defi_daily_snapshot": None,
     "market_status": True,
     "max_spread_pct": 1.0,
     "build_time_budget_seconds": 120,
@@ -1533,8 +1534,19 @@ class MarketContextBuilder:
             # retaining an explicit historical/simulation clock rather than substituting wall time.
             flow_now = now + max(0.0, self.monotonic() - t_started)
             ctx["public_flow"] = load_public_flow(self.cfg["public_flow_snapshot"], flow_now, self.cfg["universe"])
+        if self.cfg.get("defi_daily_snapshot"):
+            from .defi_context import load_defi_daily
+            defi_now = now + max(0, self.monotonic() - t_started)
+            ctx["defi_daily"] = load_defi_daily(self.cfg["defi_daily_snapshot"], defi_now)
         ctx = clean(ctx)
-        return self._shrink(ctx)
+        ctx = self._shrink(ctx)
+        if "defi_daily" in ctx:
+            from .defi_context import recheck_freshness
+            ctx["defi_daily"] = recheck_freshness(ctx["defi_daily"],
+                                                  now + max(0, self.monotonic() - t_started))
+            # Receipt age labels can grow during the final check (9.9 -> 10.1).
+            ctx = self._shrink(ctx)
+        return ctx
 
     # ---- the anti-pump buy guard
     def _mark_pumps(self, symbols, bars, usdt_ts, usdt_close, now):
@@ -2115,12 +2127,33 @@ class MarketContextBuilder:
         limit = int(self.cfg.get("max_context_chars") or 0)
         if not limit or len(dumps(ctx)) <= limit:
             return ctx
-        steps = []
+        steps = list(ctx.get("truncated") or [])
+        def fits():
+            return len(dumps(dict(ctx, truncated=steps))) <= limit
+
+        # Retain the six global daily indicators first when optional chain detail cannot fit.
+        defi = ctx.get("defi_daily") or {}
+        sources = defi.get("sources") or {}
+        if any(not k.endswith(":global") for k in sources):
+            defi["sources"] = {k: v for k, v in sources.items() if k.endswith(":global")}
+            defi["available_sources"] = sum(v.get("status") == "ok" for v in defi["sources"].values())
+            defi["omitted_chain_sources"] = len(sources) - len(defi["sources"])
+            steps.append("defi_daily_chains")
+            if fits():
+                ctx["truncated"] = steps
+                return ctx
         # Optional unvalidated observations must not crowd out existing strategy/portfolio context.
         if "public_flow" in ctx:
             ctx.pop("public_flow")
             steps.append("public_flow")
-            if len(dumps(ctx)) <= limit:
+            if fits():
+                ctx["truncated"] = steps
+                return ctx
+
+        if "defi_daily" in ctx:
+            ctx.pop("defi_daily")
+            steps.append("defi_daily")
+            if fits():
                 ctx["truncated"] = steps
                 return ctx
 
@@ -2146,7 +2179,7 @@ class MarketContextBuilder:
                          ("adjusted", drop_adjusted)):
             fn(ctx)
             steps.append(name)
-            if len(dumps(ctx)) <= limit:
+            if fits():
                 break
         ctx["truncated"] = steps
         return ctx
@@ -2215,6 +2248,10 @@ def validate_context_config(config):
         from .flow_context import snapshot_path_valid
         if not snapshot_path_valid(cfg["public_flow_snapshot"]):
             raise ConfigError("context.public_flow_snapshot must be null or an absolute path to snapshot.json")
+    if cfg["defi_daily_snapshot"] is not None:
+        from .defi_context import snapshot_path_valid as defi_path_valid
+        if not defi_path_valid(cfg["defi_daily_snapshot"]):
+            raise ConfigError("context.defi_daily_snapshot must be null or an absolute path to defi-daily.json")
     cfg["max_spread_pct"] = check_number("context.max_spread_pct", cfg["max_spread_pct"], 0, 50, lo_open=True)
     cfg["build_time_budget_seconds"] = check_number("context.build_time_budget_seconds",
                                                     cfg["build_time_budget_seconds"], 10, 3600)

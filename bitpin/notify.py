@@ -3993,8 +3993,10 @@ class Notifier:
         f = self._flag("news")
         err = str(nc.get("last_error") or "")
         err_at = _fnum(nc.get("last_error_at"))
-        fetched = _fnum(_dict(nc.get("brief")).get("fetched_at"))
-        down = bool(err) and err_at is not None and (fetched is None or err_at > fetched)
+        brief = _dict(nc.get("brief"))
+        degraded = brief.get("degraded") is True
+        fetched = _fnum(nc.get("last_model_success_at") if degraded else brief.get("fetched_at"))
+        down = bool(err) and err_at is not None and (degraded or fetched is None or err_at > fetched)
         if down:
             if not f.get("first"):
                 f["first"] = now
@@ -4572,9 +4574,11 @@ class Notifier:
             L.append("• Kimi: %s" % ("✅ سالم" if since is None else "⚠️ بدون تصمیم معتبر از %s" % fmt_when(since)))
         nc = self._read_json("news_cache")
         if isinstance(nc, dict):
-            fetched = _fnum(_dict(nc.get("brief")).get("fetched_at"))
+            brief = _dict(nc.get("brief"))
+            degraded = brief.get("degraded") is True
+            fetched = _fnum(nc.get("last_model_success_at") if degraded else brief.get("fetched_at"))
             err_at = _fnum(nc.get("last_error_at"))
-            if err_at and (fetched is None or err_at > fetched):
+            if err_at and (degraded or fetched is None or err_at > fetched):
                 L.append("• اخبار: ⚠️ آخرین تلاش ناموفق (%s)" % fmt_hm(err_at))
             elif fetched:
                 L.append("• اخبار: ✅ آخرین خلاصه %s" % fmt_hm(fetched))

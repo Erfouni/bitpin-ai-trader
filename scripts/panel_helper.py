@@ -1186,12 +1186,17 @@ def news_view(nc):
                                      int(m.group(5)), 0, 0, 0, 0))
             except (ValueError, OverflowError):
                 pass
-        items.append({"headline": it.get("headline") or "", "why": it.get("why_it_matters") or "", "time": t,
+        items.append({"headline": it.get("headline") or "", "why": "" if b.degraded else it.get("why_it_matters") or "", "time": t,
                       "site": nm.source_host(it.get("source_url") or ""), "link": it.get("link") or ""})
     feeds = nm.clean_feed_stats(nc.get("feeds")) if isinstance(nc.get("feeds"), dict) else \
         (dict(b.feeds) if good and b.feeds else {})
     return {"fetched_at": b.fetched_at if good else None, "mode": b.mode if good else None,
-            "model": b.model if good else "", "summary": b.summary if good else "", "items": items,
+            "model": b.model if good and not b.degraded else "",
+            "summary": b.summary if good and not b.degraded else "", "items": items,
+            "degraded": bool(good and b.degraded), "source_kind": b.source_kind if good else "",
+            "failure_kind": b.failure_kind if good else "",
+            "underlying_failure": nm.safe_reason(b.underlying_failure or b.error) if good and b.degraded else "",
+            "last_model_success_at": nm._fnum(nc.get("last_model_success_at")),
             "dropped": b.dropped if good else 0, "feeds": feeds, "feeds_at": nm._fnum(nc.get("feeds_at")),
             "last_error": nm._clean_text(nc.get("last_error"), 300) if nc.get("last_error") else "",
             "last_error_at": nm._fnum(nc.get("last_error_at"))}
