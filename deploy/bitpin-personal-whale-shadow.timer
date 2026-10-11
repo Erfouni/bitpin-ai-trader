@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly public personal ETH wallet research observations
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=1h
+AccuracySec=30s
+Unit=bitpin-personal-whale-shadow.service
+
+[Install]
+WantedBy=timers.target
