@@ -4,6 +4,17 @@
 
 ---
 
+## 3.14.1 — رفع اختلال منبع موجودی اتریوم (2026-10-12)
+
+منبع دوم موجودی اتریوم به درگاه عمومی و بدون کلید dRPC تغییر کرد. توافق دو منبع در همان بلاک نهایی‌شده،
+موجودی دقیق هر سه آدرس، بررسی تاریخچه و شرط تازگی حفظ شدند. پنل و گزارش، نام منبع واقعی را نشان می‌دهند.
+
+- Replace the timing-out Flashbots state-read endpoint with the documented keyless dRPC gateway.
+  Keep common finalized anchors, exact wei agreement, previous-anchor checks, reorg epochs, cooldowns and the 20-request cap.
+- Accept only the current PublicNode/dRPC or legacy PublicNode/Flashbots receipt pair; exclude unknown or mixed providers.
+  Preserve original SQLite history and legacy source labels. Two gateway responses do not prove independent upstream operators.
+- No live settings or owner confirmation are changed. See [source diagnosis and recovery](docs/ETH_RPC_RECOVERY.md).
+
 ## 3.14.0 — شواهد عمومی در تحلیل واقعی، با فعال‌سازی مالک (2026-10-12)
 
 مسیر اختیاری مشاهدات کیف‌پول به تحلیل واقعی کیمی اضافه شد. دادهٔ تازه و معتبر می‌تواند تحلیل روزانه را تأیید یا رد کند؛

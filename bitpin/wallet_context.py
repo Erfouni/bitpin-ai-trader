@@ -193,7 +193,18 @@ def _envelope(doc, personal, now):
             doc['receipt_age_seconds'] != generated - received:
         raise ValueError('inconsistent collector clock')
     anchor = _anchor(doc['anchor'], personal, received, now)
-    providers = ('publicnode', 'flashbots') if personal else ('blockstream', 'mempool')
+    providers = ('blockstream', 'mempool')
+    if personal:
+        if not isinstance(doc['sources'], dict):
+            raise ValueError('provider identity mismatch')
+        # Keep successful legacy receipts readable without accepting arbitrary
+        # gateways or a mixed three-source envelope after the secondary change.
+        if set(doc['sources']) == {'publicnode', 'drpc'}:
+            providers = ('publicnode', 'drpc')
+        elif set(doc['sources']) == {'publicnode', 'flashbots'}:
+            providers = ('publicnode', 'flashbots')
+        else:
+            raise ValueError('provider identity mismatch')
     key = 'finalized_height' if personal else 'tip_height'
     if not isinstance(doc['sources'], dict) or set(doc['sources']) != set(providers):
         raise ValueError('provider identity mismatch')

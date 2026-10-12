@@ -68,7 +68,9 @@ def render_report(snapshot):
         measured += int(good and row.get('status') == 'ok' and row.get('balance_wei') is not None)
         cards.append(wallet_card(wallet, row, good, index))
     sources = []
-    for key, title in (('publicnode', 'PublicNode'), ('flashbots', 'Flashbots')):
+    secondary = ('flashbots', 'Flashbots') if 'flashbots' in snapshot.get('sources', {}) \
+        and 'drpc' not in snapshot.get('sources', {}) else ('drpc', 'dRPC')
+    for key, title in (('publicnode', 'PublicNode'), secondary):
         row = snapshot.get('sources', {}).get(key, {})
         sources.append('<div class="source"><span class="dot %s"></span><div><b>%s</b><small>%s · finalized height %s</small></div></div>' %
                        ('green' if row.get('status') == 'ok' and good else '', title, esc(row.get('status', 'missing')),

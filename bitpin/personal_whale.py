@@ -15,7 +15,7 @@ from .defi_daily import DailyLock, atomic_text
 from .personal_wallets import ADDRESSES, WALLETS
 
 ADDRESS = WALLETS[0]['address']
-PROVIDERS = {'publicnode': 'https://ethereum-rpc.publicnode.com', 'flashbots': 'https://rpc.flashbots.net'}
+PROVIDERS = {'publicnode': 'https://ethereum-rpc.publicnode.com', 'drpc': 'https://eth.drpc.org'}
 ATTRIBUTION = dict(WALLETS[0]['attribution'])
 MARKER = '.personal-whale-shadow-state'
 MARKER_TEXT = 'personal-ethereum-wallet-shadow-v1\n'
@@ -230,7 +230,7 @@ class PersonalCollector:
         record['status'] = 'error'
         if len(heads) == 2:
             try:
-                if abs(heads['publicnode']['number'] - heads['flashbots']['number']) > 128:
+                if abs(heads['publicnode']['number'] - heads['drpc']['number']) > 128:
                     raise ValueError('finalized heads too far apart')
                 height = min(row['number'] for row in heads.values())
                 rollback = previous and previous.get('anchor') and height < previous['anchor']['number']
@@ -247,8 +247,8 @@ class PersonalCollector:
                         old_height = previous['anchor']['number']
                         old[provider] = block(self.call(provider, 'eth_getBlockByNumber', [hex(old_height), False]), self.clock(), fresh=False)
                         if old[provider]['number'] != old_height: raise ValueError('wrong previous height')
-                if anchors['publicnode'] != anchors['flashbots'] or balances['publicnode'] != balances['flashbots'] or \
-                        (old and old['publicnode'] != old['flashbots']):
+                if anchors['publicnode'] != anchors['drpc'] or balances['publicnode'] != balances['drpc'] or \
+                        (old and old['publicnode'] != old['drpc']):
                     record['status'] = 'disputed'
                 else:
                     anchor = anchors['publicnode']

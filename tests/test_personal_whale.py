@@ -32,7 +32,7 @@ class FakeClient:
 
     def call(self, provider, method, params):
         self.calls.append((provider, method, copy.deepcopy(params)))
-        if self.bad == provider or (self.late and provider == 'flashbots' and len(self.calls) >= 9):
+        if self.bad == provider or (self.late and provider == 'drpc' and len(self.calls) >= 9):
             raise pw.PublicDataError('unavailable', 7200, 429)
         if method == 'eth_chainId': return '0x1'
         if method == 'eth_getBlockByNumber':
@@ -43,7 +43,7 @@ class FakeClient:
             elif params[0] in self.balances: balance = self.balances[params[0]]
             else: raise AssertionError('unexpected wallet')
             mismatch = self.disagree or params[0] == self.disagree_address
-            return hex(balance + (1 if mismatch and provider == 'flashbots' else 0))
+            return hex(balance + (1 if mismatch and provider == 'drpc' else 0))
         raise AssertionError('unexpected call')
 
 
@@ -78,7 +78,7 @@ class PersonalWhale(unittest.TestCase):
         self.assertEqual(len(reads), 6)
         self.assertEqual({row[2][1] for row in reads}, {hex(51400)})
         for address in (pw.ADDRESS, PATRICIO, ARTHUR):
-            self.assertEqual({row[0] for row in reads if row[2][0] == address}, {'publicnode', 'flashbots'})
+            self.assertEqual({row[0] for row in reads if row[2][0] == address}, {'publicnode', 'drpc'})
 
     def test_cohort_exact_balances_and_vitalik_scalar_compatibility(self):
         result = self.collect()
@@ -205,7 +205,7 @@ class PersonalWhale(unittest.TestCase):
         result = self.collect()
         self.assertEqual(result['status'], 'error')
         self.assertEqual(result['sources']['publicnode']['status'], 'error')
-        self.assertEqual(result['sources']['flashbots']['status'], 'ok')
+        self.assertEqual(result['sources']['drpc']['status'], 'ok')
         self.assertEqual(self.store.cooldown('publicnode'), NOW + 7200)
         before = len(self.client.calls)
         result = self.collect()
@@ -219,8 +219,8 @@ class PersonalWhale(unittest.TestCase):
         result = self.collect()
         self.assertEqual(result['status'], 'error')
         self.assertIsNone(result['balance_wei'])
-        self.assertEqual(result['sources']['flashbots']['status'], 'error')
-        self.assertGreater(self.store.cooldown('flashbots'), NOW)
+        self.assertEqual(result['sources']['drpc']['status'], 'error')
+        self.assertGreater(self.store.cooldown('drpc'), NOW)
 
     def test_interrupted_collection_publishes_unknown_before_requests(self):
         self.collect()

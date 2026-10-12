@@ -102,9 +102,9 @@ class PersonalCLI(unittest.TestCase):
 
     def test_503_retry_after_preserved(self):
         opener=Mock()
-        opener.open.side_effect=urllib.error.HTTPError('https://rpc.flashbots.net',503,'unavailable',{'Retry-After':'7200'},io.BytesIO(b''))
+        opener.open.side_effect=urllib.error.HTTPError('https://eth.drpc.org',503,'unavailable',{'Retry-After':'7200'},io.BytesIO(b''))
         with self.assertRaises(pw.PublicDataError) as caught:
-            pw.PersonalClient(opener).call('flashbots','eth_chainId',[])
+            pw.PersonalClient(opener).call('drpc','eth_chainId',[])
         self.assertEqual(caught.exception.retry_after,7200)
 
     def test_wrong_chain_or_stale_head_hides_metrics(self):
@@ -115,7 +115,7 @@ class PersonalCLI(unittest.TestCase):
                     client=FakeClient(); original=client.call
                     def changed(provider,method,params):
                         result=original(provider,method,params)
-                        if provider=='flashbots':
+                        if provider=='drpc':
                             if condition=='chain' and method=='eth_chainId': return '0x2'
                             if condition=='stale' and method=='eth_getBlockByNumber': return head(timestamp=NOW-7201)
                             if condition=='lag' and params==['finalized',False]: return head(number=1000)

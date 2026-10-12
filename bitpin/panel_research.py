@@ -262,9 +262,16 @@ def collect(app_dir, now):
         if not isinstance(rows, list):
             rows = [doc] if source == 'personal_whale' else []
         by_address = {r.get('address'): r for r in rows[:24] if isinstance(r, dict) and isinstance(r.get('address'), str)}
+        provider_rows = _obj(doc.get('sources'))
+        provider_keys = ('blockstream', 'mempool')
+        if source == 'personal_whale':
+            provider_keys = next((pair for pair in (('publicnode', 'drpc'), ('publicnode', 'flashbots'))
+                                  if set(provider_rows) == set(pair)), ())
         for index, wallet in enumerate(catalog):
             original = _obj(by_address.get(wallet['address']))
             source_status = result['sources'][source]['status']
+            if source == 'personal_whale' and provider_rows and not provider_keys:
+                source_status = 'invalid'
             wallet_status = (_text(original.get('status')) or 'ok') if original else 'missing'
             usable = source_status == 'ok' and wallet_status == 'ok'
             row = {'address': wallet['address'], 'person': wallet.get('person', ''), 'index': index,
@@ -274,9 +281,8 @@ def collect(app_dir, now):
             for interval in ('24h', '7d'):
                 key = 'change_' + interval + ('_wei' if source == 'personal_whale' else '_sats')
                 row[key] = _int(original.get(key), True) if usable else None
-            row['provider_statuses'] = {k: _text(_obj(_obj(doc.get('sources')).get(k)).get('status')) or 'missing'
-                                       for k in (('publicnode', 'flashbots') if source == 'personal_whale' else
-                                                 ('blockstream', 'mempool'))}
+            row['provider_statuses'] = {k: _text(_obj(provider_rows.get(k)).get('status')) or 'missing'
+                                       for k in provider_keys}
             result[output].append(row)
     strategy = docs['strategy']
     packets = list(_obj(strategy.get('packets')).values())[:24]

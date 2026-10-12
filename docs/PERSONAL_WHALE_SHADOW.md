@@ -6,6 +6,11 @@ Both PublicNode and Flashbots returned 224,209.106255644280552032 native ETH for
 
 ## Daily observations
 
+As of 3.14.1, production uses PublicNode and the keyless public dRPC gateway after repeated Flashbots balance-read
+timeouts. The historical probe above retains its original source attribution. Current and legacy receipt pairs are
+recognized explicitly; gateway agreement does not prove independent underlying operators. See
+[diagnosis, constraints and recovery](ETH_RPC_RECOVERY.md).
+
 The pilot records exact integer wei, receipt and block timestamps, and each wallet's observed 24-hour/seven-day native-ETH stock changes. A reference must contain that wallet's measured balance in a successful observation in the same chain epoch within one hour of the receipt target. Each row includes the prior balance, receipt, anchor and actual receipt/block elapsed times. New history is unknown until roughly a day/week has elapsed. A measured zero is a real reference; a missing balance is unknown. Changes include transfers, fees and funding; they do not establish buying/selling, exchange deposits, donations, motives or gross inflow/outflow. ERC-20 assets, staking, DeFi positions and other wallets are excluded. No transaction history, trading trigger, calibrated whale threshold or predictive-edge claim is included.
 
 The original `address`, `attribution`, `balance_wei`, `change_24h_wei`, `change_7d_wei` and interval scalar fields retain their Vitalik meanings. The additive `wallets` array contains all three reviewed rows. Existing SQLite records remain intact: only Vitalik can inherit the old scalar balance. Missing Patricio/Arthur balances and references are not populated from the research probe, guessed, zero-filled or backdated. The old CLI options and exit codes remain supported.

@@ -52,6 +52,34 @@ class ResearchTests(unittest.TestCase):
     def collect(self):
         return research.collect(self.tmp, NOW)
 
+    def test_personal_provider_projection_and_render_preserve_current_and_legacy_identity(self):
+        for secondary in ('drpc', 'flashbots'):
+            self.write('personal_whale', {'generated_at': NOW, 'received_at': NOW, 'status': 'ok',
+                'sources': {'publicnode': {'status': 'ok'}, secondary: {'status': 'ok'}},
+                'wallets': [{'address': research.WALLETS[0]['address'], 'status': 'ok', 'balance_wei': 123}]})
+            with self.subTest(secondary=secondary):
+                data = self.collect()
+                self.assertEqual(data['wallets'][0]['provider_statuses'], {'publicnode': 'ok', secondary: 'ok'})
+                with use('en'):
+                    rendered = research.render(data)
+                self.assertTrue(secondary in rendered)
+                retired = 'flashbots' if secondary == 'drpc' else 'drpc'
+                self.assertFalse(retired in rendered, 'wallet card shows a gateway that did not supply this receipt')
+
+    def test_personal_provider_projection_rejects_mixed_or_unknown_gateway_sets(self):
+        for secondary in ('unknown', 'three'):
+            sources = {'publicnode': {'status': 'ok'}, 'drpc': {'status': 'ok'}}
+            if secondary == 'unknown':
+                sources['unknown'] = sources.pop('drpc')
+            else:
+                sources['flashbots'] = {'status': 'ok'}
+            self.write('personal_whale', {'generated_at': NOW, 'received_at': NOW, 'status': 'ok', 'sources': sources})
+            with self.subTest(secondary=secondary):
+                row = self.collect()['wallets'][0]
+                self.assertEqual(row['provider_statuses'], {})
+                self.assertEqual(row['status'], 'invalid')
+                self.assertIsNone(row['balance_wei'])
+
     def test_missing_delivery_receipt_is_unknown_without_changing_public_sources(self):
         data = self.collect()
         self.assertIn('live_delivery', data)
