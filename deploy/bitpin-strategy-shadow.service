@@ -1,0 +1,35 @@
+[Unit]
+Description=Bitpin prospective public evidence archive (research only)
+After=bitpin-flow-public.service
+
+[Service]
+Type=oneshot
+User=bitpin-flow
+Group=bitpin-flow
+WorkingDirectory=/opt/bitpin-strategy-shadow
+ExecStart=/usr/bin/python3 -B scripts/strategy_shadow.py --state-dir /var/lib/bitpin-strategy-shadow
+Environment=TZ=UTC PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+TimeoutStartSec=1min
+StateDirectory=bitpin-strategy-shadow
+StateDirectoryMode=0755
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+InaccessiblePaths=-/etc/bitpin-bot -/var/lib/bitpin-bot -/var/lib/bitpin-bot-paper -/opt/bitpin-bot -/opt/xray
+ReadOnlyPaths=/var/lib/bitpin-flow-public /var/lib/bitpin-defi-shadow /var/lib/bitpin-whale-shadow /var/lib/bitpin-personal-whale-shadow
+ReadWritePaths=/var/lib/bitpin-strategy-shadow
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryMax=192M
+CPUQuota=20%

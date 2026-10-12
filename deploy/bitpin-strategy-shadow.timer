@@ -1,0 +1,11 @@
+[Unit]
+Description=Hourly prospective public evidence archive
+
+[Timer]
+OnBootSec=7min
+OnUnitInactiveSec=1h
+AccuracySec=30s
+Unit=bitpin-strategy-shadow.service
+
+[Install]
+WantedBy=timers.target

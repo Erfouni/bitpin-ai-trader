@@ -1,4 +1,4 @@
-"""Observe one publicly attributed personal ETH Safe, with no trading access."""
+"""Observe a small publicly attributed ETH wallet cohort, with no trading access."""
 import argparse
 from pathlib import Path
 import sqlite3
@@ -26,7 +26,8 @@ def main(argv=None, client=None, clock=time.time, sleeper=time.sleep):
                 snapshot = store.snapshot(clock()) if args.report_only else \
                     PersonalCollector(store, client=client, clock=clock, sleeper=sleeper).collect(publish)
                 publish(snapshot)
-                print('personal-whale-shadow status=%s wallets=1 orders=0 model_calls=0 live_enabled=false' % snapshot['status'], flush=True)
+                print('personal-whale-shadow status=%s wallets=%d orders=0 model_calls=0 live_enabled=false' %
+                      (snapshot['status'],len(snapshot.get('wallets') or [{}])), flush=True)
                 return 0 if snapshot['status'] == 'ok' else 1
             finally:
                 store.close()
