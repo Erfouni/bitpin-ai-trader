@@ -2168,12 +2168,9 @@ class DeployKitTest(unittest.TestCase):
         self.assertIn('run_sd="$PAPER_STATE_DIR"', h)      # "run paper ..." never touches the live state
 
     def test_update_prunes_failed_copies_and_the_kit_never_ships_the_key_tool(self):
-        """A failed update leaves $APP_DIR.failed-<stamp>; nothing used to delete those. And
+        """Failed-copy retention is exercised by the real shell harness in test_ops_review.
         scripts/kimi_check.py would prompt for the Kimi key and write it in cleartext next to itself,
         a second secret location the deploy kit says does not exist."""
-        upd = self.read("deploy", "update.sh")
-        self.assertIn('"$APP_DIR".failed-*', upd)
-        self.assertIn("removed old failed-update copy", upd)
         lib = self.read("deploy", "lib.sh")
         self.assertIn("--exclude='./scripts/kimi_check.py'", lib)
         # update.sh runs this suite inside the STAGED copy, which leaves the tool out on purpose: there

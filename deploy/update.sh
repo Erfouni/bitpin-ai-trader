@@ -14,7 +14,8 @@
 #      accepts its live confirmation (confirm-live --check). If any of this fails the update stops
 #      here and the running bot is not touched.
 #   3. stop bitpin-bot / bitpin-bot-paper if they are running
-#   4. move /opt/bitpin-bot to /opt/bitpin-bot.bak-<UTC time> (the 3 newest backups are kept)
+#   4. move /opt/bitpin-bot to /opt/bitpin-bot.bak-<UTC time> (3 timestamp backups are kept;
+#      the immediately previous version is protected, even if the clock moved backwards)
 #      and put the new code in place
 #   5. install changed unit files (old copies in /var/backups/bitpin-bot), daemon-reload; the v3 ops files
 #      (needrestart exclusion, logrotate, the backup timer) idempotently
@@ -34,7 +35,9 @@
 # it again (sudo systemctl start bitpin-bot). While it is stopped its resting crash-ladder bids stay on
 # Bitpin and nothing enforces the code exits of what they buy.
 #
-# Rollback (--rollback) puts the newest /opt/bitpin-bot.bak-* back. It is REFUSED (nothing changed) when
+# Only real directories named .bak-YYYYMMDD-HHMMSS / .failed-YYYYMMDD-HHMMSS are managed.
+# Custom/manual copies, regular files and symlinks are preserved and never selected by --rollback.
+# Rollback (--rollback) puts the newest timestamp backup back. It is REFUSED (nothing changed) when
 #   * the previous code rejects the CURRENT /etc/bitpin-bot/config.json / kimi.json - after
 #     apply_profile.py they hold settings the older version does not know, and it would exit 78 at every
 #     start: restore the *.before-profile copies from /var/backups/bitpin-bot first;
@@ -230,21 +233,46 @@ settle_notifier() {
     warn "the restored version has no usable Telegram notifier: its units were stopped and disabled (trading is not affected; enable it again after the next update: docs/TELEGRAM_FA.md)"
 }
 
-prune_backups() {
-    local -a all
-    local i n
-    mapfile -t all < <(ls -1d "$APP_DIR".bak-* 2>/dev/null | sort)
+# Shared eligibility and ordering for retention and rollback. A moved directory keeps its old mtime;
+# the timestamp in the standard backup name is the save time. Do not use arbitrary .bak-* labels or
+# ls output as a chronology. Bash's C-locale glob order is oldest first, preserving complete paths.
+code_copies() {  # bak|failed; fills CODE_COPIES (oldest timestamp first)
+    local kind="$1" path
+    local LC_ALL=C
+    CODE_COPIES=()
+    for path in "$APP_DIR"."$kind"-????????-??????; do
+        [[ "${path#"$APP_DIR.$kind-"}" =~ ^[0-9]{8}-[0-9]{6}$ ]] || continue
+        [ -d "$path" ] && [ ! -L "$path" ] || continue
+        CODE_COPIES+=("$path")
+    done
+}
+
+prune_backups() {  # [PROTECTED_BACKUP: the version needed by this update's auto-rollback]
+    local protected="${1:-}" path
+    local -a all=()
+    local i n slots="$KEEP_BACKUPS"
+    code_copies bak
+    all=("${CODE_COPIES[@]}")
     n=${#all[@]}
     if [ "$n" -gt "$KEEP_BACKUPS" ]; then
-        for ((i = 0; i < n - KEEP_BACKUPS; i++)); do
-            rm -rf "${all[$i]:?}"
-            info "removed old code backup ${all[$i]}"
+        for path in "${all[@]}"; do
+            [ "$path" != "$protected" ] || slots=$((slots - 1))
+        done
+        for ((i = n - 1; i >= 0; i--)); do
+            [ "${all[$i]}" != "$protected" ] || continue
+            if [ "$slots" -gt 0 ]; then
+                slots=$((slots - 1))
+            else
+                rm -rf "${all[$i]:?}"
+                info "removed old code backup ${all[$i]}"
+            fi
         done
     fi
     # restore_backup parks the rejected code in $APP_DIR.failed-<stamp>. Nothing else ever removes
     # those, so a few failed updates would leave an unbounded number of full copies in /opt (~40 MB
     # each with --with-data) on a small VPS that runs other services too. Keep only the newest.
-    mapfile -t all < <(ls -1d "$APP_DIR".failed-* 2>/dev/null | sort)
+    code_copies failed
+    all=("${CODE_COPIES[@]}")
     n=${#all[@]}
     if [ "$n" -gt 1 ]; then
         for ((i = 0; i < n - 1; i++)); do
@@ -317,9 +345,12 @@ restore_backup() {  # BACKUP UNITS...
 
 rollback() {  # FORCE(0/1)
     local force="${1:-0}" last running n
+    local -a backups=()
     IN_ROLLBACK=1
-    last="$(ls -1d "$APP_DIR".bak-* 2>/dev/null | sort | tail -n 1 || true)"
-    [ -n "$last" ] || die "no backup found ($APP_DIR.bak-*)"
+    code_copies bak
+    backups=("${CODE_COPIES[@]}")
+    [ "${#backups[@]}" -gt 0 ] || die "no managed timestamp backup found ($APP_DIR.bak-YYYYMMDD-HHMMSS; manual copies and symlinks are ignored)"
+    last="${backups[${#backups[@]} - 1]}"
     info "rolling back to $last"
     # 1. The code being restored must accept the CURRENT settings files. After apply_profile.py they hold
     #    settings of the newer version (e.g. config.json "ladder", kimi.json llm "stream"): the old code
@@ -452,7 +483,7 @@ main() {
     mv "$stage" "$APP_DIR"
     compile_tree "$APP_DIR"
     ok "code updated; previous version saved as $backup"
-    prune_backups
+    prune_backups "$backup"
 
     # 5: units, helper, config files that are still missing (existing ones are kept)
     ensure_dirs

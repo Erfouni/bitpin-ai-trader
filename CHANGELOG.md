@@ -4,6 +4,19 @@
 
 ---
 
+## 3.15.1 — اصلاح نگهداری بک‌آپ و انتخاب نسخهٔ بازگشت (2026-10-12)
+
+بک‌آپ‌های دستی دیگر باعث حذف نسخهٔ قبل از نصب یا انتخاب اشتباه برای بازگشت نمی‌شوند.
+فقط پوشه‌های واقعی با نام استاندارد تاریخ‌دار مدیریت می‌شوند؛ سه بک‌آپ کد و یک نسخهٔ نصب ناموفق
+نگه‌داری می‌شود. نسخهٔ بلافاصلهٔ قبل از نصب، حتی با عقب رفتن ساعت، برای بازگشت خودکار محفوظ است.
+
+- Share timestamp-directory eligibility and C-locale chronological ordering between retention and rollback.
+  Preserve custom names, regular files and symlinks without counting or selecting them automatically.
+- Pin the update's immediate predecessor during pruning; use the name timestamp rather than the moved
+  directory's old modification time. Keep existing configuration and resting-order rollback checks.
+- Add real Bash filesystem regressions for mixed names, clock regression, failed-copy retention,
+  spaces, symlinks and automatic recovery through the update control flow. Trading settings are unchanged.
+
 ## 3.15.0 — بررسی ساختار‌یافتهٔ منابع در پاسخ کیمی (2026-10-12)
 
 ورودی هر درخواست، فهرست محدودِ شواهد با شناسه و واحد دارد. خروجی باید هر چهار منبع عمومی را

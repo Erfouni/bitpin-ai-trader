@@ -143,6 +143,163 @@ class RollbackHarness(unittest.TestCase):
         with open(p) as f:
             return f.read()
 
+    def code_copy(self, suffix, version="saved"):
+        """A complete synthetic code copy, with the same offline config checker as the old tree."""
+        path = self.app + suffix
+        shutil.copytree(self.bak, path)
+        with open(os.path.join(path, "VERSION"), "w") as f:
+            f.write(version)
+        return path
+
+    def test_manual_backup_names_cannot_evict_the_latest_timestamp_backups(self):
+        managed = [self.code_copy(".bak-2035010%d-000000" % day) for day in range(1, 5)]
+        manual = [self.code_copy(".bak-" + name) for name in ("eth-recovery", "live-evidence", "panel")]
+        # Moving an installed tree preserves its directory mtime: that is not the backup creation time.
+        os.utime(managed[-1], (1, 1))
+        rc, out = self.run_sh("prune_backups", posix(managed[-1]))
+        self.assertEqual(rc, 0, out)
+        self.assertEqual([os.path.isdir(p) for p in managed], [False, True, True, True], out)
+        self.assertTrue(all(os.path.isdir(p) for p in manual), out)
+
+    def test_rollback_selects_the_latest_managed_timestamp_not_a_manual_label(self):
+        latest = self.code_copy(".bak-20350104-000000", "latest")
+        self.code_copy(".bak-z-manual", "manual")
+        os.utime(latest, (1, 1))
+        rc, out = self.run_sh("rollback", "0")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.version(), "latest", out)
+        self.assertTrue(os.path.isdir(self.app + ".bak-z-manual"), out)
+
+    def test_rollback_refuses_when_only_manual_copies_exist(self):
+        manual = self.app + ".bak-z-manual"
+        os.rename(self.bak, manual)
+        rc, out = self.run_sh("rollback", "0")
+        self.assertEqual(rc, 1, out)
+        self.assertEqual(self.version(), "new", out)
+        self.assertTrue(os.path.isdir(manual), out)
+        self.assertNotIn("systemctl stop", self.calls())
+
+    def test_pruning_always_preserves_the_immediate_previous_tree_after_clock_regression(self):
+        future = [self.code_copy(".bak-2035010%d-000000" % day) for day in range(1, 5)]
+        rc, out = self.run_sh("prune_backups", posix(self.bak))
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(os.path.isdir(self.bak), out)
+        self.assertEqual([os.path.isdir(p) for p in future], [False, False, True, True], out)
+
+    def test_unmanaged_names_and_regular_files_are_not_pruned(self):
+        paths = [self.code_copy(suffix) for suffix in
+                 (".bak-99999999-999999-extra", ".bak-99999999", ".failed-z-manual")]
+        files = [self.app + ".bak-2035010%d-000000" % day for day in range(1, 5)]
+        for path in files:
+            with open(path, "w") as f:
+                f.write("not a code directory")
+        rc, out = self.run_sh("prune_backups")
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(os.path.isdir(self.bak), out)
+        self.assertTrue(all(os.path.isdir(p) for p in paths), out)
+        self.assertTrue(all(os.path.isfile(p) for p in files), out)
+
+    def test_failed_copy_retention_ignores_manual_labels(self):
+        failed = [self.code_copy(".failed-2035010%d-000000" % day) for day in range(1, 4)]
+        manual = self.code_copy(".failed-z-manual")
+        rc, out = self.run_sh("prune_backups")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual([os.path.isdir(p) for p in failed], [False, False, True], out)
+        self.assertTrue(os.path.isdir(manual), out)
+
+    def test_auto_rollback_can_restore_the_tree_after_retention_with_manual_backups(self):
+        for name in ("eth-recovery", "live-evidence", "panel"):
+            self.code_copy(".bak-" + name)
+        rc, out = self.run_sh("eval", 'prune_backups "$APP_DIR.bak-20260920-000000"; '
+                             'auto_rollback "$APP_DIR.bak-20260920-000000" 1')
+        self.assertEqual(rc, 1, out)  # a rolled-back update is still reported as a failed update
+        self.assertTrue(os.path.isdir(self.app), out)
+        self.assertEqual(self.version(), "old", out)
+        self.assertIn("update ROLLED BACK", out)
+
+    def test_main_update_passes_its_previous_tree_to_retention_before_auto_rollback(self):
+        for day in range(1, 5):
+            self.code_copy(".bak-2035010%d-000000" % day)
+        self.code_copy(".bak-z-manual")
+        # Run the real update/swap/retention/auto-rollback control flow. External host operations
+        # are replaced at their boundaries; actual directory moves and removals remain real.
+        script = r'''
+STAMP=20300101-000000
+require_root() { :; }
+check_systemd() { :; }
+getent() { :; }
+check_source_tree() { :; }
+check_python() { :; }
+stage_code() {
+    cp -R "$APP_DIR" "$2"
+    printf '%s' updated > "$2/VERSION"
+}
+syntax_check() { :; }
+normalize_tree() { :; }
+compile_tree() { :; }
+check_configs() { :; }
+ensure_dirs() { :; }
+install_config_files() { :; }
+install_ops_files() { :; }
+enable_backup_timer() { :; }
+drop_foreign_ops() { :; }
+restart_panel() { :; }
+# A bad new CLI is a normal automatic rollback trigger, even with no bot unit running.
+check_cli_flags() { return 1; }
+main --skip-tests
+'''
+        rc, out = self.run_sh("eval", script)
+        self.assertEqual(rc, 1, out)
+        self.assertTrue(os.path.isdir(self.app), out)
+        self.assertEqual(self.version(), "new", out)
+        self.assertIn("update ROLLED BACK", out)
+        self.assertTrue(os.path.isdir(self.app + ".bak-z-manual"), out)
+
+    def test_backup_retention_handles_an_app_path_containing_spaces(self):
+        new_app = os.path.join(self.t, "opt", "bot with spaces")
+        os.rename(self.app, new_app)
+        os.rename(self.bak, new_app + ".bak-20260920-000000")
+        for day in range(1, 5):
+            os.mkdir(new_app + ".bak-2035010%d-000000" % day)
+        rc, out = self.run_sh("eval", 'APP_DIR="$T/opt/bot with spaces"; prune_backups')
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(os.path.isdir(new_app), out)
+        self.assertEqual(sorted(n for n in os.listdir(os.path.dirname(new_app)) if ".bak-" in n),
+                         ["bot with spaces.bak-20350102-000000", "bot with spaces.bak-20350103-000000",
+                          "bot with spaces.bak-20350104-000000"], out)
+
+    def code_symlink(self):
+        target = os.path.join(self.t, "unrelated-code")
+        shutil.copytree(self.bak, target)
+        with open(os.path.join(target, "VERSION"), "w") as f:
+            f.write("unrelated")
+        link = self.app + ".bak-20360101-000000"
+        try:
+            os.symlink(target, link, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            self.skipTest("directory symlinks unavailable")
+        # Never let test cleanup recurse into a directory link on older Windows Python.
+        self.addCleanup(lambda: os.unlink(link) if os.path.islink(link) else None)
+        return link, target
+
+    def test_symlink_backups_are_not_counted_or_removed(self):
+        link, target = self.code_symlink()
+        managed = [self.code_copy(".bak-2035010%d-000000" % day) for day in range(1, 5)]
+        rc, out = self.run_sh("prune_backups")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual([os.path.isdir(p) for p in managed], [False, True, True, True], out)
+        self.assertTrue(os.path.islink(link), out)
+        self.assertTrue(os.path.isdir(target), out)
+
+    def test_rollback_does_not_select_a_timestamp_shaped_symlink(self):
+        link, target = self.code_symlink()
+        rc, out = self.run_sh("rollback", "0")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.version(), "old", out)
+        self.assertFalse(os.path.islink(self.app), out)
+        self.assertTrue(os.path.islink(link), out)
+        self.assertTrue(os.path.isdir(target), out)
+
     def test_a_backup_that_rejects_the_current_settings_is_not_restored(self):
         """Review finding (ops, high): after apply_profile.py the old code rejects config.json
         ("unknown config key 'ladder'") and kimi.json, exits 78 and never trades."""
