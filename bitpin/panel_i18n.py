@@ -98,6 +98,7 @@ def negotiate(accept_language):
 
 
 FA = {
+    "Research & data": "پژوهش و داده‌ها",
     # ---------------------------------------------------------------- layout, common words
     "Bitpin AI Trader": u"معامله‌گر بیت‌پین",
     "Control panel": u"پنل مدیریت",

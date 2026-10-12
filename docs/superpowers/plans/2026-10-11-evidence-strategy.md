@@ -99,6 +99,6 @@
 - [x] Save reproducible raw inputs privately and aggregate findings/research in docs; commit the feature branch locally.
 - [x] Deliver measured results with denominators, intervals and limitations. Distinguish implemented, tested, installed, fresh-Kimi-not-run and statistically-inconclusive work.
 
-- [ ] Owner chooses Git integration: merge into the known base, push/create PR, or retain the branch. No integration is automatic.
+- [x] Owner chose integration onto `main` and deployment to the bot with panel changes on 2026-10-12. The release procedure is in `docs/dev_notes/MAIN_PANEL_RELEASE_2026-10-12.md`.
 
 Fresh paid Kimi responses and predictive promotion are explicitly pending empirical work, not completed implementation claims. See `docs/dev_notes/EVIDENCE_STRATEGY_DELIVERY.md` for final findings, verification, rulings and limitations.

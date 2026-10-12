@@ -27,7 +27,9 @@ side is not trusted). What they may touch:
 * confirm-live: through the bitpin-bot command line (the same guards as by hand), with the phrase the
   owner typed in the panel;
 * v3.8.2 panel_cert: the panel's certificate and its renewal timer, read only (the Cloudflare token of
-  'bitpin-bot panel-cert' is never read).
+  'bitpin-bot panel-cert' is never read);
+* research: five fixed public collector snapshots and packaged aggregate research results only,
+  bounded regular files without symlinks, no arguments and no network or execution calls.
 
 Every command is logged to the journal (its name and result, never an argument value). Changes and
 panel logins are relayed to the Telegram notifier as small JSON files in its state directory
@@ -601,6 +603,13 @@ class Helper(object):
         if not isinstance(data, dict):
             raise HelperError("the performance report failed (exit %d): %s" % (rc, out.strip()[-200:]))
         return data
+
+    def cmd_research(self, a):
+        """Read fixed public receipts and packaged aggregate results; no request paths."""
+        if a:
+            raise HelperError("research takes no arguments")
+        from bitpin.panel_research import collect
+        return collect(self.p.app_dir, self.clock())
 
     def cmd_technical(self, a):
         """v3.8: the technical page - bitpin.technical.collect() of the last decision record (the exact indicators
@@ -1214,6 +1223,7 @@ COMMANDS = {
     "status": (False, Helper.cmd_status),
     "performance": (False, Helper.cmd_performance),
     "technical": (False, Helper.cmd_technical),
+    "research": (False, Helper.cmd_research),
     "panel_cert": (False, Helper.cmd_panel_cert),
     "config_get": (False, Helper.cmd_config_get),
     "secrets_status": (False, Helper.cmd_secrets_status),

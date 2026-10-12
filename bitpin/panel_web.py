@@ -27,7 +27,7 @@ Security model (the panel is reachable from the internet):
 * Every value shown is HTML-escaped; the CSP forbids inline scripts and styles (the panel has no JavaScript).
 
 Look and languages (v3.2): a sidebar layout styled by bitpin/static/panel.css (served as
-/static/panel.css?v=<hash>, the one file the panel reads besides panel.json) with inline SVG icons. Every text
+/static/panel.css?v=<hash>, with a packaged same-origin Persian font) with inline SVG icons. Every text
 is English in this file; bitpin/panel_i18n.py has the Persian translations. The language switch
 (GET /lang?to=fa&next=/trade) sets the cookie __Host-bplang; without it the browser's Accept-Language decides.
 
@@ -132,6 +132,7 @@ TEXT_TYPE = "text/plain; charset=utf-8"
 APP_NAME = N_("Bitpin AI Trader")
 NAV = (
     (N_("Overview"), (("/", "dashboard", N_("Dashboard")), ("/performance", "trend", N_("Performance")),
+                      ("/research", "spark", N_("Research & data")),
                       ("/technical", "spark", N_("Technical analysis")), ("/history", "list", N_("Trade history")))),
     (N_("Trading"), (("/trade", "sliders", N_("Trade settings")), ("/models", "cpu", N_("Models & keys")),
                      ("/apply", "check", N_("Apply settings")))),
@@ -319,18 +320,22 @@ FAVICON_SVG = (
     'stroke-linecap="round"/></svg>')
 
 
-def load_static(name):
-    """(text, short hash) of a file in bitpin/static; ("", "missing") when it cannot be read (the panel still
+def load_static(name, binary=False):
+    """(text or bytes, short hash) of a fixed packaged file in bitpin/static; empty when unreadable (the panel still
     works, unstyled, and says so in its log)."""
     path = os.path.join(STATIC_DIR, name)
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            text = f.read()
+        if binary:
+            with open(path, "rb") as f:
+                text = f.read(512 * 1024)
+        else:
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read()
     except OSError as e:
         log.warning("panel: cannot read %s: %s (the pages are served without their stylesheet)", path,
                     e.strerror or e)
-        return "", "missing"
-    return text, hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+        return b"" if binary else "", "missing"
+    return text, hashlib.sha256(text if binary else text.encode("utf-8")).hexdigest()[:12]
 
 
 class HelperError(Exception):
@@ -1295,6 +1300,7 @@ class PanelApp(object):
                                                                    "device_key")))
         self.hash_iterations = PBKDF2_ITERATIONS
         self.css, self.css_version = load_static("panel.css")
+        self.research_font, self.research_font_version = load_static("fonts/Vazirmatn-Regular.woff2", binary=True)
         self._login_lock = threading.Lock()        # one credential check at a time
         self._auth_lock = threading.Lock()         # password hash / TOTP secret / last TOTP step
         self._audit_lock = threading.Lock()
@@ -1305,6 +1311,7 @@ class PanelApp(object):
             "/trade": self._trade_get, "/apply": self._apply_get, "/vpn": self._vpn_get, "/logs": self._logs_get,
             "/health": self._health_get, "/security": self._security_get, "/performance": self._performance_get,
             "/history": self._history_get, "/history.csv": self._history_csv, "/technical": self._technical_get,
+            "/research": self._research_get,
         }
         self._post_routes = {
             "/logout": self._logout, "/service": self._service_post, "/models/list": self._models_list,
@@ -1537,6 +1544,8 @@ class PanelApp(object):
             return st, h + [("Allow", "GET, POST")], b
         if method == "GET" and path == "/static/panel.css":
             return self._resp(200, self.css, "text/css; charset=utf-8", cache=STATIC_CACHE)
+        if method == "GET" and path == "/static/fonts/Vazirmatn-Regular.woff2":
+            return self._resp(200, self.research_font, "font/woff2", cache=ICON_CACHE)
         if method == "GET" and path == "/static/icon.svg":
             return self._resp(200, FAVICON_SVG, "image/svg+xml", cache=ICON_CACHE)
         if method == "GET" and path == "/robots.txt":
@@ -1615,6 +1624,17 @@ class PanelApp(object):
         ok = {"https://" + host}
         ok.add("https://" + host[:-4] if host.endswith(":443") else "https://" + host + ":443")
         return o in ok
+
+    def _research_get(self, req):
+        """Public receipts only. Selection is server-side; no execution controls."""
+        from .panel_research import render
+        if (set(req.query) - {"currency", "period"} or req.query.get("currency", "IRT") not in ("IRT", "USDT") or
+                req.query.get("period", "holdout") not in ("holdout", "development")):
+            return self.error_response(400, "Bad Request (research selectors)")
+        data, error = self._call(req, "research")
+        body = self._helper_error(error) if error else render(data, req.query.get("currency", "IRT"),
+                                                            req.query.get("period", "holdout"))
+        return self._page(req, tr("Research & data"), body, active="/research")
 
     # ------------------------------------------------------------------ language
     def _lang_get(self, req):

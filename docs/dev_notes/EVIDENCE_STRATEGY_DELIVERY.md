@@ -107,8 +107,11 @@ Native balances exclude tokens/staking/DeFi; public attribution does not prove
 current control or personal-versus-fund capital. Declared research costs are
 assumptions and do not come from an authenticated account fee query.
 
-All implementation work is on `codex/evidence-strategy-shadow`, based on
+At the original evidence release, all implementation work was on
+`codex/evidence-strategy-shadow`, based on
 `59396f2` (`codex/independent-whale-shadow`). Git integration is the owner's
 final choice under the finishing-a-development-branch skill. No merge into the
-base or live settings change has occurred. The missing repository HANDOFF.md
-was disclosed rather than reconstructed.
+base or live settings change had occurred. The missing repository HANDOFF.md
+was disclosed rather than reconstructed. The owner's subsequent main/bot/panel
+deployment request and its rollout procedure are recorded in
+`MAIN_PANEL_RELEASE_2026-10-12.md`; experimental live influence remains off.
