@@ -119,6 +119,15 @@ class TestValidation(unittest.TestCase):
         return validate_response(obj, current if current is not None else {"USDT_IRT": 1.0}, ALLOWED, "USDT_IRT",
                                  limits or BAL, **kw)
 
+    def test_owner_report_never_calls_a_filtered_proposal_a_completed_buy(self):
+        raw_claim = "بیت‌کوین خریده شد"
+        out = self.v(reply({"BTC_IRT": 0.5, "USDT_IRT": 0.5}, conf=0.1, report_fa=raw_claim))
+        self.assertTrue(out["hold"])
+        self.assertEqual(out["targets"].get("BTC_IRT", 0), 0)
+        self.assertNotIn("خریده شد", out["report_fa"])
+        self.assertIn("USDT_IRT", out["report_fa"])
+        self.assertIn("اجرای", out["report_fa"])
+
     def test_unknown_symbol_negative_nan_and_types(self):
         for bad, msg in ((reply({"LUNA_IRT": 0.5, "USDT_IRT": 0.5}), "unknown symbol"),
                          (reply({"USDT_IRT": 1.1, "BTC_IRT": -0.1}), "negative"),
@@ -2207,8 +2216,9 @@ class TestModeValidation(unittest.TestCase):
         self.assertEqual(sanitize_report_fa(None), "")
         self.assertEqual(sanitize_report_fa(12), "")
         r = v(reply({"USDT_IRT": 1.0}, report_fa="سلام www.x.io"))
-        self.assertEqual(r["report_fa"], "سلام [link removed]")
-        self.assertEqual(v(reply({"USDT_IRT": 1.0}))["report_fa"], "")    # optional
+        self.assertIn("USDT_IRT 100%", r["report_fa"])
+        self.assertNotIn("سلام", r["report_fa"])
+        self.assertIn("تأیید نشده", v(reply({"USDT_IRT": 1.0}))["report_fa"])
 
 
 class FakeBudget(object):
@@ -2669,10 +2679,12 @@ class TestDecisionFields(ClockBase):
         self.assertTrue(d.valid and d.hold, d.error)                        # no target change ...
         self.assertEqual(d.ladder, {"BTC": 1.0, "ETH": 0.5, "XRP": 1.0, "SOL": 0.0})   # ... but a ladder change
         self.assertEqual((d.exits["BTC_IRT"]["stop_pct"], d.exits["BTC_IRT"]["wake_levels"]), (10.0, [70000.0]))
-        self.assertEqual(d.report_fa, fa)
+        self.assertIn("BTC_IRT 30%", d.report_fa)
+        self.assertIn("تأیید نشده", d.report_fa)
+        self.assertNotIn(fa, d.report_fa)
         b2 = self.cbrain([])
         self.assertEqual(b2.ladder_in_force(T0), {"BTC": 1.0, "ETH": 0.5, "XRP": 1.0, "SOL": 0.0})
-        self.assertEqual(b2.last_decision.report_fa, fa)
+        self.assertEqual(b2.last_decision.report_fa, d.report_fa)
         self.assertEqual(b2.last_decision.exits["BTC_IRT"]["stop_pct"], 10.0)
         with open(os.path.join(self.dir, "kimi_decisions.jsonl"), encoding="utf-8") as f:
             rec = json.loads(f.readlines()[-1])

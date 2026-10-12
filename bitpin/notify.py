@@ -58,7 +58,7 @@ so ("late") and, unless it is an alert, is sent without a sound.
 
 Responsiveness: one delivery batch is limited to DELIVERY_BUDGET_SECONDS (then commands are polled
 again), stop / alert / recovery messages go to the head of the outbox (in their own order, so the
-last word about a condition is always its current state), at most one translation per step.
+last word about a condition is always its current state). Final decision reports use no translation call.
 Commands are judged by their Telegram date: one sent before the notifier started, or more than
 STALE_COMMAND_SECONDS before it reached the notifier (Telegram / proxy outage), is NOT executed and
 gets a reply saying so; a notifier that is merely busy never makes a command too old.
@@ -80,8 +80,9 @@ part of the Telegram URL path: URLs are never logged, and every log line, error 
 and OUTGOING message goes through the redactor (the token itself and any 'bot<digits>:<token>'
 pattern, Moonshot keys, JWTs, bearer tokens).
 
-Untrusted text (Kimi's reasoning / news / risks / report_fa, which come partly from web search, and
-the translation of it) is "defanged" before display: URLs are cut to their host, hosts are written
+Decision reports are generated from final structured targets and exactly linked local execution receipts;
+raw model reports and cached translations never override them. Untrusted initial reasoning / news / risks
+are explicitly labeled as proposals and "defanged" before display: URLs are cut to their host, hosts are written
 bitpin-kyc[.]com, and a word joiner (U+2060) is put after every '@' and '://' and after a
 word-initial '/', so Telegram shows no clickable link, deep link, @mention or /command. It is shown
 as ONE marked block: every further line starts with '│ ' and loses leading emoji / status symbols,
@@ -130,6 +131,8 @@ import urllib.request
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+
+from bitpin.decision_report import decision_report_fa, execution_view
 
 log = logging.getLogger("bitpin.notify")
 
@@ -1344,20 +1347,8 @@ def decision_category(v):
 
 
 def _report_fa(rec, d):
-    for src in (d.get("report_fa"), rec.get("report_fa"), _dict(rec.get("response_json")).get("report_fa")):
-        if isinstance(src, str) and src.strip():
-            return src
-    resp = rec.get("response")
-    if isinstance(resp, str) and "report_fa" in resp:
-        i = resp.find("{")
-        if i >= 0:
-            try:
-                obj, _ = json.JSONDecoder().raw_decode(resp[i:])
-            except (ValueError, RecursionError):
-                obj = None
-            if isinstance(obj, dict) and isinstance(obj.get("report_fa"), str):
-                return obj["report_fa"]
-    return None
+    """Legacy record text is audit data; only structured final fields may author a report."""
+    return decision_report_fa(d)
 
 
 def decision_view(rec):
@@ -1419,8 +1410,8 @@ def _decision_view(rec):
         cur = weights(d.get("computed_against"))
     news = rec.get("news") if isinstance(rec.get("news"), dict) else None
     adj = d.get("adjustments")
-    rf = _report_fa(rec, d)
-    return {
+    origin = d.get("origin")
+    v = {
         "t": t, "digest": str(rec.get("context_digest") or "")[:16], "trigger": str(rec.get("trigger") or ""),
         "model": str(d.get("model") or rec.get("model") or "")[:40],
         "valid": d.get("valid") is True, "hold": d.get("hold") is True,
@@ -1433,11 +1424,11 @@ def _decision_view(rec):
         "error": str(d.get("error") or ""), "error_kind": str(d.get("error_kind") or ""),
         "equity": _fnum(cs.get("equity_irt")) or _fnum(snap.get("equity_irt")),
         "usdt_irt": _fnum(cs.get("usdt_irt")) or _fnum(snap.get("usdt_irt")),
-        "news": news, "report_fa": rf if (rf and mostly_persian(rf)) else None,
+        "news": news,
         "confirmation": _confirmation(d.get("confirmation")),
         "p_rule": _p_rule_view(d.get("p_rule")),
         "adjustments": [str(a) for a in adj if a] if isinstance(adj, list) else [],
-        "origin": str(d.get("origin") or "")[:40], "usage": _dict(d.get("usage")),
+        "origin": origin if isinstance(origin, str) and len(origin) <= 100 else "", "usage": _dict(d.get("usage")),
         "risk_profile": str(rec.get("risk_profile") or "")[:20],
         # the daily-schedule version: the decision's mode, what woke Kimi, the ladder scales and exits
         "mode": str(d.get("mode") or "")[:20], "trigger_kind": str(d.get("trigger_kind") or "")[:20],
@@ -1448,6 +1439,9 @@ def _decision_view(rec):
         "analysis": analysis_view(d.get("analysis")),
         "evidence_review": evidence_review_view(_dict(d.get("analysis")).get("evidence_review")),
     }
+    v["execution"] = execution_view(v)
+    v["report_fa"] = decision_report_fa(v, v["execution"])
+    return v
 
 
 def evidence_review_view(raw):
@@ -2229,16 +2223,10 @@ class Renderer:
         return ["%s %s" % (head, esc(lines[0]))] + [UNTRUSTED_MARK + esc(ln) for ln in lines[1:]]
 
     def _text_block(self, v, persian, translated, full=False):
-        out = []
-        if persian:
-            lines = self.untrusted_lines(persian, self.max_text if not full else 3500)
-            if lines:
-                out.append("🗣 <b>توضیح%s:</b>" % (" (ترجمهٔ خودکار)" if translated else " Kimi"))
-                out += [UNTRUSTED_MARK + esc(ln) for ln in lines]
-                if not full:
-                    return out
-                out.append("")
-                out.append("<b>متن اصلی (انگلیسی):</b>")
+        # Never let a raw report or an old translation replace the bot's structured final result.
+        report = decision_report_fa(v, v.get("execution"))
+        out = ["📄 <b>گزارش نهایی ربات:</b>", esc(report)]
+        out += ["", "<b>توضیح اولیهٔ مدل (پیشنهاد؛ گزارش اجرا نیست):</b>"]
         n = self.max_text if not full else 3000
         out += self._untrusted_block("💬 <b>دلیل:</b>", v.get("reasoning"), n)
         out += self._untrusted_block("📰 <b>اخبار:</b>", v.get("news_summary"), min(n, 800))
@@ -2260,7 +2248,7 @@ class Renderer:
         a = v.get("analysis")
         if not a:
             return []
-        L = ["🔬 <b>تحلیل Kimi برای هر کوین</b> (p = احتمال برد · ev = ارزش انتظاری پس از هزینه):"]
+        L = ["🔬 <b>تحلیل Kimi برای هر کوین</b> (پیشنهاد اولیه؛ گزارش اجرا نیست · p = احتمال برد · ev = ارزش انتظاری پس از هزینه):"]
         for sym, c in sorted(a["candidates"].items())[:8]:
             bits = []
             if c.get("p") is not None:
@@ -2303,6 +2291,28 @@ class Renderer:
                 L.append("• %s: ارزش انتظاری با همان p منفی بود (%s)" % (name, fmt_pct(r["ev"] / 100.0, signed=True)))
             else:
                 L.append("• %s: تحلیلی با p نداشت" % name)
+        return L
+
+    def _execution_lines(self, v):
+        ex = _dict(v.get("execution"))
+        state = {"unverified": "اجرای این تصمیم تأیید نشده است", "no_fill": "مقدار پرشده‌ای ثبت نشده است",
+                 "filled": "مقدار پرشدهٔ تأییدشده ثبت شده است", "partial": "بخشی از سفارش پر شده است",
+                 "pending": "نتیجهٔ سفارش هنوز قطعی نیست", "preview": "فقط پیش‌نمایش؛ معاملهٔ واقعی نیست"}
+        label = state.get(ex.get("state"), state["unverified"])
+        emode = ex.get("mode")
+        label += " (آزمایشی paper؛ معاملهٔ واقعی نیست)" if emode == "paper" else (
+            " (dry-run؛ معاملهٔ واقعی نیست)" if emode == "dry_run" else "")
+        L = ["🧾 <b>وضعیت اجرا:</b> " + label]
+        fills = [f for f in _list(ex.get("fills")) if isinstance(f, dict) and (_fnum(f.get("base")) or 0) > 0]
+        if fills:
+            L.append("مقادیر پرشدهٔ ثبت‌شده (رسیدن به همهٔ وزن‌های هدف را تأیید نمی‌کند):")
+            for f in fills[:12]:
+                L.append("• %s %s: %s %s" % ("خرید" if f.get("side") == "buy" else "فروش",
+                         esc(clean_text(f.get("symbol"), 24)), fmt_amount(f.get("base")),
+                         esc(sym_base(f.get("symbol")) or "")))
+        pending = ex.get("pending") if type(ex.get("pending")) is int and ex["pending"] >= 0 else 0
+        if pending:
+            L.append("سفارش با نتیجهٔ نامشخص یا باز: %s" % fa(pending))
         return L
 
     def _news_line(self, v):
@@ -2389,12 +2399,13 @@ class Renderer:
             L.append("⏸ همهٔ تغییرها کوچک‌تر از آستانهٔ اجرا هستند؛ معامله‌ای انجام نمی‌شود.")
         else:
             if sells:
-                L.append("🔴 <b>فروش:</b> " + sells)
+                L.append("🔴 <b>فروش در هدف:</b> " + sells)
             if buys:
-                L.append("🟢 <b>خرید:</b> " + buys)
+                L.append("🟢 <b>خرید در هدف:</b> " + buys)
             if not buys and not sells:
                 L.append("ℹ️ تغییر محسوسی نسبت به ترکیب فعلی نیست.")
         L += self._ladder_exit_lines(v)
+        L += self._execution_lines(v)
         L.append("")
         L += self._text_block(v, persian, translated, full=full)
         L += self._analysis_lines(v)
@@ -3415,29 +3426,11 @@ class Notifier:
         self.enqueue(eid, kind, text, silent=silent, meta={"dec": decision_category(v), "t": v["t"]})
 
     def persian_for(self, v, allow_translate=True, budgeted=True):
-        """(Persian text, translated?) for a valid Kimi decision, or (None, False). budgeted: at most
-        one translation call per step (each may take translation.timeout_seconds)."""
-        if v.get("report_fa"):
-            return v["report_fa"], False
-        if not (v["valid"] and not v["fallback"]) or self.translator is None:
-            return None, False
-        eng = self.render.english_for_translation(v)
-        if not eng:
-            return None, False
-        key = "%s:%s" % (dec_key(v["t"]), v["digest"])
-        try:
-            txt = self.translator.cached(key)
-            if txt is None and allow_translate and (not budgeted or self._tr_budget > 0):
-                if budgeted:
-                    self._tr_budget -= 1
-                # HOLDs (up to 48 a day at 30-min cycles) may use only half of the daily translations
-                txt = self.translator.translate(key, eng, max_share=0.5 if v["hold"] else 1.0)
-        except Exception as e:  # noqa: BLE001 - translation is optional
-            log.warning("translation failed: %s", safe_err(e))
-            txt = None
-        return (txt, True) if txt else (None, False)
+        """The deterministic final report has no translation or model-text fallback."""
+        return decision_report_fa(v, v.get("execution")), False
 
     def decision_message(self, v, full=False):
+        v = self._with_execution(v)
         persian, translated = self.persian_for(v, budgeted=not full)
         return self.render.decision(v, persian, translated, full=full, mode=self.cfg["mode"])
 
@@ -4550,18 +4543,26 @@ class Notifier:
         return "\n".join(L)
 
     # ---- status
+    def _with_execution(self, v):
+        """Refresh only this decision's linked receipts from bounded local audit files."""
+        v = dict(v)
+        records = tail_records(self.path("runner"), 2 * 1024 * 1024)
+        v["execution"] = execution_view(v, records, self._read_json("orders"), mode=self.cfg["mode"])
+        v["report_fa"] = decision_report_fa(v, v["execution"])
+        return v
+
     def last_decision_view(self):
         for rec in reversed(tail_records(self.path("decisions"), 1024 * 1024)):
             v = decision_view(rec)
             if v:
-                return v
+                return self._with_execution(v)
         return None
 
     def last_kimi_view(self):
         for rec in reversed(tail_records(self.path("decisions"), 2 * 1024 * 1024)):
             v = decision_view(rec)
             if v and not v["fallback"]:
-                return v
+                return self._with_execution(v)
         return None
 
     def health_lines(self, now):

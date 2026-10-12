@@ -1122,7 +1122,8 @@ class RealBrainTest(Base):
         self.assertGreater(self.bal()["BTC"], 0)                   # kept (a review never adds)
         ev = [e for e in read_events(self.dir) if e["kind"] in ("watchdog", "decision")]
         self.assertEqual([e["kind"] for e in ev][-2:], ["watchdog", "decision"])
-        self.assertEqual(ev[-1]["report_fa"], "نگه دار")
+        self.assertIn("ترکیب هدف نهایی", ev[-1]["report_fa"])
+        self.assertIn("تأیید نشده", ev[-1]["report_fa"])
         # the review's exits (defaults restated by the brain) are applied to the ladder position: v3 restates
         # NO stop (a stop exists only where Kimi names stop_pct) and keeps the half-drop target
         pos = self.runner()._ladder_pos["BTC_IRT"]

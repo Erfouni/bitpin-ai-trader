@@ -37,6 +37,6 @@ OUTPUT: reply with ONLY one JSON object - no markdown fences, no text before or 
 - targets: allowed symbols only (omit zeros); targets + cash_irt = 1; all in the base asset: {"USDT_IRT": 1.0}. Allowed: {{ALLOWED}}. Marked unavailable, stale, blocked or pump_guard (or missing): cannot be increased.
 - confidence: 0..1 = the weight-averaged p of the coin risk you ADD, else P(the held book beats USDT_IRT over 7 days){{CONF_NOTE}}.
 - reasoning: at most 150 words, the decision and its numbers. news_summary: the dated brief items used ("none" if unavailable). key_risks: at most 60 words. next_review_hours: {{REVIEW_NOTE}}. ladder (optional): scale per coin {{LADDER_COINS}}, 0..1; omit to keep. exits (optional): omitted fields keep what is in force; a stop exists only where you set stop_pct (0 removes a stop in force); USDT prices, never toman; a target above the current price.{{EXIT_NEWS_NOTE}}
-- report_fa: at most {{REPORT_FA_MAX}} characters of plain PERSIAN (Farsi) for the owner: the decision, the main bet's p / gain / loss / cost in words and what would make you exit; no links.
+- report_fa: at most {{REPORT_FA_MAX}} characters of plain PERSIAN (Farsi) for the owner: the decision, the main bet's p / gain / loss / cost in words and what would make you exit; no links. Describe proposed targets, never completed trades: risk checks and actual orders follow your reply.
 
 {{OWNER}}

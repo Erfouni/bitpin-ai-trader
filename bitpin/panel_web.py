@@ -462,7 +462,7 @@ SALE_REASONS = {"stop": N_("stop loss"), "sold": N_("decision")}
 
 
 def confirmation_html(c):
-    """v3.12: the second run of a decision that buys: confirmed, cut (what was not bought) or failed."""
+    """The second vote approves target increases; exchange execution is reported separately."""
     kept = c.get("kept") if isinstance(c.get("kept"), dict) else {}
     cut = c.get("cut") if isinstance(c.get("cut"), dict) else {}
     pairs = lambda m, sign: ", ".join("%s %s%s" % (code(s), sign, ltr(pct_text(w * 100.0, 1)))   # noqa: E731
@@ -471,10 +471,50 @@ def confirmation_html(c):
         return '<span class="badge ok">%s</span> %s' % (te("Confirmed"), pairs(kept, "+"))
     out = '<span class="badge warn">%s</span> %s' % (te("Buy cut"), pairs(cut, "-"))
     if kept:
-        out += " &middot; %s %s" % (te("bought"), pairs(kept, "+"))
+        out += " &middot; %s %s" % (te("approved"), pairs(kept, "+"))
     if c.get("error"):
         out += '<br><span class="muted small">%s</span>' % bdi(c["error"])
     return out
+
+
+EXECUTION_STATES = {"unverified": N_("Unverified"), "no_fill": N_("No fill recorded"),
+                    "filled": N_("Verified filled amounts"), "partial": N_("Partial fill"),
+                    "pending": N_("Pending outcome"), "preview": N_("Preview only")}
+EXECUTION_MODES = {"live": N_("Live"), "paper": N_("Paper"), "dry_run": N_("Dry run")}
+
+
+def execution_html(execution):
+    """The helper's bounded receipt projection, separate from proposed or approved weights."""
+    ex = execution if isinstance(execution, dict) else {}
+    fills = [f for f in ex.get("fills", []) if isinstance(f, dict) and _is_num(f.get("base"))
+             and f["base"] > 0 and isinstance(f.get("side"), str)
+             and f["side"] in SIDE_LABELS] if isinstance(ex.get("fills"), list) else []
+    count = lambda key: ex[key] if type(ex.get(key)) is int and 0 <= ex[key] <= 1000000 else 0  # noqa: E731
+    state = ex.get("state") if isinstance(ex.get("state"), str) else "unverified"
+    mode = ex.get("mode") if isinstance(ex.get("mode"), str) else ""
+    rows = [(N_("Execution state"), te(EXECUTION_STATES.get(state, EXECUTION_STATES["unverified"]))),
+            (N_("Execution mode"), te(EXECUTION_MODES[mode]) if mode in EXECUTION_MODES else dash()),
+            (N_("Recorded orders"), fmt_num(count("orders"))), (N_("Verified fills"), fmt_num(len(fills))),
+            (N_("Pending orders"), fmt_num(count("pending"))), (N_("Execution skips"), fmt_num(count("skipped"))),
+            (N_("Execution errors"), fmt_num(count("errors")))]
+    out = ["<h3>%s</h3>" % te("Execution"), facts(rows)]
+    if mode in ("paper", "dry_run") or state == "preview":
+        out.append(box("info", te("Simulation or preview; these are not live trades.")))
+    if fills:
+        out.append('<p class="muted small">%s</p>' % te("Filled amounts do not prove all target weights were reached."))
+        out.append(table([N_("Side"), N_("Market"), N_("Filled amount"), N_("Average price"), N_("Quote amount"), N_("Fee")],
+                         [[te(SIDE_LABELS[f["side"]]), code(f.get("symbol")), fmt_num(f["base"]),
+                           fmt_num(f.get("avg_price")), fmt_num(f.get("quote")),
+                           fmt_num(f.get("fee")) + (" " + ltr(f["fee_asset"]) if f.get("fee_asset") else "")]
+                          for f in fills[:12]], num=(2, 3, 4, 5)))
+    effective = ex.get("effective_targets") if isinstance(ex.get("effective_targets"), dict) else {}
+    if effective:
+        pairs = [[code(s), ltr(pct_text(w * 100.0))] for s, w in sorted(effective.items())
+                 if _is_num(w) and 0 <= w <= 1]
+        if pairs:
+            out.append("<h3>%s</h3>" % te("Targets at execution"))
+            out.append(table([N_("Market"), N_("Target weight")], pairs, num=(1,)))
+    return "".join(out)
 
 
 def p_rule_html(pr):
@@ -1907,7 +1947,7 @@ class PanelApp(object):
         if hold:
             result = '<span class="badge">%s</span>' % te("Hold")
         elif hold is False:
-            result = '<span class="badge accent">%s</span>' % te("Trade (new weights)")
+            result = '<span class="badge accent">%s</span>' % te("New target weights")
         else:
             result = dash()
         conf = d.get("confidence")
@@ -1931,9 +1971,10 @@ class PanelApp(object):
                     code(sym), w * 100.0, w * 100.0, ltr("%.1f%%" % (w * 100.0))) for w, sym in tl))
         else:
             out.append('<p class="muted">%s</p>' % te("No target above zero."))
+        out.append(execution_html(d.get("execution")))
         if d.get("report_fa"):
             out.append('<h3>%s</h3><div class="report" dir="rtl" lang="fa">%s</div>' % (
-                te("Kimi's report"), esc(d.get("report_fa"))))
+                te("Final report from the bot"), esc(d.get("report_fa"))))
         when = '<span class="muted small">%s</span>' % fmt_time(d.get("time")) if d.get("time") else ""
         return card(title, "".join(out), "spark", when)
 

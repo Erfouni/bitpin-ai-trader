@@ -857,7 +857,7 @@ class TestPages(PanelCase):
         self.login()
         t = self.c.get("/").text
         for s in ("BTC_IRT", "40.0%", "60.0%", u"خرید بیت‌کوین با وزن ۴۰٪", "3.1.0", "slot", "kimi-k3", "3,990,000",
-                  "2.68", "+5.00%", "BTC_USDT", "65000.5", "0.17", u"معامله (تغییر وزن‌ها)", "active (running)",
+                  "2.68", "+5.00%", "BTC_USDT", "65000.5", "0.17", u"وزن‌های هدف تازه", "active (running)",
                   "failed (failed)", "bitpin-bot-panel", '<pre dir="rtl" class="fa">', u"وضعیت ربات: فعال",
                   "2026-09-27 23:00"):                                     # systemd's UTC time, shown as Tehran time
             self.assertIn(s, t, s)

@@ -118,7 +118,7 @@ Contract with the runner (which executes; this module never trades):
 
 The LLM's reply is untrusted input. `validate_response` parses it strictly, rejects unknown
 symbols / non-finite / huge / negative numbers / weights that do not sum to ~1 (and a malformed
-optional "ladder" / "exits"; "report_fa" is only sanitised for display), then enforces, in this
+optional "ladder" / "exits"; model "report_fa" stays audit-only), then enforces, in this
 order: no increase of a symbol that is not tradable now (no fresh market data, suspended market,
 unusable order book) and - in the modes review / veto / risk_reduce / final, after the endgame
 cut-off, or below min_confidence - no coin increase and no move into toman at all; the per-coin cap;
@@ -151,6 +151,7 @@ from .analysis import current_weights as context_weights
 from . import analysis as _analysis      # asset_class / us_session_open are looked up at call time (spec C3)
 from . import technical                 # v3.8: the technical reading (TECHNICAL READING, ta)
 from .evidence_contract import attach_contract, build_contract, validate_review, EvidenceContractError
+from .decision_report import decision_report_fa
 from .api import atomic_write_json
 from .llm import (_FENCE_RE, ConfigError, LLMClient, LLMError, _add_usage, check_bool, check_number,
                   ensure_writable_dir, find_json_objects, parse_json_object_strict, redact_text)
@@ -808,7 +809,7 @@ class Decision:
     events: list = field(default_factory=list)     # the wake-up events it answered (W1-W4), bot-authored
     ladder: dict = field(default_factory=dict)     # {coin: scale 0..1} for EVERY ladder coin; {} = no change
     exits: dict = field(default_factory=dict)      # {symbol: exit spec} for every coin whose target is > 0
-    report_fa: str = ""            # the model's short Persian note for the owner: display only, never traded on
+    report_fa: str = ""            # deterministic final intent, never proof of an executed order
     endgame: dict = field(default_factory=dict)    # KimiBrain.endgame_flags() at decision time
     plans: dict = field(default_factory=dict)      # {symbol: plan} the model's entry thesis for the coins it opens /
     #                                                adds to (validate_response): kept with the position by the runner
@@ -2205,7 +2206,7 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
     "ladder" ({coin: scale} for every ladder coin), "exits" ({symbol: spec} for every coin with a
     target > 0), "plans" ({symbol: plan} recorded for the coins it opens or adds to, for a held
     position that has no plan yet, and - restated without a buy - for one whose plan is broken or past
-    its horizon, plan_over), "report_fa" (sanitised) and "mode". Raises ValidationError (shape
+    its horizon, plan_over), "report_fa" (structured final intent) and "mode". Raises ValidationError (shape
     and types of every field, the optional ladder / exits / plans included, are checked strictly;
     permissions are enforced by lowering what the mode does not allow, with a note in "adjustments")."""
     if plan_policy is not None and plan_policy not in PLAN_POLICIES:
@@ -2479,7 +2480,8 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
     exits = resolve_exits(req_exits, t, safe, positions, px_usdt, now, eg, mode, held_move_pct, notes)
     out.update(targets=t, cash_irt=max(0.0, 1.0 - sum(t.values())), adjustments=notes, turnover=round(turnover, 4),
                hold=not changed, mode=mode, ladder=ladder, exits=exits, plans=plans, analysis=analysis,
-               report_fa=sanitize_report_fa(obj.get("report_fa")))
+               report_fa="")
+    out["report_fa"] = decision_report_fa(out)
     return out
 
 
@@ -4048,6 +4050,9 @@ class KimiBrain:
         # the runner's drift guard also works for a 100%-toman portfolio, where computed_against is {}
         decision.computed_cash = round(max(0.0, 1.0 - sum(cur.values())), 8)
         decision.origin = self.origin
+        # The raw reply remains in the audit. Owner-facing text follows the FINAL
+        # risk checks and independent vote, while execution is reported separately.
+        decision.report_fa = decision_report_fa(decision.to_dict(with_raw=False))
         decision.attempts = attempts
         decision.usage = usage
         decision.model = model or getattr(self.llm, "model", "") or ""

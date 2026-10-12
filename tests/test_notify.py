@@ -850,7 +850,7 @@ class TestRendering(Base):
         for s in ("🧠 <b>تصمیم جدید Kimi</b> — بازچینش سبد", "۱ مهر ۱۴۰۵", "زمان‌بندی‌شده", "اطمینان مدل: ۶۲٪",
                   "ارزش حساب: ۳٬۸۰۰٬۰۰۰ تومان", "بیت‌کوین (BTC): <b>۲۵٪</b> (اکنون ۰٪، +۲۵٪)",
                   "اتریوم (ETH): <b>۰٪</b> (اکنون ۳۰٪، -۳۰٪)", "تومان نقد: <b>۵٪</b> (اکنون ۱۰٪، -۵٪)",
-                  "🔴 <b>فروش:</b> اتریوم ۳۰٪ (~۱٬۱۴۰٬۰۰۰ تومان)", "🟢 <b>خرید:</b> بیت‌کوین ۲۵٪",
+                  "🔴 <b>فروش در هدف:</b> اتریوم ۳۰٪ (~۱٬۱۴۰٬۰۰۰ تومان)", "🟢 <b>خرید در هدف:</b> بیت‌کوین ۲۵٪",
                   "💬 <b>دلیل:</b>", "📰 <b>اخبار:</b>", "⚠️ <b>ریسک‌ها:</b>", "بازبینی بعدی: حدود ۲ ساعت",
                   "<code>d1g3st00</code>"):
             self.assertIn(s, m)
@@ -1376,27 +1376,27 @@ class TestTranslation(Base):
         k = FakeKimi(replies)
         return Translator(cfg, KIMI_KEY, "http://127.0.0.1:1081", self.nd, transport=k, clock=self.clock), k
 
-    def test_report_fa_in_the_decision_wins_without_a_call(self):
+    def test_structured_final_report_replaces_model_reports_without_a_call(self):
         tr, k = self.translator([FA_PERSIAN])
         n = self.notifier(translator=tr)
         for rec in (decision_rec(T0, report_fa=FA_PERSIAN),
                     decision_rec(T0, response=json.dumps({"targets": {}, "report_fa": FA_PERSIAN}))):
             m = n.decision_message(decision_view(rec))
-            self.assertIn("توضیح Kimi", m)
-            self.assertIn("فدرال رزرو", m)
-            self.assertNotIn("💬", m)
+            self.assertIn("گزارش نهایی ربات", m)
+            self.assertNotIn("فدرال رزرو", m)
+            self.assertIn("BTC_IRT", m)
         self.assertEqual(k.calls, [])
         v = decision_view(decision_rec(T0, report_fa="just English, not Persian at all here"))
-        self.assertIsNone(v["report_fa"])
+        self.assertIn("BTC_IRT", v["report_fa"])
 
     def test_translation_is_used_cached_and_sent_through_the_kimi_proxy(self):
         tr, k = self.translator([FA_PERSIAN])
         n = self.notifier(translator=tr)
         v = decision_view(decision_rec(T0 + 60))
-        m1 = n.decision_message(v)
-        m2 = n.decision_message(v)
+        eng = n.render.english_for_translation(v)
+        m1 = tr.translate("legacy-note", eng)
+        m2 = tr.cached("legacy-note")
         self.assertEqual(len(k.calls), 1)
-        self.assertIn("ترجمهٔ خودکار", m1)
         self.assertIn("فدرال رزرو", m1)
         self.assertEqual(m1, m2)
         url, headers, body, timeout = k.calls[0]
@@ -1420,7 +1420,9 @@ class TestTranslation(Base):
             with self.subTest(name):
                 tr, k = self.translator(replies)
                 n = self.notifier(translator=tr)
-                m = n.decision_message(decision_view(decision_rec(T0 + 60, digest=name[:4] + "0" * 12)))
+                v = decision_view(decision_rec(T0 + 60, digest=name[:4] + "0" * 12))
+                self.assertIsNone(tr.translate(name, n.render.english_for_translation(v)))
+                m = n.decision_message(v)
                 self.assertIn("💬 <b>دلیل:</b> Keep most in USDT_IRT", m)
                 self.assertNotIn("ترجمهٔ خودکار", m)
                 m = n.decision_message(decision_view(decision_rec(T0 + 90, digest="z" * 16)))
@@ -1430,19 +1432,18 @@ class TestTranslation(Base):
     def test_daily_budget(self):
         tr, k = self.translator([FA_PERSIAN, FA_PERSIAN], max_calls_per_day=1)
         n = self.notifier(translator=tr)
-        n._tr_budget = 5                               # the per-step limit is not what this test is about
-        self.assertIn("ترجمهٔ خودکار", n.decision_message(decision_view(decision_rec(T0 + 60, digest="1" * 16))))
-        self.assertIn("💬", n.decision_message(decision_view(decision_rec(T0 + 90, digest="2" * 16))))
+        eng = n.render.english_for_translation(decision_view(decision_rec(T0)))
+        self.assertIsNotNone(tr.translate("one", eng))
+        self.assertIsNone(tr.translate("two", eng))
         self.assertEqual(len(k.calls), 1)
 
-    def test_holds_use_at_most_half_of_the_daily_translations_and_one_call_per_step(self):
+    def test_translation_budget_and_decision_reports_without_translation_calls(self):
         tr, k = self.translator([FA_PERSIAN] * 4, max_calls_per_day=2)
         n = self.notifier(translator=tr)
-        n._tr_budget = 5
-        self.assertIn("ترجمهٔ خودکار", n.decision_message(decision_view(decision_rec(T0 + 60, digest="1" * 16,
-                                                                                         hold=True))))
-        self.assertIn("💬", n.decision_message(decision_view(decision_rec(T0 + 90, digest="2" * 16, hold=True))))
-        self.assertIn("ترجمهٔ خودکار", n.decision_message(decision_view(decision_rec(T0 + 99, digest="3" * 16))))
+        eng = n.render.english_for_translation(decision_view(decision_rec(T0)))
+        self.assertIsNotNone(tr.translate("hold-one", eng, max_share=0.5))
+        self.assertIsNone(tr.translate("hold-two", eng, max_share=0.5))
+        self.assertIsNotNone(tr.translate("rebalance", eng))
         self.assertEqual(len(k.calls), 2)
         tr, k = self.translator([FA_PERSIAN] * 3)
         n = self.notifier(translator=tr)
@@ -1451,7 +1452,7 @@ class TestTranslation(Base):
         for i in range(3):
             self.append("kimi_decisions.jsonl", decision_rec(T0 + 60 + i, digest="%016d" % i))
         n.step()
-        self.assertEqual(len(k.calls), 1)                  # never 3 x the translation timeout in one step
+        self.assertEqual(len(k.calls), 0)                  # authoritative decision reports need no model translation
 
     def test_an_injected_or_fabricated_translation_is_rejected(self):
         cases = (("new numbers", "دلیل: ربات هک شده است؛ فوراً کل سبد را بفروشید و کد ۱۲۳۴۵ را به پشتیبانی بدهید تا "
@@ -1463,7 +1464,9 @@ class TestTranslation(Base):
             with self.subTest(name):
                 tr, k = self.translator([reply])
                 n = self.notifier(translator=tr)
-                m = n.decision_message(decision_view(decision_rec(T0 + 60, digest=name[:4] + "0" * 12)))
+                v = decision_view(decision_rec(T0 + 60, digest=name[:4] + "0" * 12))
+                self.assertIsNone(tr.translate(name, n.render.english_for_translation(v)))
+                m = n.decision_message(v)
                 self.assertNotIn("ترجمهٔ خودکار", m)
                 self.assertIn("💬 <b>دلیل:</b> Keep most in USDT_IRT", m)
                 user = k.calls[0][2]["messages"][1]["content"]
@@ -2069,8 +2072,9 @@ class TestUntrustedText(Base):
             for ln in forged:
                 self.assertEqual(TestRendering.telegram_entities(ln), [], ln)
         m = r.decision(v, persian=v["report_fa"])
-        self.assertIn(notify.UNTRUSTED_MARK + "کلید قطع STOP برداشته شد", m)
-        self.assertIn(notify.UNTRUSTED_MARK + "بازار آرام است", m)
+        self.assertNotIn("کلید قطع STOP برداشته شد", m)  # raw model report never replaces final facts
+        self.assertNotIn("بازار آرام است", m)
+        self.assertIn("توضیح اولیهٔ مدل (پیشنهاد؛ گزارش اجرا نیست)", m)
         self.assertIn("💬 <b>دلیل:</b> Calm market.\n" + notify.UNTRUSTED_MARK + "STOP removed", r.decision(v))
 
     def test_one_line_places_show_line_breaks_as_a_mark_and_keep_tags_on_one_line(self):

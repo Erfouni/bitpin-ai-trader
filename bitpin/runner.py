@@ -783,6 +783,7 @@ class Runner:
         self._transient_skip = False
         self._frozen_seen = ()          # last reported total-vs-available gap (log it only when it changes)
         self._exec_deadline = None      # brain mode: the executing decision's expires_at (no order after it)
+        self._allocation_execution = None  # reporting only; active strictly inside one Kimi allocation trade
         self.offset = None
         broker.track({parse_symbol(s)[0] for s in self.symbols + self.extra_symbols} | {"IRT"})
         # A capped sleeve cannot see in the wallet whether an unknown order executed (the user's own
@@ -2054,7 +2055,8 @@ class Runner:
 
     @staticmethod
     def _decision_summary(d):
-        out = {"decided_at": getattr(d, "decided_at", None), "valid": bool(getattr(d, "valid", False)),
+        out = {"decided_at": getattr(d, "decided_at", None), "origin": getattr(d, "origin", None),
+               "valid": bool(getattr(d, "valid", False)),
                "hold": bool(getattr(d, "hold", False)), "confidence": getattr(d, "confidence", None),
                "fallback": bool(getattr(d, "fallback", False)),
                "fallback_reason": getattr(d, "fallback_reason", None),
@@ -2508,6 +2510,12 @@ class Runner:
         decision = None
         if buys_only:
             act = self.state.get("brain_active") or {}
+            ref = act.get("decision_ref")
+            if isinstance(ref, dict):
+                info["decision"] = {k: ref.get(k) for k in ("decided_at", "origin")}
+            elif act.get("decided_at") is not None:
+                # Older runner state has no origin: keep that fact unknown rather than inventing one.
+                info["decision"] = {"decided_at": act.get("decided_at"), "origin": None}
             if act.get("bar_ts") != bar_ts or self.clock() >= float(act.get("expires_at") or 0) \
                     or not isinstance(act.get("targets"), dict):
                 log.warning("buy retry: this bar's decision is expired or unknown; the buys are not retried")
@@ -2574,9 +2582,11 @@ class Runner:
                 return rep
             deadline = self._expires_at(decision)
             state_fields["brain_active"] = {"bar_ts": bar_ts, "kind": kind, "decided_at": decision.decided_at,
-                                            "expires_at": deadline, "targets": targets}
+                                            "expires_at": deadline, "targets": targets,
+                                            "decision_ref": {"decided_at": decision.decided_at,
+                                                             "origin": getattr(decision, "origin", None)}}
             if kind == "kimi":
-                state_fields["brain_executed"] = decision.decided_at   # a Kimi decision is executed once
+                state_fields["brain_executed"] = decision.decided_at   # attempted once; not proof of any fill
         plan = plan_orders(targets, units, prices, cash, self.threshold, self.fee_rate, None,
                            dust_irt=self.risk.min_order_irt)
         kind = info.get("action")
@@ -2612,13 +2622,89 @@ class Runner:
         self._log_plan(bar_ts, plan, prices, dd)
         # no order of this decision is sent after it expired (checked before every order)
         self._exec_deadline = deadline
+        receipt = self._execution_receipt(rep) if kind == "kimi" else None
+        skip_at, error_at = len(rep["skipped"]), len(rep["errors"])
+        self._allocation_execution = receipt
         try:
             out = self._trade(rep, plan, targets, prices, last_close_1h, bar_ts, now, buys_only, **state_fields)
         finally:
             self._exec_deadline = None
+            self._allocation_execution = None
+            if receipt is not None:
+                # Code exits precede this scope; resting orders and their fills are maintained after it.
+                try:
+                    receipt["skipped"] = [list(x) for x in (rep.get("plan_skipped") or [])] + \
+                                         [list(x) for x in rep["skipped"][skip_at:]]
+                    receipt["errors"] = list(rep["errors"][error_at:])
+                except Exception as e:  # noqa: BLE001 - reporting cannot interrupt the trade path
+                    log.warning("cannot finish the execution receipt: %s", e)
         self._maintain(out, now, equity, syms)
         self._brain_audit(out, bar_ts, cur, cash_w)
         return out
+
+    def _execution_receipt(self, rep):
+        """A linked, local execution receipt. Reporting must never affect whether an order is sent."""
+        try:
+            if isinstance(rep.get("execution"), dict):
+                return rep["execution"]
+            info = rep.get("brain") or {}
+            decision = info.get("decision")
+            if not isinstance(decision, dict):
+                return None
+            receipt = {
+                "schema_version": 1,
+                "decision_ref": {k: decision.get(k) for k in ("decided_at", "origin")},
+                "runtime_mode": "dry_run" if self.dry_run else self.mode,
+                "action": info.get("action"),
+                "effective_targets": {s: float(w) for s, w in (rep.get("targets") or {}).items() if w}
+                                     if info.get("action") == "kimi" else {},
+                "orders": [], "skipped": [], "errors": []}
+            if info.get("action") != "kimi" and info.get("why"):
+                receipt["skipped"] = [["*", info["why"]]]
+            if info.get("brain_error"):
+                receipt["errors"] = [info["brain_error"]]
+            rep["execution"] = receipt
+            return receipt
+        except Exception as e:  # noqa: BLE001 - audit only
+            log.warning("cannot build the execution receipt: %s", e)
+            return None
+
+    def _execution_journal(self):
+        """Snapshot the local market-order journal, never an exchange lookup (None = unavailable)."""
+        if self._allocation_execution is None:
+            return None
+        try:
+            journal = getattr(self.broker, "journal", None)
+            return dict(journal.items()) if journal is not None else None
+        except Exception as e:  # noqa: BLE001 - inventory is reporting only
+            log.warning("cannot read the local execution inventory: %s", e)
+            return None
+
+    def _execution_order(self, o, side, requested, status=None, fill=None, error=None, before=None):
+        """Record just this allocation attempt, retaining an ambiguous submission's exact identifier."""
+        if self._allocation_execution is None:
+            return
+        try:
+            fields = ("identifier", "order_id", "side", "symbol", "status", "base", "quote", "fee", "fee_asset",
+                      "requested", "avg_price", "partial")
+            row = {k: None for k in fields}
+            row.update(side=side, symbol=o.symbol, status=status, requested=requested)
+            if isinstance(fill, dict):
+                row.update({k: fill.get(k) for k in fields})
+            else:
+                ident = getattr(error, "identifier", None)
+                after = self._execution_journal() if before is not None else None
+                added = [(k, e) for k, e in (after or {}).items() if k not in before
+                         and isinstance(e, dict) and (e.get("kind") or "market") == "market"
+                         and e.get("symbol") == o.symbol and e.get("side") == side] if before is not None else []
+                # A market call journals at most one submission. Never attach an older or unrelated order.
+                if len(added) == 1:
+                    ident, entry = added[0]
+                    row["order_id"] = entry.get("order_id")
+                row["identifier"] = ident
+            self._allocation_execution["orders"].append(row)
+        except Exception as e:  # noqa: BLE001 - recording a receipt cannot interrupt trading
+            log.warning("cannot record the execution attempt: %s", e)
 
     def _brain_audit(self, rep, bar_ts, cur, cash_w):
         """One line per processed bar in state_dir/kimi_runner.jsonl: what Kimi / the fallback
@@ -2626,6 +2712,7 @@ class Runner:
         info = rep.get("brain") or {}
         rec = {
             "time": round(float(rep.get("time") or self.clock()), 3), "bar_ts": bar_ts, "mode": self.mode,
+            "runtime_mode": "dry_run" if self.dry_run else self.mode,
             "status": rep.get("status"), "equity_irt": rep.get("equity"), "irt_cash_w": round(cash_w, 6),
             "current": {s: round(w, 6) for s, w in cur.items() if w > 0.0005},
             "action": info.get("action"), "why": info.get("why"), "trigger": info.get("trigger"),
@@ -2637,9 +2724,13 @@ class Runner:
             "targets": {s: w for s, w in (rep.get("targets") or {}).items() if w},
             "plan": rep.get("plan"),
             "fills": [{k: f.get(k) for k in ("side", "symbol", "base", "quote", "fee", "fee_asset", "order_id",
-                                             "partial", "quote_asset", "route", "reason")}
+                                             "identifier", "status", "requested", "avg_price", "partial",
+                                             "quote_asset", "route", "reason")}
                       for f in rep.get("fills") or []],
             "skipped": [list(x) for x in rep.get("skipped") or []], "errors": rep.get("errors")}
+        receipt = self._execution_receipt(rep)
+        if receipt is not None:
+            rec["execution"] = receipt
         for k in ("trigger_kind", "mode", "events", "notifications", "news_forced", "pump_guard", "plans_broken",
                   "adjustments"):
             if info.get(k):
@@ -4652,12 +4743,14 @@ class Runner:
             rep["skipped"].append((o.symbol, vet.reason))
             log.warning("skip %s %s: %s", side, o.symbol, vet.reason)
             return True
+        before = self._execution_journal()
         try:
             if side == "sell":
                 fill = self.broker.market_sell(o.symbol, vet.amount, ref_price=vet.est_avg_price, book=book)
             else:
                 fill = self.broker.market_buy(o.symbol, vet.amount, book=book)
         except OrderStatusUnknown as e:
+            self._execution_order(o, side, vet.amount, "unknown", error=e, before=before)
             self._record_sent()
             rep["errors"].append(str(e))
             log.error("ORDER OUTCOME UNKNOWN: %s - aborting this cycle; it will be resolved by identifier", e)
@@ -4665,29 +4758,34 @@ class Runner:
         except FATAL_ERRORS:
             raise
         except OrderNotSent as e:  # definitely not accepted (e.g. throttled): re-planned later
+            self._execution_order(o, side, vet.amount, "not_sent", error=e, before=before)
             rep["errors"].append("%s %s: %s" % (side, o.symbol, e))
             log.error("%s %s not sent: %s", side, o.symbol, e)
             self._transient_skip = True
             return True
         except BrokerError as e:  # refused locally, nothing sent
+            self._execution_order(o, side, vet.amount, "not_sent", error=e, before=before)
             rep["errors"].append("%s %s: %s" % (side, o.symbol, e))
             log.error("%s %s refused: %s", side, o.symbol, e)
             if isinstance(e, (WalletDataError, InsufficientFunds)):
                 self._transient_skip = True
             return True
         except BitpinAPIError as e:
+            rejected = e.status is not None and 400 <= e.status < 500
+            self._execution_order(o, side, vet.amount, "rejected" if rejected else "unknown", error=e, before=before)
             self._record_sent()
             rep["errors"].append("%s %s: %s" % (side, o.symbol, e))
             log.error("%s %s failed: %s", side, o.symbol, e)
-            rejected = e.status is not None and 400 <= e.status < 500
             if rejected and o.route == "direct" and self.brain is not None:
                 self._direct_rejected(o.symbol, side, e)       # the next plans use the toman route
             return rejected  # definite rejection: continue
         except Exception as e:  # noqa: BLE001 - state unknown: stop sending for this bar
+            self._execution_order(o, side, vet.amount, "unknown", error=e, before=before)
             self._record_sent()
             rep["errors"].append("%s %s: %s" % (side, o.symbol, e))
             log.exception("%s %s: unexpected error; aborting this cycle", side, o.symbol)
             return False
+        self._execution_order(o, side, vet.amount, fill=fill)
         self._sleeve_book(fill)
         self._record_sent()
         quote_asset = parse_symbol(o.symbol)[1]

@@ -1183,6 +1183,7 @@ def collect_bot_state(state_dir, notify_state_dir, notify_conf, now):
                                     "report_fa": v["report_fa"], "error": v["error"][:400] or None,
                                     "error_kind": v["error_kind"] or None,
                                     "confirmation": v.get("confirmation"), "p_rule": v.get("p_rule") or None,
+                                    "execution": v.get("execution"),
                                     "evidence_review": evidence_review_view(v.get("evidence_review"))}
         st = nt._dict(n._read_json("runner_state"))
         rows = []

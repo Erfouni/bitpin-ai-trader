@@ -236,7 +236,8 @@ class TestPanelSecondRun(unittest.TestCase):
         with use("en"):
             t = pw.confirmation_html(nt._confirmation(conf))
             self.assertIn("Buy cut", t)
-            self.assertIn("bought", t)
+            self.assertIn("approved", t)
+            self.assertNotIn("bought", t)
             self.assertIn("Confirmed", pw.confirmation_html({"kept": {"BTC_IRT": 0.3}, "cut": {}, "error": None}))
             card = pw.PanelApp._decision_card(None, {"valid": True, "hold": False, "targets": {"BTC_IRT": 0.2},
                                                      "confirmation": nt._confirmation(conf)})

@@ -4,6 +4,23 @@
 
 ---
 
+## 3.15.3 — هماهنگی گزارش تصمیم با کنترل ریسک و اجرای سفارش (2026-10-12)
+
+گزارش فارسی از اهداف نهایی پس از کنترل‌ها و بررسی دوم ساخته می‌شود؛ پیشنهاد مدل و تأیید آن
+دیگر به معنی انجام خرید نمایش داده نمی‌شوند. پنل و اطلاع‌رسان وضعیت اجرای مرتبط، مقادیر واقعاً
+پرشده، اجرای ناقص و سفارش نامعلوم را جدا نشان می‌دهند. سابقهٔ بدون رسید مرتبط، تأییدنشده است.
+
+- Generate bounded owner-facing Persian reports from structured final targets, risk checks and the
+  second vote; keep original model text in audit, without raw-response or translation-cache fallback.
+- Record exact decision origin/time, runtime mode, order identifiers, statuses and cumulative amounts.
+  Retain retry references across restart; exclude independent code exits, ladder and maintenance fills.
+- Read only the same captured market orders from the local journal for later resolution; positive known
+  amounts confirm executed portions, never achievement of every target. Zero fills, ambiguous submissions,
+  paper and dry-run receipts do not establish a live purchase.
+- Rename second-vote results to approval and show separate execution state, counts, amounts, fees and
+  execution-time targets in the bilingual responsive panel. Allocation and trading settings are unchanged.
+- Add offline regressions using a synthetic exchange, legacy records, journal resolution and malformed inputs.
+
 ## 3.15.2 — اصلاح ارجاع شواهد و تشخیص خطای منابع عمومی (2026-10-12)
 
 قالب پاسخ کیمی، ارجاع نامزدها را پیش‌فرض خالی می‌گذارد و دامنهٔ مجاز هر شاهد را صریح می‌کند؛
