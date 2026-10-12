@@ -2486,19 +2486,20 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
 # --------------------------------------------------------------------------- prompt
 
 EVIDENCE_RULES = """PUBLIC EVIDENCE CONTRACT (when decision_evidence is present)
-Read its four source groups BEFORE selecting targets. Return analysis.evidence_review with the SAME schema_version
-and request_id. For every available group cite at least one fact from its catalog, even when neutral/effect none:
-id, field and exact numeric value in the given units (integer wei/sats remain integers). Never turn missing/null,
-absent, stale or omitted observations into zero. All four groups are mandatory; an unavailable/absent/omitted group
-uses assessment unavailable, citations [], affected_symbols [], effect none and a specific reason (10-240 characters).
-assessment: supports|conflicts|mixed|neutral|unavailable. effect: supports_existing|reduces_conviction|changes_selection|
-changes_size|none. A nonzero effect needs affected_symbols within EACH cited fact's allowed_symbols and a matching
-candidate.evidence_refs containing the cited ids (USDT_IRT alone needs no candidate). Explain the evidence's actual
-role in the proposal, including no effect; do not claim a trade was executed. Native personal/custody wallet balance
-changes do NOT identify purchases, sales or smart money: those groups MUST be neutral/effect none when available.
-These correlated, supporting observations are NOT independent confirmations and add ZERO probability bonus.
-Existing setup, news, P RULE, cost, headroom and confirmation gates still decide whether an increase is valid;
-probability allowances are ceilings, never mandatory estimates. No review requires a trade or positive EV.
+Review all four groups BEFORE targets. Return analysis.evidence_review with the SAME schema_version and request_id.
+Each available group needs a catalog citation even if neutral/effect none: id, field, exact numeric value in given
+units; wei/sats stay integers. Never turn missing/null, absent, stale or omitted data into zero.
+Unavailable/absent/omitted: assessment unavailable, citations [], affected_symbols [], effect none, specific reason
+(10-240 characters). assessment: supports|conflicts|mixed|neutral|unavailable. effect: supports_existing|
+reduces_conviction|changes_selection|changes_size|none.
+candidate.evidence_refs is optional; default []. Each id must be cited in a source review and this candidate's symbol
+must be in that exact fact's allowed_symbols, even with effect none. Neutral/no-effect citations need no candidate
+links. Gold/silver/oil/equity/bond normally use []; global crypto/liquidity ids outside scope are forbidden.
+Nonzero effects need scoped affected_symbols and matching candidate refs (USDT_IRT needs no candidate).
+Explain actual role, even no effect; do not claim execution. Native personal/custody balance changes do NOT identify
+purchases, sales or smart money: available groups MUST be neutral/effect none. Correlated observations are
+NOT independent confirmations; ZERO probability bonus. Setup, news, P RULE, cost, headroom and confirmation
+gates govern increases; probability ceilings are never mandatory estimates. No review requires a trade or positive EV.
 """
 EVIDENCE_SCHEMA = (', "evidence_review": {"schema_version": 1, "request_id": "<decision_evidence.request_id>", '
                    '"sources": {' + ', '.join(
@@ -2873,7 +2874,7 @@ def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=N
         "{{REPORT_FA_MAX}}": str(REPORT_FA_MAX),
         "{{EVIDENCE_RULES}}": EVIDENCE_RULES if evidence_contract is not None else "",
         "{{EVIDENCE_SCHEMA}}": EVIDENCE_SCHEMA if evidence_contract is not None else "",
-        "{{EVIDENCE_REFS_SCHEMA}}": ', "evidence_refs": ["<cited fact id>"]' if evidence_contract is not None else "",
+        "{{EVIDENCE_REFS_SCHEMA}}": ', "evidence_refs": []' if evidence_contract is not None else "",
         "{{TA_METHOD}}": technical.method_text(),
         "{{TA_SCHEMA}}": technical.schema_text(),
         "{{OWNER}}": (("ADDITIONAL INSTRUCTIONS FROM THE ACCOUNT OWNER\n" + str(cfg["extra_instructions"]).strip())

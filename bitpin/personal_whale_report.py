@@ -2,11 +2,12 @@
 import base64
 from datetime import datetime, timezone
 import html
+import math
 from pathlib import Path
 
 from .defi_daily import atomic_text
 from .personal_wallets import WALLETS
-from .personal_whale import ADDRESS
+from .personal_whale import ADDRESS, RPC_METHODS
 
 
 def esc(value): return html.escape(str(value), quote=True)
@@ -20,6 +21,37 @@ def eth(value):
 
 def stamp(value):
     return 'Not collected yet' if value is None else datetime.fromtimestamp(value, timezone.utc).strftime('%d %b %Y · %H:%M UTC')
+
+
+def source_diagnostic(row):
+    """Render fixed diagnostic labels only, never provider-controlled error text."""
+    labels = {'timeout': 'Request timed out', 'connection_reset': 'Connection reset',
+              'connection_closed': 'Connection closed', 'tls_certificate': 'Certificate error',
+              'tls_error': 'TLS error', 'network_error': 'Network error',
+              'http_rate_limit': 'Rate limited', 'http_error': 'HTTP error',
+              'rpc_error': 'RPC error', 'invalid_response': 'Invalid response',
+              'response_too_large': 'Response too large', 'request_budget': 'Request limit',
+              'validation_error': 'Validation failed', 'public_error': 'Public source error'}
+    parts = []
+    kind = row.get('error_kind')
+    if type(kind) is str and kind in labels:
+        parts.append(labels[kind])
+    method = row.get('method')
+    if type(method) is str and method in RPC_METHODS:
+        parts.append(method)
+    for key, prefix, low, high in (('http_status', 'HTTP', 100, 599),
+                                   ('rpc_code', 'RPC', -(2**31), 2**31 - 1)):
+        code = row.get(key)
+        if type(code) is int and low <= code <= high:
+            parts.append('%s %d' % (prefix, code))
+    retry = row.get('retry_at')
+    if row.get('status') in ('error', 'cooldown') and type(retry) in (int, float):
+        try:
+            if math.isfinite(retry) and retry >= 0:
+                parts.append('Retry after ' + stamp(retry))
+        except (ValueError, OverflowError, OSError):
+            pass
+    return ' · '.join(parts)
 
 
 def wallet_card(wallet, row, good, index):
@@ -72,9 +104,11 @@ def render_report(snapshot):
         and 'drpc' not in snapshot.get('sources', {}) else ('drpc', 'dRPC')
     for key, title in (('publicnode', 'PublicNode'), secondary):
         row = snapshot.get('sources', {}).get(key, {})
-        sources.append('<div class="source"><span class="dot %s"></span><div><b>%s</b><small>%s · finalized height %s</small></div></div>' %
+        diagnostic = source_diagnostic(row)
+        sources.append('<div class="source"><span class="dot %s"></span><div><b>%s</b><small>%s · finalized height %s</small>%s</div></div>' %
                        ('green' if row.get('status') == 'ok' and good else '', title, esc(row.get('status', 'missing')),
-                        esc(row.get('finalized_height', 'unknown'))))
+                        esc(row.get('finalized_height', 'unknown')),
+                        '<small class="source-detail">%s</small>' % esc(diagnostic) if diagnostic else ''))
     anchor = snapshot.get('anchor') if good else None
     font_path = Path(__file__).parent / 'static' / 'fonts' / 'Vazirmatn-Regular.woff2'
     font = '@font-face{font-family:Vazirmatn;src:url(data:font/woff2;base64,%s);font-display:swap}' % \
@@ -86,7 +120,7 @@ main{max-width:1380px;margin:auto;padding:48px 28px}header{display:flex;justify-
 p{color:#a7b5ca}.intro{max-width:800px;margin:12px 0 26px}.pill{display:inline-block;padding:7px 14px;border:1px solid #4a4167;border-radius:999px;color:#cebcff;background:#261f3b;font-size:12px;white-space:nowrap}
 .card{border:1px solid #26334a;border-radius:22px;background:linear-gradient(135deg,#152238,#0f192b);padding:24px;min-width:0}
 .integrity{display:grid;grid-template-columns:1fr 1.05fr 1.4fr;gap:24px;align-items:center}.integrity h2{font-size:18px}.summary{font-size:12px;color:#94a5bd}.summary b{color:#e5eef9}.providers{border-left:1px solid #29354d;padding-left:24px}.source{display:flex;gap:12px;align-items:center;margin:10px 0}.source small{display:block;color:#94a5bd;font-size:11px}.dot{height:8px;width:8px;flex-shrink:0;border-radius:50%;background:#e6b968}.green{background:#6de0ad}
-.metadata{font-size:11px;color:#a8b8cf;overflow-wrap:anywhere}.metadata b{color:#d9e4f4;font-weight:500}.anchor-hash{display:block;font-size:10px;margin-top:6px;color:#8294ae}
+.source .source-detail{overflow-wrap:anywhere;color:#b1bed0}.metadata{font-size:11px;color:#a8b8cf;overflow-wrap:anywhere}.metadata b{color:#d9e4f4;font-weight:500}.anchor-hash{display:block;font-size:10px;margin-top:6px;color:#8294ae}
 .wallets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:24px}.wallet{display:flex;flex-direction:column}.wallet-heading{display:flex;align-items:center;gap:12px}.avatar{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;border:1px solid #514471;background:#292040;color:#d6c5ff;font-size:12px;flex-shrink:0}.wallet-label{color:#9cadc5;font-size:12px;margin-top:14px}.balance{font-size:clamp(25px,2.5vw,34px);font-weight:700;letter-spacing:-.04em;margin:8px 0 0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.balance small{font-size:13px;color:#94a5bd}.exact{font-size:11px;color:#bcc8da;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}.rounding{font-size:10px;color:#8191aa;margin-top:3px}
 .deltas{display:grid;gap:10px;margin:20px 0}.delta{background:#0b1424;border:1px solid #202e43;border-radius:14px;padding:13px 15px;min-width:0}.delta span,.delta small{display:block;color:#9aabc3;font-size:11px}.delta strong{display:block;font-size:13px;overflow-wrap:anywhere;padding:5px 0;color:#e5ecf8;font-variant-numeric:tabular-nums}.delta small{font-size:10px;overflow-wrap:anywhere}
 .attribution{border-top:1px solid #29354d;padding-top:16px}.confidence{font-size:10px;color:#c6b4ee;background:#26213b;border-radius:6px;padding:4px 7px;display:inline-block}.attribution p{font-size:11px;line-height:1.7;margin:12px 0}.attribution .limits{color:#d9c299}.links{display:flex;flex-wrap:wrap;gap:5px 15px;font-size:10px}.address{display:block;padding:15px 0 0;margin-top:auto;overflow-wrap:anywhere;font:10px/1.6 ui-monospace,Consolas,monospace;letter-spacing:-.01em}

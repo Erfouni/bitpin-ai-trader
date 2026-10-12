@@ -2,6 +2,7 @@
 import copy
 import json
 from pathlib import Path
+import re
 import tempfile
 import unittest
 
@@ -101,6 +102,26 @@ class EvidenceRuntimeTests(unittest.TestCase):
         self.assertEqual(source['facts'][0]['fields']['balance_wei'], 1000000000000000001)
         self.assertIn('"evidence_review"', messages[0]['content'])
         self.assertNotIn('decision_evidence', evidence_context())
+
+    def test_submitted_response_schema_defaults_candidate_refs_to_empty(self):
+        brain = self.brain(EvidenceReply())
+        for ctx, enabled in ((evidence_context(), True), (context(), False)):
+            messages = brain.build_messages(ctx, {'USDT_IRT': 1}, now=T0)
+            schema = next(line for line in messages[0]['content'].splitlines()
+                          if line.startswith('{"analysis"'))
+            schema = re.sub(r'"<[^<>]*>"', '"synthetic"', schema)
+            schema = re.sub(r'<[^<>]*>', '1', schema)
+            schema = schema.replace('1 or "target_rule": "half_48h_drop"|"none"', '1')
+            parsed = json.loads(schema.replace(', ...', ''))
+            candidate = parsed['analysis']['candidates']['synthetic']
+            with self.subTest(enabled=enabled):
+                if enabled:
+                    self.assertEqual(candidate['evidence_refs'], [])
+                    self.assertEqual(set(parsed['analysis']['evidence_review']['sources']),
+                                     {'bitpin_flow', 'defi_daily', 'personal_wallets', 'custody_wallets'})
+                else:
+                    self.assertNotIn('evidence_refs', candidate)
+                    self.assertNotIn('evidence_review', parsed['analysis'])
 
     def test_valid_review_survives_actual_decision_log_and_notify_projection(self):
         llm = EvidenceReply()

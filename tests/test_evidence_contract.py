@@ -256,6 +256,38 @@ class EvidenceContractTests(unittest.TestCase):
                 with self.assertRaises(self.module().EvidenceContractError):
                     self.module().validate_review(review, contract, SYMBOLS, candidates)
 
+    def test_neutral_global_citations_allow_gold_empty_refs_but_reject_unrelated_refs(self):
+        context = fixture()
+        context['symbols']['XAUT_IRT'] = {'cls': 'gold'}
+        context['public_flow']['liquidity'] = {'status': 'ok', 'kind': 'stablecoin_supply_proxy',
+            'received_at': 123456, 'assets': {'USDT': {'circulating_units': 1300,
+                                                     'change_7d_units': 7}}}
+        context['defi_daily']['sources']['stablecoin_supply:global'] = {
+            'status': 'ok', 'as_of': 86400, 'value': 2700, 'change_pct': [1.0, 2.0, 3.0]}
+        contract = self.contract(context)
+        review = neutral_review(contract)
+        flow = next(f for f in contract['sources']['bitpin_flow']['facts']
+                    if f['scope']['kind'] == 'global_liquidity_proxy')
+        defi = next(f for f in contract['sources']['defi_daily']['facts']
+                    if f['scope']['metric'] == 'stablecoin_supply')
+        review['sources']['bitpin_flow']['citations'] = [
+            {'id': flow['id'], 'field': 'circulating_units', 'value': 1300}]
+        review['sources']['defi_daily']['citations'] = [
+            {'id': defi['id'], 'field': 'value', 'value': 2700}]
+        refs = [flow['id'], defi['id']]
+        allowed = SYMBOLS + ['XAUT_IRT']
+        self.assertTrue(all(row['effect'] == 'none' for row in review['sources'].values()))
+        for candidates in ({'XAUT_IRT': {}}, {'XAUT_IRT': {'evidence_refs': []}},
+                           {'BTC_IRT': {'evidence_refs': refs}}):
+            with self.subTest(candidates=candidates):
+                result = self.module().validate_review(review, contract, allowed, candidates)
+                self.assertEqual(result['status'], 'validated')
+        for linked in ([refs[0]], [refs[1]], refs):
+            with self.subTest(linked=linked), self.assertRaisesRegex(
+                    self.module().EvidenceContractError, 'unrelated evidence'):
+                self.module().validate_review(review, contract, allowed,
+                                              {'XAUT_IRT': {'evidence_refs': linked}})
+
     def test_native_wallets_cannot_imply_direction_or_allocation_effect(self):
         contract = self.contract()
         review = neutral_review(contract)

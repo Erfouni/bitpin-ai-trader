@@ -4,6 +4,8 @@ import json
 import math
 from pathlib import Path
 import re
+import socket
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -19,6 +21,33 @@ PROVIDERS = {'publicnode': 'https://ethereum-rpc.publicnode.com', 'drpc': 'https
 ATTRIBUTION = dict(WALLETS[0]['attribution'])
 MARKER = '.personal-whale-shadow-state'
 MARKER_TEXT = 'personal-ethereum-wallet-shadow-v1\n'
+RPC_METHODS = frozenset(('eth_chainId', 'eth_getBlockByNumber', 'eth_getBalance'))
+RPC_FAILURE_KINDS = frozenset(('timeout', 'connection_reset', 'connection_closed', 'tls_certificate',
+    'tls_error', 'network_error', 'http_rate_limit', 'http_error', 'rpc_error', 'invalid_response',
+    'response_too_large', 'request_budget', 'validation_error', 'public_error'))
+
+
+class RPCFailure(PublicDataError):
+    """Only fixed categories and bounded identifiers survive a public RPC failure."""
+    def __init__(self, kind, retry_after=3600, http_status=None, rpc_code=None, method=None):
+        self.kind = kind if isinstance(kind, str) and kind in RPC_FAILURE_KINDS else 'public_error'
+        self.http_status = http_status if type(http_status) is int and 100 <= http_status <= 599 else None
+        self.rpc_code = rpc_code if type(rpc_code) is int and -(2 ** 31) <= rpc_code < 2 ** 31 else None
+        self.method = method if isinstance(method, str) and method in RPC_METHODS else None
+        if type(retry_after) not in (int, float) or (type(retry_after) is float and not math.isfinite(retry_after)):
+            retry_after = 3600
+        super().__init__('public RPC ' + self.kind, max(0, min(86400, retry_after)), self.http_status)
+
+
+def _network_kind(error):
+    cause = error.reason if isinstance(error, urllib.error.URLError) else error
+    if isinstance(cause, ssl.SSLCertVerificationError): return 'tls_certificate'
+    if isinstance(cause, (http.client.RemoteDisconnected, http.client.IncompleteRead, ssl.SSLEOFError)):
+        return 'connection_closed'
+    if isinstance(cause, ssl.SSLError): return 'tls_error'
+    if isinstance(cause, (TimeoutError, socket.timeout)): return 'timeout'
+    if isinstance(cause, ConnectionResetError): return 'connection_reset'
+    return 'network_error'
 
 
 def quantity(value):
@@ -38,7 +67,7 @@ def block(value, now, fresh=True):
     return {'number': number, 'hash': digest, 'timestamp': timestamp}
 
 
-def rpc_result(raw):
+def rpc_result(raw, method=None):
     try:
         def invalid(value): raise ValueError('nonfinite JSON')
         def unique(pairs):
@@ -56,11 +85,18 @@ def rpc_result(raw):
             children = item.values() if isinstance(item, dict) else item if isinstance(item, list) else ()
             stack.extend((child, depth + 1) for child in children)
         if not isinstance(value, dict) or value.get('jsonrpc') != '2.0' or type(value.get('id')) is not int or \
-                value['id'] != 1 or 'error' in value or value.get('result') is None:
+                value['id'] != 1:
             raise ValueError('invalid RPC envelope')
+        if 'error' in value:
+            error = value['error']
+            if ('result' in value or not isinstance(error, dict) or type(error.get('code')) is not int or
+                    not -(2 ** 31) <= error['code'] < 2 ** 31 or not isinstance(error.get('message'), str)):
+                raise ValueError('invalid RPC error')
+            raise RPCFailure('rpc_error', rpc_code=error['code'], method=method)
+        if value.get('result') is None: raise ValueError('missing RPC result')
         return value['result']
     except (ValueError, UnicodeError, RecursionError):
-        raise PublicDataError('invalid public RPC response', 3600)
+        raise RPCFailure('invalid_response', method=method)
 
 
 class PersonalClient:
@@ -83,15 +119,21 @@ class PersonalClient:
         try:
             with self.opener.open(request, timeout=self.timeout) as response:
                 result = response.read(1024 * 1024 + 1)
-                if len(result) > 1024 * 1024: raise PublicDataError('RPC response too large', 3600)
+                if len(result) > 1024 * 1024: raise RPCFailure('response_too_large', method=method)
         except urllib.error.HTTPError as exc:
             code = exc.code
             delay = retry_seconds(exc.headers.get('Retry-After')) if code in (429, 503) else 3600
             exc.close()
-            raise PublicDataError('public HTTP %d' % code, delay, code)
+            raise RPCFailure('http_rate_limit' if code == 429 else 'http_error', delay,
+                             http_status=code, method=method)
         except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
-            raise PublicDataError('public network error: ' + type(exc).__name__, 3600)
-        return rpc_result(result)
+            raise RPCFailure(_network_kind(exc), method=method)
+        except RPCFailure:
+            raise
+        except PublicDataError as exc:
+            # Redirect refusals and legacy transport handlers must not preserve prose.
+            raise RPCFailure('public_error', exc.retry_after, http_status=exc.status, method=method)
+        return rpc_result(result, method=method)
 
 
 def prepare_directory(value):
@@ -197,19 +239,41 @@ class PersonalCollector:
     def __init__(self, store, client=None, clock=time.time, sleeper=time.sleep):
         self.store, self.client = store, client or PersonalClient()
         self.clock, self.sleeper = clock, sleeper
-        self.requests, self.last_provider = 0, None
+        self.requests, self.last_provider, self.last_method = 0, None, None
+        self._rate_limit_retried = False
 
     def call(self, provider, method, params):
-        if self.requests >= 20: raise PublicDataError('request budget exhausted', 3600)
-        if self.requests: self.sleeper(2)
-        self.requests += 1
-        self.last_provider = provider
-        return self.client.call(provider, method, params)
+        self.last_provider, self.last_method = provider, method
+        delay = 2 if self.requests else 0
+        while True:
+            if self.requests >= 20: raise RPCFailure('request_budget', method=method)
+            if delay: self.sleeper(delay)
+            self.requests += 1
+            try:
+                return self.client.call(provider, method, params)
+            except RPCFailure as error:
+                if (error.kind != 'http_rate_limit' or error.http_status != 429 or
+                        self._rate_limit_retried or error.retry_after > 60 or self.requests >= 20):
+                    raise
+                # One repeat shared by both gateways; it consumes the same wire budget.
+                self._rate_limit_retried = True
+                delay = max(2, error.retry_after)
 
     def failed(self, provider, error, sources):
-        sources[provider] = {'status': 'error', 'reason': type(error).__name__}
         delay = max(3600, min(86400, getattr(error, 'retry_after', 3600)))
-        self.store.cooldown(provider, self.clock() + delay)
+        retry_at = self.clock() + delay
+        classified = error if isinstance(error, RPCFailure) else RPCFailure(
+            'validation_error' if isinstance(error, ValueError) else 'public_error',
+            http_status=getattr(error, 'status', None), method=self.last_method)
+        row = {'status': 'error', 'reason': 'RPCFailure' if isinstance(error, RPCFailure) else
+               'ValueError' if isinstance(error, ValueError) else 'PublicDataError',
+               'error_kind': classified.kind, 'retry_at': retry_at}
+        method = classified.method or (self.last_method if self.last_method in RPC_METHODS else None)
+        if method is not None: row['method'] = method
+        if classified.http_status is not None: row['http_status'] = classified.http_status
+        if classified.rpc_code is not None: row['rpc_code'] = classified.rpc_code
+        sources[provider] = row
+        self.store.cooldown(provider, retry_at)
 
     def collect(self, publish=None):
         previous = self.store.latest(successful=True)
@@ -218,8 +282,9 @@ class PersonalCollector:
         if publish: publish(self.store.snapshot(self.clock()))
         heads, sources = {}, record['sources']
         for provider in PROVIDERS:
-            if self.store.cooldown(provider) > self.clock():
-                sources[provider] = {'status': 'cooldown'}
+            retry_at = self.store.cooldown(provider)
+            if retry_at > self.clock():
+                sources[provider] = {'status': 'cooldown', 'retry_at': retry_at}
                 continue
             try:
                 if quantity(self.call(provider, 'eth_chainId', [])) != 1: raise ValueError('wrong chain')

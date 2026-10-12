@@ -40,3 +40,27 @@ The repair does not activate wallet settings. Once a valid fresh receipt exists,
 - [dRPC balance queries](https://drpc.org/docs/ethereum-api/accountinfo/eth_getBalance)
 - [dRPC rate limits](https://drpc.org/docs/howitworks/ratelimiting)
 - [dRPC upstream architecture](https://drpc.org/docs/howitworks/overview)
+
+
+## Bounded rate-limit recovery — 3.15.2
+
+A late public RPC read can return HTTP429 after preceding address balances succeeded. The collector now permits
+one repeat in the entire collection, shared across gateways, only for the classified HTTP429 with a parsed delay
+of at most60seconds. It waits `max(2, retry_after)` exactly once before repeating the identical read-only request.
+The HTTP parser retains its existing delay rules: valid seconds or dates, a30-second floor, and a60-second fallback
+for absent/invalid headers. The fallback is not presented as an observed server header.
+
+The repeat consumes the existing20-request budget. Other request gaps remain at least2seconds. A longer delay,
+a used repeat, an exhausted budget, invalid payload, TLS failure or RPC error is not retried by this repair.
+Exhausted failures still hide every native balance and retain the existing at-least-one-hour/longer-requested
+provider cooldown. Final block-header agreement and every previous-anchor/balance check remain mandatory.
+
+Receipts now retain only fixed error categories, an approved RPC method, bounded numeric HTTP/RPC codes and the
+next permitted time. Provider-controlled error messages/bodies are not copied into receipts or model context.
+The report displays failure kind, method/code and retry time for initial errors and cooldowns alike.
+
+This does not modify wallet activation, allocation permissions, model retries or the probability policy.
+
+- [HTTP429 and Retry-After](https://www.rfc-editor.org/rfc/rfc6585.html#section-4)
+- [Retry-After delays](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after)
+- [Known idempotent request semantics](https://www.rfc-editor.org/rfc/rfc9110.html#name-idempotent-methods)

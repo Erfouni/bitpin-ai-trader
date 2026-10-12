@@ -4,6 +4,22 @@
 
 ---
 
+## 3.15.2 — اصلاح ارجاع شواهد و تشخیص خطای منابع عمومی (2026-10-12)
+
+قالب پاسخ کیمی، ارجاع نامزدها را پیش‌فرض خالی می‌گذارد و دامنهٔ مجاز هر شاهد را صریح می‌کند؛
+شاهد کریپتو به‌طور خودکار دلیل انتخاب طلا نیست. خطای منبع ETH اکنون نوع، متد و کد محدود دارد
+و گزارش، زمان مجاز تلاش بعدی را نشان می‌دهد. برای HTTP 429 یک تلاش مجددِ محدود پس از انتظار مجاز
+اضافه شده است؛ اعتبارسنجی، توافق دو منبع و سیاست معامله حفظ شده‌اند.
+
+- Clarify optional candidate references, exact per-fact asset scope and neutral source review links;
+  keep unrelated references rejected and leave the no-evidence prompt byte-identical.
+- Classify public ETH transport/protocol failures with fixed categories and bounded method/status
+  metadata. Do not retain provider-controlled messages or bodies in collector receipts.
+- Recover one short HTTP429 per public collection after its parsed Retry-After delay (up to60s),
+  counting the repeat within the same20-request ceiling. Long delays and repeat/fatal failures stay excluded.
+- Show useful source diagnostics and cooldown times in the existing responsive wallet report.
+- Add synthetic scope, protocol, failure classification and safe-rendering regressions.
+
 ## 3.15.1 — اصلاح نگهداری بک‌آپ و انتخاب نسخهٔ بازگشت (2026-10-12)
 
 بک‌آپ‌های دستی دیگر باعث حذف نسخهٔ قبل از نصب یا انتخاب اشتباه برای بازگشت نمی‌شوند.
