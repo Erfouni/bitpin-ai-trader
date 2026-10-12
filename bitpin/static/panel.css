@@ -1183,6 +1183,20 @@ p.pad { padding: 10px 14px 0; margin: 0; }
 .research-heading { margin-bottom: 16px; }
 .research-heading h2 { margin: 0 0 8px; font-size: 20px; }
 .research-heading p { max-width: 1020px; color: var(--text-2); font-size: 12px; }
+.research-delivery { padding: 24px; border: 1px solid var(--border-strong); border-radius: 20px;
+  background: linear-gradient(120deg, var(--info-soft), var(--surface)); }
+.research-delivery-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  color: var(--text-2); font-size: 11px; margin-bottom: 16px; }
+.research-delivery-sources { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.research-delivery-source { min-width: 0; padding: 18px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 14px; }
+.research-delivery-source h3 { margin: 0 0 12px; font-size: 13px; }
+.research-delivery-source dl { margin: 16px 0 0; }
+.research-delivery-source dl div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.research-delivery-source dt, .research-delivery-source p { color: var(--text-3); font-size: 11px; }
+.research-delivery-source dd { margin: 0; font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.research-delivery-source p { margin: 8px 0 0; }
+.research-delivery-note { margin: 16px 0 0; max-width: 1020px; color: var(--text-2); font-size: 12px; }
 .research-weight p, .research-weight small { font-size: 11px; color: var(--text-2); }
 .research-large { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.03em; }
 .research-meter { height: 5px; border-radius: 8px; overflow: hidden; background: var(--surface-3); margin: 16px 0; }
@@ -1224,6 +1238,7 @@ p.pad { padding: 10px 14px 0; margin: 0; }
 @media (max-width: 1200px) { .research-sources, .research-weights { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .research-wallets { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .research-hero { flex-direction: column; padding: 20px; gap: 10px; }
+  .research-delivery { padding: 18px; }.research-delivery-sources { grid-template-columns: minmax(0, 1fr); }
   .research-sources, .research-weights { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .research-sources > :last-child, .research-weights > :last-child { grid-column: 1 / -1; }
   .research-source, .research-weight { padding: 14px; }.research-section { margin-top: 26px; }

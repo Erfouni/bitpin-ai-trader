@@ -22,6 +22,7 @@ PUBLIC_PATHS = {
     'personal_whale': '/var/lib/bitpin-personal-whale-shadow/personal-whale-shadow.json',
     'strategy': '/var/lib/bitpin-strategy-shadow/strategy-shadow.json',
 }
+LIVE_STATUS_PATH = '/var/lib/bitpin-bot/live-evidence-status.json'
 CAPS = {'technical': .50, 'flow': .20, 'macro': .15, 'whale': .05, 'news': .10}
 BTC_ADDRESSES = ('1Kr6QSydW9bFQG1mXiPNNu6WpJGmUa9i1g', '3JZq4atUahhuA9rLhXLMhhTo133J9rF97j',
                  'bc1qgdjqv0av3q56jvd82tkdjpy7gdp9ut8tlqmgrpmv24sq90ecnvqqjwvw97')
@@ -193,9 +194,10 @@ def _evaluation(doc):
 
 
 def collect(app_dir, now):
-    """Compact field allowlist from five fixed public snapshots and installed results."""
+    """Five public snapshots, sanitized delivery receipt, and installed results."""
+    from .live_evidence import read_delivery_status
     result = {'generated_at': now, 'sources': {}, 'flow': [], 'defi': [], 'wallets': [], 'btc_wallets': [],
-              'weights': {}, 'receipt_count': None}
+              'weights': {}, 'receipt_count': None, 'live_delivery': read_delivery_status(LIVE_STATUS_PATH, now)}
     docs = {}
     for key, path in PUBLIC_PATHS.items():
         doc, read_status = _read(path)
@@ -339,6 +341,59 @@ def _table(head, rows):
         ''.join('<tr>%s</tr>' % ''.join('<td>%s</td>' % c for c in row) for row in rows))
 
 
+def _delivery(value):
+    """Describe transport of supporting facts, without inferring model influence."""
+    value = _obj(value)
+    status, stage = value.get('status', 'missing'), value.get('pipeline_stage')
+    submitted = status == 'ok' and stage in ('attempted', 'response_received')
+    stages = {
+        'attempted': Text('تلاش برای ارسال درخواست', 'Request attempted'),
+        'response_received': Text('پاسخ دریافت شد', 'Response received'),
+        'not_called': Text('ارسال نشده', 'Not submitted'),
+    }
+    stage_text = (_label(stage, stages) if status == 'ok' and stage in stages else
+                  _t('ارسال فعلی نامشخص', 'Current delivery unknown'))
+    sources = _obj(value.get('sources'))
+    cards = []
+    for key, label in (
+        ('public_flow', NAMES['flow']), ('defi_daily', NAMES['defi']),
+        ('wallet_observations', Text('مشاهدات کیف‌پول‌ها', 'Wallet observations'))):
+        row = _obj(sources.get(key))
+        presence = row.get('presence')
+        usable = _int(row.get('usable_count')) if submitted else None
+        presence_labels = {
+            'included': Text('در متن تحلیل موجود', 'Included in context'),
+            'omitted': Text('از متن تحلیل حذف شده', 'Omitted from context'),
+            'absent': Text('در متن تحلیل وجود ندارد', 'Absent from context'),
+        }
+        presence_text = (_label(presence, presence_labels) if submitted and presence in presence_labels else
+                         _t('ارسال نشده', 'Not submitted') if status == 'ok' and stage == 'not_called' else
+                         _t('ارسال فعلی نامشخص', 'Current delivery unknown'))
+        good = (submitted and presence == 'included' and row.get('status') in ('ok', 'partial') and
+                usable is not None and usable > 0)
+        quality = _t('مشاهدهٔ قابل استفاده ندارد', 'No usable observations') if submitted and usable == 0 else (
+            _t('پوشش ناقص', 'Partial coverage') if submitted and row.get('status') == 'partial' else '')
+        cards.append('<article class="research-delivery-source"><h3>%s</h3>'
+                     '<span class="research-status %s">%s</span><dl><div><dt>%s</dt><dd>%s</dd></div></dl>%s</article>' % (
+            _e(tr(label)), 'good' if good else 'limited', presence_text,
+            _t('مشاهدات قابل استفاده', 'Usable observations'), _number(usable, 0),
+            '<p>%s</p>' % quality if quality else ''))
+    return ('<section class="research-section research-delivery" id="research-live-delivery">'
+            '<div class="research-heading"><h2>%s</h2><p>%s</p></div>'
+            '<div class="research-delivery-meta"><span class="research-status %s">%s</span>'
+            '%s<span>%s: %s</span></div><div class="research-delivery-sources">%s</div>'
+            '<p class="research-delivery-note">%s</p></section>') % (
+        _t('آخرین ارسال شواهد به کیمی', 'Last Kimi context delivery'),
+        _t('وضعیت متنِ آخرین درخواست، پس از کنترل کیفیت و محدودیت حجم؛ مقدار حذف‌شده به کیمی نرسیده است.',
+           'Last request context, after quality checks and prompt limits. Omitted observations did not reach Kimi.'),
+        'good' if status == 'ok' and stage == 'response_received' else 'limited', stage_text,
+        '' if status == 'ok' else _badge(status),
+        _t('زمان ثبت', 'Recorded at'), _stamp(value.get('generated_at')),
+        ''.join(cards),
+        _t('دریافت پاسخ فقط بازگشت مدل را ثبت می‌کند؛ ثابت نمی‌کند که مدل از این داده‌ها استفاده کرده یا سود ساخته است. نبود گزارش، نشانهٔ خاموش‌بودن تنظیمات نیست.',
+           'A returned response does not prove the model acted on the facts or earned a profit. Missing delivery records do not establish that settings are off.'))
+
+
 def render(data, currency='IRT', period='holdout'):
     """Authenticated panel content; all remote fields are escaped, no inline CSS/JS."""
     data = _obj(data)
@@ -349,13 +404,14 @@ def render(data, currency='IRT', period='holdout'):
         _t('داده‌ها را ببین، اثرگذاری را بسنج', 'Observe data. Measure influence.'),
         _t('این صفحه داده‌های عمومی و نتیجهٔ آزمایش‌ها را نشان می‌دهد. تصمیم‌گیر واقعی همچنان کیمی است.',
            'Public observations and measured experiments. Kimi remains the live decision maker.'),
-        _t('آزمایشی · اثرگذاری جدید در معاملات خاموش', 'Shadow mode · New live influence off'))]
+        _t('تحلیل واقعی و پژوهش آزمایشی', 'Live context and experimental research'))]
     source_cards = []
     for key in PUBLIC_PATHS:
         row = _obj(_obj(data.get('sources')).get(key))
         source_cards.append('<article class="research-source"><h3>%s</h3>%s<p>%s</p></article>' % (
             _label(key, NAMES), _badge(row.get('status', 'missing')), _stamp(row.get('generated_at'))))
     out.append('<div class="research-sources">%s</div>' % ''.join(source_cards))
+    out.append(_delivery(data.get('live_delivery')))
     weight_cards = []
     for key, cap in CAPS.items():
         row = _obj(_obj(data.get('weights')).get(key))
@@ -369,10 +425,10 @@ def render(data, currency='IRT', period='holdout'):
             _t('سقف پژوهشی:', 'Research ceiling:'), _number(cap * 100, 0, '%'),
             _number(row.get('eligible_packets'), 0), _number(row.get('packet_count'), 0),
             _t('بسته با دادهٔ واجد شرایط', 'packets with eligible evidence')))
-    out.append(_section(_t('مدیریت اثرگذاری شواهد', 'Evidence influence'),
+    out.append(_section(_t('وزن‌های آزمایشی پیش‌بینی', 'Experimental forecast weights'),
         '<div class="research-weights">%s</div>' % ''.join(weight_cards),
-        _t('میله‌ها سقف مجاز را نشان می‌دهند. این سقف‌ها فرض پژوهشی‌اند؛ وزن گمشده یا آموزش‌ندیده به مدل پایه برمی‌گردد.',
-           'Bars show permitted ceilings, which are research hypotheses. Missing or untrained influence returns to baseline.')))
+        _t('این وزن‌ها فقط برای ترکیب آزمایشی پیش‌بینی‌ها هستند و میزان توجه کیمی یا تخصیص واقعی را تعیین نمی‌کنند. سقف‌ها فرض پژوهشی‌اند؛ وزن آموزش‌ندیده به مدل پایه برمی‌گردد.',
+           'These weights do not set Kimi\'s attention or live allocation. They belong to a research-only forecast mixture. Ceilings are hypotheses; untrained weights return to baseline.')))
     flow_rows = []
     for row in data.get('flow', []):
         flow_rows.append(['<bdi dir="ltr">%s</bdi>' % _e(row.get('market', '')), _badge(row.get('status')),
@@ -514,6 +570,7 @@ def render(data, currency='IRT', period='holdout'):
         _t('حداکثر کل آزمایش ثبت‌شده', 'Registered experiment ceiling'), _number(pilot.get('worst_case_usd'), 3, ' USD'))
     out.append(_section(_t('کیفیت ارزیابی کیمی', 'Kimi evaluation quality'), kimi))
     out.append('<p class="research-footer">%s · %s: %s</p></div>' % (
-        _t('اثرگذاری واقعی داده‌های جدید تا تأیید آزمون مستقل خاموش است.', 'New live influence remains off pending independent validation.'),
+        _t('وضعیت ارسال واقعی در بالا ثبت می‌شود؛ مزیت پیش‌بینی هنوز اثبات نشده است.',
+           'Live context delivery is recorded above; predictive benefit remains unproven.'),
         _t('زمان گزارش تاریخی', 'Historical report generated'), _stamp(evaluation.get('generated_at'))))
     return ''.join(out)

@@ -185,6 +185,8 @@ DEFAULT_CONTEXT_CONFIG = {
     # Opt-in read-only daily observations from the independent public collector. None = unchanged baseline.
     "public_flow_snapshot": None,
     "defi_daily_snapshot": None,
+    "personal_whale_snapshot": None,
+    "custody_whale_snapshot": None,
     "market_status": True,
     "max_spread_pct": 1.0,
     "build_time_budget_seconds": 120,
@@ -1538,6 +1540,11 @@ class MarketContextBuilder:
             from .defi_context import load_defi_daily
             defi_now = now + max(0, self.monotonic() - t_started)
             ctx["defi_daily"] = load_defi_daily(self.cfg["defi_daily_snapshot"], defi_now)
+        if self.cfg.get("personal_whale_snapshot") or self.cfg.get("custody_whale_snapshot"):
+            from .wallet_context import load_wallet_context
+            ctx["wallet_observations"] = load_wallet_context(
+                self.cfg.get("personal_whale_snapshot"), self.cfg.get("custody_whale_snapshot"),
+                now + max(0, self.monotonic() - t_started))
         ctx = clean(ctx)
         ctx = self._shrink(ctx)
         if "defi_daily" in ctx:
@@ -1545,6 +1552,11 @@ class MarketContextBuilder:
             ctx["defi_daily"] = recheck_freshness(ctx["defi_daily"],
                                                   now + max(0, self.monotonic() - t_started))
             # Receipt age labels can grow during the final check (9.9 -> 10.1).
+            ctx = self._shrink(ctx)
+        if "wallet_observations" in ctx:
+            from .wallet_context import recheck_freshness as recheck_wallets
+            ctx["wallet_observations"] = recheck_wallets(ctx["wallet_observations"],
+                                                       now + max(0, self.monotonic() - t_started))
             ctx = self._shrink(ctx)
         return ctx
 
@@ -2143,6 +2155,12 @@ class MarketContextBuilder:
                 ctx["truncated"] = steps
                 return ctx
         # Optional unvalidated observations must not crowd out existing strategy/portfolio context.
+        if "wallet_observations" in ctx:
+            ctx.pop("wallet_observations")
+            steps.append("wallet_observations")
+            if fits():
+                ctx["truncated"] = steps
+                return ctx
         if "public_flow" in ctx:
             ctx.pop("public_flow")
             steps.append("public_flow")
@@ -2252,6 +2270,10 @@ def validate_context_config(config):
         from .defi_context import snapshot_path_valid as defi_path_valid
         if not defi_path_valid(cfg["defi_daily_snapshot"]):
             raise ConfigError("context.defi_daily_snapshot must be null or an absolute path to defi-daily.json")
+    from .wallet_context import snapshot_path_valid as wallet_path_valid
+    for key, personal in (("personal_whale_snapshot", True), ("custody_whale_snapshot", False)):
+        if cfg[key] is not None and not wallet_path_valid(cfg[key], personal=personal):
+            raise ConfigError("context.%s must be null or an absolute path to its public wallet snapshot" % key)
     cfg["max_spread_pct"] = check_number("context.max_spread_pct", cfg["max_spread_pct"], 0, 50, lo_open=True)
     cfg["build_time_budget_seconds"] = check_number("context.build_time_budget_seconds",
                                                     cfg["build_time_budget_seconds"], 10, 3600)

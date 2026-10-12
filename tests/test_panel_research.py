@@ -39,6 +39,10 @@ class ResearchTests(unittest.TestCase):
         patcher = mock.patch.object(research, 'PUBLIC_PATHS', self.paths)
         patcher.start()
         self.addCleanup(patcher.stop)
+        delivery_patcher = mock.patch.object(research, 'LIVE_STATUS_PATH',
+            os.path.join(self.tmp, 'live-evidence-status.json'))
+        delivery_patcher.start()
+        self.addCleanup(delivery_patcher.stop)
 
     def write(self, key, doc):
         path = self.results if key == 'evaluation' else self.paths[key]
@@ -47,6 +51,78 @@ class ResearchTests(unittest.TestCase):
 
     def collect(self):
         return research.collect(self.tmp, NOW)
+
+    def test_missing_delivery_receipt_is_unknown_without_changing_public_sources(self):
+        data = self.collect()
+        self.assertIn('live_delivery', data)
+        self.assertEqual(data['live_delivery']['status'], 'missing')
+        self.assertEqual(set(data['sources']), {'flow', 'defi', 'whale', 'personal_whale', 'strategy'})
+
+    def test_delivery_collection_exposes_sanitized_transport_without_private_fields(self):
+        with open(research.LIVE_STATUS_PATH, 'w', encoding='utf-8') as stream:
+            json.dump({'schema_version': 1, 'generated_at': NOW, 'pipeline_stage': 'response_received',
+                'quantitative_policy': 'research_only', 'account': 'must-not-leave-helper', 'sources': {
+                    'public_flow': {'presence': 'included', 'status': 'partial', 'usable_count': 1},
+                    'defi_daily': {'presence': 'omitted', 'status': 'absent', 'usable_count': 0},
+                    'wallet_observations': {'presence': 'absent', 'status': 'absent', 'usable_count': 0}}}, stream)
+        data = self.collect()
+        self.assertEqual(data['live_delivery']['status'], 'ok')
+        self.assertEqual(data['live_delivery']['pipeline_stage'], 'response_received')
+        self.assertEqual(data['live_delivery']['sources']['public_flow']['usable_count'], 1)
+        self.assertNotIn('must-not-leave-helper', json.dumps(data))
+
+    def delivery_page(self, status='ok', stage='response_received', lang='en'):
+        data = {'live_delivery': {'status': status, 'generated_at': NOW,
+            'pipeline_stage': stage, 'quantitative_policy': 'research_only', 'sources': {
+                'public_flow': {'presence': 'included', 'status': 'partial', 'usable_count': 1},
+                'defi_daily': {'presence': 'omitted', 'status': 'absent', 'usable_count': 0},
+                'wallet_observations': {'presence': 'absent', 'status': 'absent', 'usable_count': 0}}}}
+        with use(lang):
+            return research.render(data)
+
+    def test_delivery_reports_actual_inclusion_separately_from_research_weights(self):
+        page = self.delivery_page()
+        self.assertIn('Last Kimi context delivery', page)
+        self.assertIn('Response received', page)
+        self.assertIn('Included in context', page)
+        self.assertIn('Omitted from context', page)
+        self.assertIn('Absent from context', page)
+        self.assertIn('Usable observations', page)
+        self.assertIn('2026-10-12', page)
+        self.assertIn('does not prove the model acted on the facts or earned a profit', page)
+        self.assertIn('These weights do not set Kimi', page)
+        self.assertNotIn('New live influence off', page)
+        self.assertNotIn('New live influence remains off', page)
+
+    def test_missing_invalid_stale_and_uncalled_delivery_never_look_delivered(self):
+        for status, stage in [('missing', None), ('invalid', None), ('error', None), ('stale', 'response_received'),
+                              ('ok', 'not_called')]:
+            page = self.delivery_page(status, stage)
+            self.assertIn('Current delivery unknown' if status != 'ok' else 'Not submitted', page)
+            self.assertIn('id="research-live-delivery"', page)
+            delivery = page.split('id="research-live-delivery"', 1)[1].split('</section>', 1)[0]
+            self.assertNotIn('research-status good', delivery, (status, stage))
+
+    def test_delivery_omitted_and_zero_usable_groups_are_not_green(self):
+        data = {'live_delivery': {'status': 'ok', 'generated_at': NOW, 'pipeline_stage': 'attempted',
+            'sources': {'public_flow': {'presence': 'included', 'status': 'unavailable', 'usable_count': 0},
+                        'defi_daily': {'presence': 'omitted', 'status': 'absent', 'usable_count': 0}}}}
+        with use('en'):
+            page = research.render(data)
+        self.assertIn('id="research-live-delivery"', page)
+        delivery = page.split('id="research-live-delivery"', 1)[1].split('</section>', 1)[0]
+        self.assertIn('Request attempted', delivery)
+        self.assertNotIn('research-status good', delivery)
+        self.assertIn('No usable observations', delivery)
+
+    def test_delivery_is_bilingual_and_has_no_owner_activation_control(self):
+        page = self.delivery_page(lang='fa')
+        for label in ('آخرین ارسال شواهد به کیمی', 'پاسخ دریافت شد', 'در متن تحلیل موجود',
+                      'از متن تحلیل حذف شده', 'در متن تحلیل وجود ندارد'):
+            self.assertIn(label, page)
+        delivery = page.split('id="research-live-delivery"', 1)[1].split('</section>', 1)[0]
+        self.assertNotIn('<form', delivery)
+        self.assertNotIn('<button', delivery)
 
     def test_missing_stale_future_and_malformed_are_explicit(self):
         self.assertEqual(self.collect()['sources']['flow']['status'], 'missing')

@@ -4,6 +4,23 @@
 
 ---
 
+## 3.14.0 — شواهد عمومی در تحلیل واقعی، با فعال‌سازی مالک (2026-10-12)
+
+مسیر اختیاری مشاهدات کیف‌پول به تحلیل واقعی کیمی اضافه شد. دادهٔ تازه و معتبر می‌تواند تحلیل روزانه را تأیید یا رد کند؛
+انتقال دارایی نشانهٔ خرید یا فروش فرض نمی‌شود و وزن‌های آماری آموزش‌ندیده همچنان پژوهشی می‌مانند.
+پنل دوزبانه، ارسال واقعی داده در آخرین درخواست مدل را از نتیجهٔ آزمایش و وزن‌های پژوهشی جدا نشان می‌دهد.
+
+- **Context:** opt-in personal ETH and historical BTC custody paths, strict markers/catalog/provenance,
+  native integer precision, two-provider agreement, receipt/anchor freshness and bounded 24h/7d references.
+  Invalid sources are excluded; optional wallet facts cannot displace portfolio and price context.
+- **Kimi:** every existing model request, including validation retries and the second buy vote, rechecks
+  optional evidence freshness. Existing P RULE, costs, stops, buy confirmation, cadence and call budgets stay in force.
+- **Panel:** fixed sanitized delivery record contains group states/counts only, no balances, account prices,
+  credentials or model text. A response means the model returned, not proof of influence or profit.
+- **Operations:** install code before owner activation; interactive wallet helper backs up settings,
+  runs check/confirm-live/restart, and restores the previous settings/confirmation on cancellation or failure.
+  See [activation and evidence limits](docs/LIVE_EVIDENCE_CONTEXT.md).
+
 ## 3.13.1 — قانون احتمال سخت‌تر: راه‌های دور زدنش بسته شد (2026-10-07)
 
 بازبین بیرونی نسخهٔ ۳٫۱۳ را بررسی کرد و قانون احتمال را با سه حملهٔ اجراشده شکست. هر سه بازتولید شد و یک راه چهارم هم پیدا شد.
