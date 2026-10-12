@@ -61,11 +61,12 @@ def refresh_context(context, now):
 def refresh_messages(messages, context, now):
     """Replace only our generated JSON block, leaving retry/vote instructions intact."""
     from .analysis import dumps
-    refreshed = refresh_context(context, now)
+    from .evidence_contract import attach_contract
+    refreshed = attach_contract(refresh_context(context, now))
     output = copy.deepcopy(messages)
     body = output[1]['content']
     begin = body.rfind(HEADER + '\n')
-    original = dumps(context)
+    original = dumps(attach_contract(context))
     if begin < 0:
         raise ValueError('generated market context block missing')
     begin += len(HEADER) + 1
@@ -74,18 +75,34 @@ def refresh_messages(messages, context, now):
     # Increased age-label precision must not exceed the existing context budget.
     # Dropping optional facts is permitted; price/portfolio data is never reduced here.
     budget = len(original)
+    excess = len(dumps(refreshed)) - budget
+    catalog = refreshed.get('decision_evidence')
+    if excess > 0 and isinstance(catalog, dict):
+        room = min(catalog['catalog_max_chars'], len(dumps(catalog)) - excess - 128)
+        if room >= 4000:
+            steps = list(refreshed.get('truncated') or [])
+            if 'evidence_catalog' not in steps:
+                steps.append('evidence_catalog')
+            refreshed = attach_contract(dict(refreshed, evidence_catalog_max_chars=room, truncated=steps))
     for key in ('wallet_observations', 'public_flow', 'defi_daily'):
         if len(dumps(refreshed)) <= budget:
             break
         if key in refreshed:
             refreshed.pop(key)
-            # No extra metadata if it alone would exceed the original budget.
             steps = list(refreshed.get('truncated') or [])
             if key not in steps:
                 steps.append(key)
-            candidate = dict(refreshed, truncated=steps)
-            if len(dumps(candidate)) <= budget:
-                refreshed = candidate
+            refreshed = attach_contract(dict(refreshed, truncated=steps))
+    if len(dumps(refreshed)) > budget and not any(key in refreshed for key in GROUPS):
+        # A pathological tiny input cannot hold even the empty catalog: explicit
+        # omission is allowed only after EVERY optional source has been removed.
+        refreshed.pop('decision_evidence', None)
+        steps = list(refreshed.get('truncated') or [])
+        if 'decision_evidence' not in steps:
+            steps.append('decision_evidence')
+        refreshed['truncated'] = steps
+    if len(dumps(refreshed)) > budget:
+        raise ValueError('refreshed evidence exceeds original context budget')
     output[1]['content'] = body[:begin] + dumps(refreshed) + body[begin + len(original):]
     return output, refreshed
 

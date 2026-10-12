@@ -192,7 +192,8 @@ class PublicFlowContextTests(unittest.TestCase):
         output = self.builder(max_context_chars=300)._shrink(context)
         self.assertNotIn("public_flow", output)
         self.assertIn("book", output["symbols"]["BTC_IRT"])
-        self.assertEqual(output["truncated"], ["public_flow"])
+        self.assertEqual(output["truncated"], ["public_flow", "decision_evidence"])
+        self.assertLessEqual(len(an.dumps(output)), 300)
 
 
 if __name__ == "__main__":

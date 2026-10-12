@@ -57,6 +57,7 @@ import difflib  # noqa: E402
 import importlib.util  # noqa: E402
 import json  # noqa: E402
 import logging  # noqa: E402
+import math  # noqa: E402
 import os  # noqa: E402
 import re  # noqa: E402
 import secrets  # noqa: E402
@@ -1100,6 +1101,54 @@ class Helper(object):
         return res
 
 
+_EVIDENCE_GROUPS = ("bitpin_flow", "defi_daily", "personal_wallets", "custody_wallets")
+_EVIDENCE_ASSESSMENTS = ("supports", "conflicts", "mixed", "neutral", "unavailable")
+_EVIDENCE_EFFECTS = ("supports_existing", "reduces_conviction", "changes_selection", "changes_size", "none")
+_EVIDENCE_SOURCE_STATUSES = ("available", "unavailable", "absent", "omitted")
+_EVIDENCE_UNSAFE_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]")
+
+
+def evidence_review_view(review):
+    """Small authenticated-panel projection of a code-validated declaration. Never copy raw observations.
+
+    The decision pipeline validates exact citations against that request's evidence. This projection only
+    reports its result; it cannot establish cognitive influence or a trading edge. The notifier supplies
+    the review from the same latest decision record it already selected, with no extra log read here.
+    """
+    if (not isinstance(review, dict) or type(review.get("schema_version")) is not int
+            or review["schema_version"] != 1 or review.get("status") != "validated"):
+        return None
+    request_id, sources = review.get("request_id"), review.get("sources")
+    if (not isinstance(request_id, str) or not re.fullmatch(r"[0-9a-f]{64}", request_id)
+            or not isinstance(sources, dict)):
+        return None
+    out = {"schema_version": 1, "request_id": request_id, "status": "validated", "sources": {}}
+    for group in _EVIDENCE_GROUPS:
+        row = sources.get(group)
+        if (not isinstance(row, dict) or row.get("assessment") not in _EVIDENCE_ASSESSMENTS
+                or row.get("effect") not in _EVIDENCE_EFFECTS or not isinstance(row.get("reason"), str)
+                or not isinstance(row.get("citations"), list) or not isinstance(row.get("affected_symbols"), list)):
+            return None
+        for citation in row["citations"][:12]:
+            if (not isinstance(citation, dict) or not isinstance(citation.get("id"), str)
+                    or not 1 <= len(citation["id"]) <= 128 or not isinstance(citation.get("field"), str)
+                    or not 1 <= len(citation["field"]) <= 128 or "value" not in citation
+                    or type(citation["value"]) not in (int, float, type(None))
+                    or (isinstance(citation["value"], float) and not math.isfinite(citation["value"]))):
+                return None
+        reason = " ".join(_EVIDENCE_UNSAFE_RE.sub("", row["reason"][:1024]).split())[:240]
+        symbols = []
+        for symbol in row["affected_symbols"][:12]:
+            if isinstance(symbol, str) and re.match(r"^[A-Z0-9]{1,15}_[A-Z0-9]{2,6}$", symbol) and symbol not in symbols:
+                symbols.append(symbol)
+        projected = {"assessment": row["assessment"], "effect": row["effect"], "reason": reason,
+                     "affected_symbols": symbols, "citation_count": len(row["citations"][:12])}
+        if row.get("status") in _EVIDENCE_SOURCE_STATUSES:
+            projected["source_status"] = row["status"]
+        out["sources"][group] = projected
+    return out
+
+
 def collect_bot_state(state_dir, notify_state_dir, notify_conf, now):
     """The dashboard's view of the bot's files through the notifier's own readers (bitpin.notify: an
     allowlist of files, size limits): equity and drawdown, the last decision with its Persian report,
@@ -1133,7 +1182,8 @@ def collect_bot_state(state_dir, notify_state_dir, notify_conf, now):
                                     "targets": dict((s, w) for s, w in (v["targets"] or {}).items() if w > 0),
                                     "report_fa": v["report_fa"], "error": v["error"][:400] or None,
                                     "error_kind": v["error_kind"] or None,
-                                    "confirmation": v.get("confirmation"), "p_rule": v.get("p_rule") or None}
+                                    "confirmation": v.get("confirmation"), "p_rule": v.get("p_rule") or None,
+                                    "evidence_review": evidence_review_view(v.get("evidence_review"))}
         st = nt._dict(n._read_json("runner_state"))
         rows = []
         for kind, key in (("allocation", "positions"), ("ladder", "ladder_positions")):

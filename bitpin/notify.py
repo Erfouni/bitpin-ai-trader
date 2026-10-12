@@ -109,6 +109,7 @@ If the bot's files cannot be opened (permission denied) or the files seen before
 "cannot read the bot's files" alert is sent (the notifier would otherwise be blind and silent).
 """
 import csv
+import copy
 import hashlib
 import html
 import json
@@ -1445,7 +1446,32 @@ def _decision_view(rec):
                    if isinstance(e, dict)][:6],
         # release v3: the per-coin analysis numbers (p / ev / cost / verdict) shown under the Persian report
         "analysis": analysis_view(d.get("analysis")),
+        "evidence_review": evidence_review_view(_dict(d.get("analysis")).get("evidence_review")),
     }
+
+
+def evidence_review_view(raw):
+    """Bounded public-observation review of this record, never a previous decision."""
+    names = ('bitpin_flow', 'defi_daily', 'personal_wallets', 'custody_wallets')
+    if (not isinstance(raw, dict) or raw.get('schema_version') != 1 or raw.get('status') != 'validated'
+            or not re.fullmatch(r'[0-9a-f]{64}', str(raw.get('request_id') or ''))
+            or set(_dict(raw.get('sources'))) != set(names)):
+        return None
+    result = {'schema_version': 1, 'status': 'validated', 'request_id': raw['request_id'], 'sources': {}}
+    for name in names:
+        source = _dict(raw['sources'][name])
+        if (source.get('assessment') not in ('supports', 'conflicts', 'mixed', 'neutral', 'unavailable')
+                or source.get('effect') not in ('supports_existing', 'reduces_conviction', 'changes_selection',
+                                               'changes_size', 'none')
+                or not isinstance(source.get('reason'), str)):
+            return None
+        result['sources'][name] = {k: copy.deepcopy(source[k]) for k in
+                                   ('status', 'assessment', 'effect', 'reason', 'citations', 'affected_symbols')
+                                   if k in source}
+        result['sources'][name]['reason'] = clean_text(source['reason'], 240)
+        result['sources'][name]['citations'] = _list(source.get('citations'))[:12]
+        result['sources'][name]['affected_symbols'] = _list(source.get('affected_symbols'))[:12]
+    return result
 
 
 ANALYSIS_VERDICT_FA = {"open": "ورود", "add": "افزایش", "hold": "نگه‌داری", "trim": "کاهش", "cut": "خروج",

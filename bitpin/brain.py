@@ -150,6 +150,7 @@ from .analysis import (LIQUID_UNIVERSE, PLAN_HORIZON_HOURS, PLAN_INVALIDATION_MI
 from .analysis import current_weights as context_weights
 from . import analysis as _analysis      # asset_class / us_session_open are looked up at call time (spec C3)
 from . import technical                 # v3.8: the technical reading (TECHNICAL READING, ta)
+from .evidence_contract import attach_contract, build_contract, validate_review, EvidenceContractError
 from .api import atomic_write_json
 from .llm import (_FENCE_RE, ConfigError, LLMClient, LLMError, _add_usage, check_bool, check_number,
                   ensure_writable_dir, find_json_objects, parse_json_object_strict, redact_text)
@@ -2027,6 +2028,8 @@ def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_us
                     "loss_pct": _fnum(c.get("loss_pct")), "cost_pct": _fnum(c.get("cost_pct")),
                     "ev_pct": _fnum(c.get("ev_pct")), "pass": c.get("pass") is True,
                     "verdict": verdict if verdict in ANALYSIS_VERDICTS else None}
+        if isinstance(c.get("evidence_refs"), list):
+            cands[s]["evidence_refs"] = [r for r in c["evidence_refs"] if isinstance(r, str)][:12]
         if verdict is not None and verdict not in ANALYSIS_VERDICTS:
             problems.append((s, "verdict must be one of %s" % ", ".join(ANALYSIS_VERDICTS)))
         # v3.8: the technical reading - the model's "ta" next to the same rules applied by the code; a field read
@@ -2149,12 +2152,16 @@ def parse_analysis(raw, allowed, safe, targets, current, plans, positions, px_us
     return out, problems
 
 
+_EVIDENCE_UNSET = object()
+
+
 def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, default_review=2,
                       rebalance_threshold=0.02, tradable=None, buy_cap=None, mode="scheduled", ladder_current=None,
                       veto_coins=None, positions=None, px_usdt=None, endgame=None, now=None,
                       ladder_coins=LADDER_COINS, held_move_pct=8.0, min_review_hours=1, blocked_increases=None,
                       plan_policy=None, ladder_capped=None, analysis_policy=None, context=None, halt_pct=None,
-                      protected=None, news_headlines=None, hold_discipline=False, p_rule=False):
+                      protected=None, news_headlines=None, hold_discipline=False, p_rule=False,
+                      evidence_contract=_EVIDENCE_UNSET):
     """Validate + constrain one parsed LLM reply.
 
     current: {symbol: weight} (allowed symbols; the rest of equity is IRT cash).
@@ -2214,6 +2221,20 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
         raise SchemaValidationError("'targets' must be an object {SYMBOL: weight}")
     allowed = list(allowed)
     allowed_set = set(allowed)
+    # This contract is independent of the optional EV parser's off/block policy.
+    # Runtime callers supply the manifest of THIS actual HTTP request, including None
+    # when all optional evidence was omitted. Standalone validators derive it afresh.
+    if evidence_contract is _EVIDENCE_UNSET:
+        from .live_evidence import refresh_context
+        evidence_contract = build_contract(refresh_context(context or {}, now))
+    evidence_review = None
+    if evidence_contract is not None:
+        raw_analysis = obj.get("analysis") if isinstance(obj.get("analysis"), dict) else {}
+        try:
+            evidence_review = validate_review(raw_analysis.get("evidence_review"), evidence_contract,
+                                              allowed, raw_analysis.get("candidates"))
+        except EvidenceContractError as e:
+            raise SchemaValidationError("analysis.evidence_review: %s" % e)
     if safe not in allowed_set:
         raise ValueError("safe asset %s must be one of the allowed symbols" % safe)
     targets = {}
@@ -2418,6 +2439,11 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
             if p_blocked:
                 t, turnover, steps = pipeline(blk)
         out["p_rule"] = p_blocked
+    if evidence_review is not None:
+        analysis["evidence_review"] = evidence_review
+        # Private audit only. Panel/notification and recent-decision projections
+        # deliberately expose a bounded review, never this submitted fact catalog.
+        analysis["evidence_catalog"] = evidence_contract
     notes.extend(steps)
     plans = {}
     for s in sorted(req_plans):
@@ -2458,6 +2484,28 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
 
 
 # --------------------------------------------------------------------------- prompt
+
+EVIDENCE_RULES = """PUBLIC EVIDENCE CONTRACT (when decision_evidence is present)
+Read its four source groups BEFORE selecting targets. Return analysis.evidence_review with the SAME schema_version
+and request_id. For every available group cite at least one fact from its catalog, even when neutral/effect none:
+id, field and exact numeric value in the given units (integer wei/sats remain integers). Never turn missing/null,
+absent, stale or omitted observations into zero. All four groups are mandatory; an unavailable/absent/omitted group
+uses assessment unavailable, citations [], affected_symbols [], effect none and a specific reason (10-240 characters).
+assessment: supports|conflicts|mixed|neutral|unavailable. effect: supports_existing|reduces_conviction|changes_selection|
+changes_size|none. A nonzero effect needs affected_symbols within EACH cited fact's allowed_symbols and a matching
+candidate.evidence_refs containing the cited ids (USDT_IRT alone needs no candidate). Explain the evidence's actual
+role in the proposal, including no effect; do not claim a trade was executed. Native personal/custody wallet balance
+changes do NOT identify purchases, sales or smart money: those groups MUST be neutral/effect none when available.
+These correlated, supporting observations are NOT independent confirmations and add ZERO probability bonus.
+Existing setup, news, P RULE, cost, headroom and confirmation gates still decide whether an increase is valid;
+probability allowances are ceilings, never mandatory estimates. No review requires a trade or positive EV.
+"""
+EVIDENCE_SCHEMA = (', "evidence_review": {"schema_version": 1, "request_id": "<decision_evidence.request_id>", '
+                   '"sources": {' + ', '.join(
+                       '"%s": {"assessment": "<assessment>", "citations": [{"id": "<fact id>", '
+                       '"field": "<catalog field>", "value": <exact numeric value>}], '
+                       '"affected_symbols": ["<SYMBOL>"], "effect": "<effect>", "reason": "<10..240 characters>"}'
+                       % name for name in ('bitpin_flow', 'defi_daily', 'personal_wallets', 'custody_wallets')) + '}}')
 
 def scrub_secrets(obj, redact=None):
     """Recursively drop secret-looking keys and redact secret-looking values (defence in depth:
@@ -2637,7 +2685,7 @@ def load_prompt_template(path=None):
 
 
 def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=None, web_search=None,
-                        ladder_active=False, exits_active=False):
+                        ladder_active=False, exits_active=False, evidence_contract=None):
     """The system message: bitpin/prompt_template.txt (the authored text of the prompt review of
     2026-09-26, adapted for the one-year v3) with its {{PLACEHOLDERS}} rendered from the config.
     `web_search`: whether this call offers the web search tool (default: cfg["web_search"]); without
@@ -2823,6 +2871,9 @@ def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=N
                             if cfg.get("honor_next_review_hours") and cfg.get("decision_times_local") else
                             "advisory (the schedule and the wake-ups decide)"),
         "{{REPORT_FA_MAX}}": str(REPORT_FA_MAX),
+        "{{EVIDENCE_RULES}}": EVIDENCE_RULES if evidence_contract is not None else "",
+        "{{EVIDENCE_SCHEMA}}": EVIDENCE_SCHEMA if evidence_contract is not None else "",
+        "{{EVIDENCE_REFS_SCHEMA}}": ', "evidence_refs": ["<cited fact id>"]' if evidence_contract is not None else "",
         "{{TA_METHOD}}": technical.method_text(),
         "{{TA_SCHEMA}}": technical.schema_text(),
         "{{OWNER}}": (("ADDITIONAL INSTRUCTIONS FROM THE ACCOUNT OWNER\n" + str(cfg["extra_instructions"]).strip())
@@ -3401,7 +3452,8 @@ class KimiBrain:
         feats = (context or {}).get("features") if isinstance((context or {}).get("features"), dict) else {}
         return build_system_prompt(self.cfg, self.limits, self._read_knowledge(), self.allowed, self.safe,
                                    (end + " UTC") if end else None, web_search=web_search,
-                                   ladder_active=bool(feats.get("ladder")), exits_active=bool(feats.get("code_exits")))
+                                   ladder_active=bool(feats.get("ladder")), exits_active=bool(feats.get("code_exits")),
+                                   evidence_contract=build_contract(context or {}))
 
     def news_block(self, news, now=None):
         """The NEWS BRIEF text for the user message: the brief as delimited UNTRUSTED data with its
@@ -3435,7 +3487,7 @@ class KimiBrain:
         mode / events / endgame: this call's decision mode (MODES), the wake-up events it answers and
         endgame_flags(); they go into the DECISION MODE lines right after the portfolio line."""
         web = bool(self.cfg["web_search"]) if web_search is None else bool(web_search)
-        ctx = scrub_secrets(context, getattr(self.llm, "redact", None))
+        ctx = attach_contract(scrub_secrets(context, getattr(self.llm, "redact", None)))
         from .live_evidence import HEADER as evidence_header
         cash = max(0.0, 1.0 - sum(current.values()))
         clock = ctx.get("clock") or {}
@@ -3542,6 +3594,9 @@ class KimiBrain:
             write_delivery_status(self.state_dir, evidence, self.clock(), 'response_received')
         except (OSError, ValueError, TypeError):
             log.warning('could not write non-secret evidence delivery status')
+        # Provider output cannot choose its own validation manifest.
+        result = dict(result)
+        result['_evidence_contract'] = evidence.get('decision_evidence')
         return result
 
     # ---- decision
@@ -3925,6 +3980,7 @@ class KimiBrain:
             a_policy = ("error" if can_retry else "block") if apol == "block" else apol
             try:
                 obj = self._parse_reply(raw, res)
+                vkw["evidence_contract"] = res['_evidence_contract']
                 v = validate_response(obj, *vargs, plan_policy=policy, analysis_policy=a_policy, **vkw)
             except ValidationError as e:
                 err, err_kind = "validation: %s" % e, "validation"
@@ -4040,8 +4096,9 @@ class KimiBrain:
                     schema_error = True        # parsing failures are structural JSON failures
                     obj2 = self._parse_reply(raw2, res)
                     schema_error = False
+                    vote_kw = dict(vkw, evidence_contract=res['_evidence_contract'])
                     v2 = validate_response(obj2, *vargs, plan_policy="block" if require_plan else None,
-                                           analysis_policy="block" if apol == "block" else apol, **vkw)
+                                           analysis_policy="block" if apol == "block" else apol, **vote_kw)
                     why = ""
                     break
                 except ValidationError as e:
@@ -4102,6 +4159,11 @@ class KimiBrain:
         conf = {"buys": dict((s, round(t1[s] - cur.get(s, 0.0), 6)) for s in buys), "kept": kept, "cut": cut,
                 "second": dict((s, round(w, 6)) for s, w in t2.items() if w > 1e-6) if v2 else None,
                 "second_confidence": v2["confidence"] if v2 else None, "error": why or None}
+        if decision.analysis.get('evidence_review'):
+            conf['first_evidence_request_id'] = decision.analysis['evidence_review']['request_id']
+        if v2 and (v2.get('analysis') or {}).get('evidence_review'):
+            conf['evidence_review'] = v2['analysis']['evidence_review']
+            conf['evidence_catalog'] = v2['analysis']['evidence_catalog']
         decision.confirmation = conf
         if not cut:
             decision.adjustments = list(decision.adjustments) + [

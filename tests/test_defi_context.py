@@ -298,9 +298,14 @@ class DefiContextTests(unittest.TestCase):
         core = {'symbols': {'BTC_IRT': {'book': {'spread_pct': 0.1}}}}
         global_only = copy.deepcopy(macro)
         global_only['sources'] = {k: v for k, v in global_only['sources'].items() if k.endswith(':global')}
-        limit = len(an.dumps(dict(core, defi_daily=global_only))) + 250
+        from bitpin.evidence_contract import attach_contract
+        global_only['available_sources'] = 6
+        global_only['omitted_chain_sources'] = len(macro['sources']) - 6
+        budgeted = attach_contract(dict(core, defi_daily=global_only, truncated=['defi_daily_chains']))
+        limit = len(an.dumps(budgeted)) + 250
         output = self.builder(max_context_chars=limit)._shrink(dict(core, defi_daily=macro))
         self.assertIn('defi_daily', output)
+        self.assertLessEqual(len(an.dumps(output)), limit)
         self.assertEqual(len(output['defi_daily']['sources']), 6)
         self.assertIn('defi_daily_chains', output['truncated'])
         output = self.builder(max_context_chars=200)._shrink(dict(core, defi_daily=macro))

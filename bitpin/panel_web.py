@@ -234,6 +234,24 @@ ANALYSIS_METHODS = (           # (group, method, pattern over Kimi's evidence an
 )
 METHOD_GROUPS = (("technical", N_("Technical")), ("macro", N_("Macro")), ("stats", N_("Statistical")),
                  ("news", N_("News")))
+EVIDENCE_GROUPS = (("bitpin_flow", N_("Bitpin activity")), ("defi_daily", N_("Daily DeFi data")),
+                   ("personal_wallets", N_("Publicly attributed ETH addresses")),
+                   ("custody_wallets", N_("BTC custody addresses")))
+EVIDENCE_ASSESSMENTS = {
+    "supports": ("ok", N_("Supports")), "conflicts": ("err", N_("Conflicts")),
+    "mixed": ("warn", N_("Mixed evidence")), "neutral": ("", N_("Neutral")),
+    "unavailable": ("", N_("Unavailable")),
+}
+EVIDENCE_EFFECTS = {
+    "supports_existing": N_("Supports the existing decision"), "reduces_conviction": N_("Reduces conviction"),
+    "changes_selection": N_("Changes asset selection"), "changes_size": N_("Changes position size"),
+    "none": N_("No declared change"),
+}
+EVIDENCE_SOURCE_STATUSES = {
+    "available": N_("Available"), "unavailable": N_("Unavailable"),
+    "absent": N_("Absent from request"), "omitted": N_("Omitted from request"),
+}
+_EVIDENCE_UNSAFE_RE = re.compile(r"[\x00-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]")
 _DIGITS = {ord(a): b for a, b in zip(u"۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")}
 
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{20,100}$")
@@ -1841,6 +1859,7 @@ class PanelApp(object):
         parts.append('<div class="dash"><div class="col">%s</div><div class="col">%s%s</div></div>' % (
             self._decision_card(data.get("last_decision")), self._services_card(data, bot),
             self._actions_card(req, bot.get("state"))))
+        parts.append(self._evidence_review_card(data.get("last_decision")))
         parts.append(self._positions_card(pos))
         parts.append(self._news_card(data.get("news")))
         for key, label in (("status_fa", N_("Status, as /status shows it in Telegram")),
@@ -1917,6 +1936,69 @@ class PanelApp(object):
                 te("Kimi's report"), esc(d.get("report_fa"))))
         when = '<span class="muted small">%s</span>' % fmt_time(d.get("time")) if d.get("time") else ""
         return card(title, "".join(out), "spark", when)
+
+    def _evidence_review_card(self, decision):
+        """Declared source consideration on this decision; only the helper's bounded validated projection."""
+        title = te("Public-source review")
+        if not isinstance(decision, dict) or not decision:
+            return card(title, '<p class="muted empty">%s</p>' % te("No decision recorded yet."), "list")
+        review = decision.get("evidence_review")
+        sources = review.get("sources") if isinstance(review, dict) else None
+        valid = (isinstance(review, dict) and type(review.get("schema_version")) is int
+                 and review["schema_version"] == 1 and review.get("status") == "validated"
+                 and isinstance(sources, dict))
+        if valid:
+            for group, _label in EVIDENCE_GROUPS:
+                row = sources.get(group)
+                if (not isinstance(row, dict) or not isinstance(row.get("assessment"), str)
+                        or row["assessment"] not in EVIDENCE_ASSESSMENTS or not isinstance(row.get("effect"), str)
+                        or row["effect"] not in EVIDENCE_EFFECTS or not isinstance(row.get("reason"), str)
+                        or type(row.get("citation_count")) is not int or not 0 <= row["citation_count"] <= 12
+                        or not isinstance(row.get("affected_symbols"), list)):
+                    valid = False
+                    break
+        out = []
+        if valid:
+            out.append('<p class="evidence-note">%s %s</p>' % (te(
+                "Declared consideration: cited fields and values were checked against this request; effects are "
+                "self-reported. This does not prove actual influence or a trading edge."), te(
+                "This review describes the model's initial proposal. Code checks or a second vote can change "
+                "the final targets.")))
+        else:
+            out.append('<p class="evidence-note">%s %s</p>' % (
+                te("No validated review was recorded for this decision."),
+                te("This does not establish that a source was ignored.")))
+        cards = []
+        for group, label in EVIDENCE_GROUPS:
+            if not valid:
+                cards.append('<article class="evidence-source"><div class="evidence-head"><h3>%s</h3>'
+                             '<span class="badge evidence-missing">%s</span></div></article>' % (
+                                 te(label), te("Not recorded")))
+                continue
+            row = sources[group]
+            cls, assessment = EVIDENCE_ASSESSMENTS[row["assessment"]]
+            reason = " ".join(_EVIDENCE_UNSAFE_RE.sub("", row["reason"][:1024]).split())[:240]
+            affected = []
+            for symbol in row["affected_symbols"][:12]:
+                if isinstance(symbol, str) and re.match(r"^[A-Z0-9]{1,15}_[A-Z0-9]{2,6}$", symbol):
+                    affected.append(code(symbol))
+            facts_rows = [(N_("Declared effect"), te(EVIDENCE_EFFECTS[row["effect"]]))]
+            if isinstance(row.get("source_status"), str) and row["source_status"] in EVIDENCE_SOURCE_STATUSES:
+                facts_rows.append((N_("Source availability"), te(EVIDENCE_SOURCE_STATUSES[row["source_status"]])))
+            if affected:
+                facts_rows.append((N_("Affected coins"), " ".join(affected)))
+            citation_count = row["citation_count"]
+            citation_text = te("1 validated citation") if citation_count == 1 else (
+                tr("%s validated citations") % esc(citation_count))
+            cards.append('<article class="evidence-source"><div class="evidence-head"><h3>%s</h3>'
+                         '<span class="badge %s">%s</span></div><dl class="evidence-facts">%s</dl>'
+                         '<p class="evidence-reason">%s</p><p class="evidence-citations">%s</p></article>' % (
+                             te(label), cls, te(assessment),
+                             "".join('<div><dt>%s</dt><dd>%s</dd></div>' % (te(k), v) for k, v in facts_rows),
+                             bdi(reason), citation_text))
+        out.append('<div class="evidence-grid">%s</div>' % "".join(cards))
+        actions = link_button("/research", tr("Research & data"), "secondary sm", "spark")
+        return card(title, "".join(out), "list", actions, cls="evidence-review", id_="evidence-review")
 
     def _positions_card(self, pos):
         kinds = {"allocation": N_("Allocation"), "ladder": N_("Ladder")}

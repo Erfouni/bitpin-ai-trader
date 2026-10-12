@@ -4,6 +4,21 @@
 
 ---
 
+## 3.15.0 — بررسی ساختار‌یافتهٔ منابع در پاسخ کیمی (2026-10-12)
+
+ورودی هر درخواست، فهرست محدودِ شواهد با شناسه و واحد دارد. خروجی باید هر چهار منبع عمومی را
+بررسی و مقدار واقعی را ارجاع دهد؛ بررسی نامعتبر از مسیر خاموش/مسدودِ تحلیل عبور نمی‌کند.
+پنل بررسی پیشنهاد اولیه را نشان می‌دهد؛ اثر اعلام‌شده با نتیجهٔ نهایی معامله یکی فرض نمی‌شود.
+
+- Add a bounded code-authored numeric catalog, exact native integers, source availability and asset scope.
+  Rebuild after budget omissions and recheck freshness before every actual model call.
+- Require per-source review, exact citations and candidate references for declared effects; bind validation
+  to each submitted request and preserve both independent buy-vote reviews separately.
+- Native wallet balances remain neutral observations. No new probability bonus, setup, order permission,
+  retry budget or fallback policy is introduced. Compact duplicate wallet policy before dropping facts.
+- Add Persian/English responsive evidence cards with bounded latest-record projection and proposal labels.
+  See [structured evidence contract](docs/STRUCTURED_EVIDENCE.md).
+
 ## 3.14.1 — رفع اختلال منبع موجودی اتریوم (2026-10-12)
 
 منبع دوم موجودی اتریوم به درگاه عمومی و بدون کلید dRPC تغییر کرد. توافق دو منبع در همان بلاک نهایی‌شده،

@@ -13,7 +13,7 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.14.1` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.15.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
 | **Tests** | about 1,500 unit and integration tests; no network or real key needed |
@@ -62,6 +62,9 @@ risk that implies: the model stays the decision maker, and the code adds discipl
     volume, support, resistance) that the code re-checks on the same numbers.
     Since 3.12 the code computes that reading and hands it to the model, which adds only its overall view; a
     decision that buys is asked a second time, and only what both answers buy is bought.
+- **Structured public evidence (3.15):** enabled Bitpin flow, daily DeFi and native wallet observations have
+  exact numeric citations and a required per-source review. The panel labels declared effects on the initial
+  proposal; wallet balances do not establish purchases. See [the contract](docs/STRUCTURED_EVIDENCE.md).
 - **53 markets:** USDT, 34 liquid coins and 18 tokenized real-world assets (gold, silver, oil, gas, copper miners,
   US stocks, US equity and bond ETFs). Tokenized stocks, ETFs and commodity funds are bought only while the US
   market is open and below a 1 % spread; the gold tokens PAXG and XAUT trade around the clock.

@@ -2136,12 +2136,20 @@ class MarketContextBuilder:
 
     # ---- size control
     def _shrink(self, ctx):
+        from .evidence_contract import attach_contract
+        ctx = attach_contract(ctx)
         limit = int(self.cfg.get("max_context_chars") or 0)
         if not limit or len(dumps(ctx)) <= limit:
             return ctx
         steps = list(ctx.get("truncated") or [])
         def fits():
-            return len(dumps(dict(ctx, truncated=steps))) <= limit
+            # Optional data and its numeric catalog are one budgeted unit; rebuild
+            # after every drop, so the model cannot cite a removed observation.
+            candidate = attach_contract(dict(ctx, truncated=steps))
+            ctx.pop('decision_evidence', None)
+            if 'decision_evidence' in candidate:
+                ctx['decision_evidence'] = candidate['decision_evidence']
+            return len(dumps(candidate)) <= limit
 
         # Retain the six global daily indicators first when optional chain detail cannot fit.
         defi = ctx.get("defi_daily") or {}
@@ -2155,6 +2163,35 @@ class MarketContextBuilder:
                 ctx["truncated"] = steps
                 return ctx
         # Optional unvalidated observations must not crowd out existing strategy/portfolio context.
+        wallets = ctx.get('wallet_observations')
+        if isinstance(wallets, dict) and 'decision_evidence' in ctx:
+            from .wallet_context import INTERPRETATION
+            if wallets.get('interpretation') == INTERPRETATION:
+                # The system contract and catalog contain these same restrictions.
+                # Compact duplicate policy prose before discarding numeric facts.
+                wallets['interpretation'] = (
+                    'See decision_evidence wallet limitations and PUBLIC EVIDENCE CONTRACT. '
+                    'Native balances are incomplete observations, not purchases or calibrated signals; '
+                    'associations, ownership and personal capital are unverified. No probability bonus.')
+                steps.append('wallet_interpretation')
+                if fits():
+                    ctx['truncated'] = steps
+                    return ctx
+        # Budget the audit catalog adaptively before removing a whole data source.
+        # Its numeric observations and omission counts remain code-authored; the
+        # same cap travels with the input for regeneration at actual consumption.
+        if 'decision_evidence' in ctx:
+            without_catalog = dict(ctx, truncated=steps)
+            without_catalog.pop('decision_evidence', None)
+            without_catalog.pop('evidence_catalog_max_chars', None)
+            room = limit - len(dumps(without_catalog)) - 128
+            if 4000 <= room < 12000:
+                ctx['evidence_catalog_max_chars'] = room
+                if 'evidence_catalog' not in steps:
+                    steps.append('evidence_catalog')
+                if fits():
+                    ctx['truncated'] = steps
+                    return ctx
         if "wallet_observations" in ctx:
             ctx.pop("wallet_observations")
             steps.append("wallet_observations")
@@ -2173,6 +2210,15 @@ class MarketContextBuilder:
             steps.append("defi_daily")
             if fits():
                 ctx["truncated"] = steps
+                return ctx
+
+        if 'decision_evidence' in ctx and not fits():
+            # Preserve core price/portfolio data at very small configured budgets.
+            # This explicit omission may suppress the contract only with no sources.
+            ctx.pop('decision_evidence', None)
+            steps.append('decision_evidence')
+            if fits():
+                ctx['truncated'] = steps
                 return ctx
 
         def drop_desc(c):
