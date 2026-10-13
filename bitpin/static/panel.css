@@ -895,6 +895,51 @@ code.fp { white-space: normal; word-break: break-all; font-size: 12px; }
 .actionbar p { margin: 0; }
 .actionbar .actions { margin: 0; }
 
+/* Capital policy: exact asset quantities and the recorded active budget. */
+.capital-summary { border-color: var(--border-strong); }
+.capital-summary .card-h { background: var(--accent-soft); }
+.capital-status { display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; margin-bottom: 18px; }
+.capital-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+  margin: 0 0 16px; }
+.capital-metric { min-width: 0; padding: 15px 17px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--surface-2); }
+.capital-metric:first-child { background: var(--accent-soft); border-color: var(--border-strong); }
+.capital-metric > span { display: block; margin-bottom: 8px; }
+.capital-value { font-size: 23px; line-height: 1.5; font-weight: 700; letter-spacing: -.03em;
+  font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.capital-fields { align-items: start; gap: 18px 24px; }
+.capital-fields .field { margin-bottom: 0; }
+.capital-locks { display: grid; gap: 14px; margin: 18px 0; }
+.capital-lock { min-width: 0; padding: 18px; border: 1px solid var(--border);
+  border-radius: 12px; background: var(--surface-2); }
+.capital-lock.has-err { border-color: var(--err); }
+.capital-lock-inputs { display: grid; grid-template-columns: minmax(120px, .7fr) minmax(0, 1.3fr); gap: 18px; }
+.capital-lock-inputs .field { margin-bottom: 12px; }
+.capital-lock input { background: var(--surface); font-variant-numeric: tabular-nums; }
+.capital-lock-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.capital-lock-foot > span { overflow-wrap: anywhere; }
+.capital-lock-foot .actions { margin: 0; flex-wrap: wrap; gap: 8px; }
+.capital-form button:disabled { opacity: .45; cursor: not-allowed; }
+.capital-form button:disabled:hover { background: var(--surface); }
+@media (max-width: 880px) {
+  .capital-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .capital-metrics { gap: 10px; }
+  .capital-metric { padding: 12px; }
+  .capital-metric:first-child { grid-column: 1 / -1; }
+  .capital-value { font-size: 20px; }
+  .capital-lock { padding: 14px; }
+  .capital-lock-inputs { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .capital-lock-foot { align-items: flex-start; }
+  .capital-lock-foot .actions { width: 100%; }
+  .capital-lock-foot .actions .btn:first-child { flex: 1; }
+}
+@media (max-width: 520px) {
+  .capital-metrics > .capital-metric:nth-child(6):last-child { grid-column: 1 / -1; }
+}
+
 /* apply: the three steps */
 .steps {
   display: grid;

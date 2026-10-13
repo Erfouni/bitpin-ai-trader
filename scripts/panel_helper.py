@@ -70,6 +70,7 @@ import tempfile  # noqa: E402
 import time  # noqa: E402
 import urllib.parse  # noqa: E402
 from collections import OrderedDict  # noqa: E402
+from decimal import Decimal, InvalidOperation  # noqa: E402
 
 try:
     import fcntl
@@ -107,6 +108,7 @@ EVENT_PREFIX = "panel_event."
 EMPTY_STATE = {"equity": None, "last_decision": None, "positions": [], "resting_orders": None, "spend": None,
                "status_fa": None, "last_decision_fa": None, "state_error": None, "news": None}
 MAX_PENDING_EVENTS = 20
+CAPITAL_STATE_MAX = 4 * 1024 * 1024
 KEEP_BACKUPS = 30
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SECRET_VALUE_RE = re.compile(r"^[\x21-\x7e]{1,4096}$")
@@ -480,7 +482,7 @@ class Helper(object):
             if "=" in line:
                 k, v = line.split("=", 1)
                 kv[k.strip()] = v.strip()
-        state = kv.get("ActiveState") or "unknown"
+        state = (kv.get("ActiveState") or "unknown") if rc == 0 else "unknown"
         if kv.get("LoadState") == "not-found":
             state = "not-installed"
         return {"state": state, "sub": kv.get("SubState") or None, "enabled": kv.get("UnitFileState") or None,
@@ -668,6 +670,40 @@ class Helper(object):
     def cmd_config_get(self, a):
         return {"config": read_text(self.p.config), "kimi": read_text(self.p.kimi)}
 
+    def capital_state(self):
+        """Read the fixed capital files as bitpin, never root; no wallet or order operations."""
+        if self.p.state_in_process:
+            return collect_capital_state(self.p.state_dir, self.clock())
+        argv = ["runuser", "-u", self.p.bot_user, "--", self.p.python, os.path.join(self.p.app_dir, "scripts",
+                "panel_helper.py"), "capital-worker", "--state-dir", self.p.state_dir]
+        rc, out = self.run(argv, 30, cwd=self.p.app_dir, limit=CAPITAL_STATE_MAX)
+        try:
+            data = parse_json_object(out.strip(), "capital worker response")
+            if rc != 0 or not isinstance(data.get("read_ok"), bool) or not isinstance(data.get("active"), dict) \
+                    or not isinstance(data.get("account"), dict) or not isinstance(data.get("orders"), dict) \
+                    or not isinstance(data.get("warnings"), list):
+                raise ValueError("invalid worker response")
+            return data
+        except (ValueError, HelperError, RecursionError):
+            data = empty_capital_state()
+            data["warnings"].append("Capital state worker failed; cached capital and orders are unavailable.")
+            return data
+
+    def cmd_capital_status(self, a):
+        if a:
+            raise HelperError("capital_status takes no arguments")
+        configured = capital_policy(parse_json_object(read_text(self.p.config), "config.json"))
+        data = self.capital_state()
+        from bitpin.capital import policy_fingerprint
+        fingerprint = policy_fingerprint(configured["max_equity_irt"], configured["reinvest_profits"],
+                                         configured["protected_assets"])
+        if data.get("capital_policy") != fingerprint and not data["active"]["pending"]:
+            data["active"].update(pending=True, reason="Configured capital policy has not been activated "
+                                                    "in the saved runtime snapshot.")
+        # Only the fixed public-to-the-panel projections leave the privileged helper.
+        return {"configured": configured, "active": data["active"], "account": data["account"],
+                "orders": data["orders"], "warnings": data["warnings"]}
+
     def cmd_secrets_status(self, a):
         env = read_env(self.p.env_file)
         return OrderedDict((n, {"set": bool(env.get(n)), "length": len(env.get(n) or "")}) for n in SECRET_NAMES)
@@ -706,6 +742,26 @@ class Helper(object):
         after = dict(cur)
         after.update(new_texts)
         problems, warnings = self._validate_pair(after["kimi"], after["config"])
+        if not problems:
+            old_policy = capital_policy(parse_json_object(cur["config"], "config.json"))
+            new_policy = capital_policy(parse_json_object(after["config"], "config.json"))
+            if not same_capital_policy(old_policy, new_policy):
+                if self.unit_state("bitpin-bot") not in ("inactive", "failed"):
+                    problems.append("Capital policy changes require the bot to be stopped first; "
+                                    "stopping the service does not cancel resting orders.")
+                state = self.capital_state()
+                orders = state["orders"]
+                if state.get("read_ok") is not True or orders.get("active_count") is None \
+                        or orders.get("unknown_count") is None:
+                    problems.append("Capital policy cannot change while bot state or orders are unavailable; "
+                                    "resolve the state/journal error first.")
+                elif orders["active_count"] != 0 or orders["unknown_count"] != 0:
+                    problems.append("Capital policy cannot change until all active, resting and unknown bot "
+                                    "orders are resolved; the helper does not cancel orders.")
+                if old_policy["max_equity_irt"] is not None and new_policy["max_equity_irt"] is None:
+                    warnings.append("Removing the budget gives the bot whole account authority over available "
+                                    "IRT and strategy assets, except explicitly protected quantities. "
+                                    "A new owner confirm-live is required before activation.")
         try:
             problems += endpoint_problems(json.loads(after["config"]), json.loads(after["kimi"]),
                                           read_env(self.p.env_file).get("LLM_API_HOST"))
@@ -1149,6 +1205,178 @@ def evidence_review_view(review):
     return out
 
 
+def capital_policy(config):
+    """Effective defaults make an explicit default migration an ordinary settings edit."""
+    return {"max_equity_irt": config.get("max_equity_irt"),
+            "reinvest_profits": config.get("reinvest_profits", True),
+            "protected_assets": config.get("protected_assets", {})}
+
+
+def same_capital_policy(old, new):
+    from bitpin.capital import policy_fingerprint
+    return policy_fingerprint(old["max_equity_irt"], old["reinvest_profits"], old["protected_assets"]) == \
+        policy_fingerprint(new["max_equity_irt"], new["reinvest_profits"], new["protected_assets"])
+
+
+def empty_capital_state():
+    return {"active": {"budget_irt": None, "managed_equity_irt": None, "cash_irt": None,
+                       "profit_reserve_irt": None, "external_reserve_irt": None,
+                       "spendable_cash_irt": None, "units": None,
+                       "protected_assets": None, "pending": True,
+                       "reason": "No validated capital snapshot is available.", "updated_at": None},
+            "account": {"balances": None, "prices_irt": None, "updated_at": None},
+            "orders": {"active_count": None, "unknown_count": None}, "warnings": [],
+            "read_ok": False, "capital_policy": None}
+
+
+def _capital_file(state_dir, filename):
+    """Fixed names only; bounded regular files, strict UTF-8/JSON and duplicate-key rejection."""
+    path = os.path.join(state_dir, filename)
+    if not stat.S_ISREG(os.lstat(path).st_mode):
+        raise ValueError("not a regular state file")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0) \
+        | getattr(os, "O_BINARY", 0)
+    fd = os.open(path, flags)
+    with os.fdopen(fd, "rb") as file:
+        info = os.fstat(file.fileno())
+        if not stat.S_ISREG(info.st_mode) or info.st_size > CAPITAL_STATE_MAX:
+            raise ValueError("invalid state file")
+        raw = file.read(CAPITAL_STATE_MAX + 1)
+    if len(raw) > CAPITAL_STATE_MAX:
+        raise ValueError("oversize state file")
+
+    def reject_constant(value):
+        raise ValueError("nonstandard JSON number")
+
+    doc = json.loads(raw.decode("utf-8"), object_pairs_hook=_no_dup, parse_constant=reject_constant)
+    if not isinstance(doc, dict):
+        raise ValueError("state must be a JSON object")
+    return doc
+
+
+def _capital_number(value):
+    if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
+        return None
+    try:
+        text = str(value)
+        if len(text) > 128:
+            return None
+        number = Decimal(text)
+        if not number.is_finite() or number < 0 or abs(number.adjusted()) > 100:
+            return None
+        return format(number, "f")
+    except (ValueError, InvalidOperation):
+        return None
+
+
+def _capital_time(value):
+    number = _capital_number(value)
+    if number is None:
+        return None
+    result = float(number)
+    return result if math.isfinite(result) else None
+
+
+def _capital_assets(value, symbols=False):
+    if not isinstance(value, dict) or len(value) > 500:
+        return None
+    out = {}
+    for name, amount in value.items():
+        asset = name.split("_")[0] if symbols and isinstance(name, str) else name
+        if not isinstance(asset, str) or not re.fullmatch(r"[A-Z0-9]{1,24}", asset):
+            return None
+        number = _capital_number(amount)
+        if number is None or asset in out:
+            return None
+        out[asset] = number
+    return out
+
+
+def collect_capital_state(state_dir, now):
+    """Cached capital/account projections and journal counts, read only as the bot user."""
+    out = empty_capital_state()
+    runner, journal = None, None
+    for filename in ("runner_state_live.json", "live_orders.json"):
+        try:
+            doc = _capital_file(state_dir, filename)
+            if filename == "runner_state_live.json":
+                runner = doc
+            else:
+                journal = doc
+        except (OSError, ValueError, UnicodeError, HelperError, RecursionError):
+            out["warnings"].append("%s is unavailable or invalid; no zero balance/order assumption is made." % filename)
+    valid_orders = isinstance(journal, dict) and isinstance(journal.get("orders"), dict)
+    if valid_orders:
+        active, unknown = 0, 0
+        for entry in journal["orders"].values():
+            if not isinstance(entry, dict):
+                valid_orders = False
+                break
+            status = entry.get("status")
+            if status == "resting":
+                active += 1
+            elif status not in ("closed", "not_sent", "not_found", "rejected") \
+                    or (entry.get("kind") == "limit" and entry.get("limit_state") is not None
+                        and entry.get("limit_state") not in ("filled", "cancelled", "rejected")):
+                unknown += 1
+        if valid_orders:
+            out["orders"] = {"active_count": active, "unknown_count": unknown}
+    if not valid_orders:
+        out["warnings"].append("Bot orders cannot be verified from the saved journal.")
+    out["read_ok"] = runner is not None and valid_orders
+    if runner is not None:
+        snapshot = runner.get("capital_status")
+        snapshot = snapshot if isinstance(snapshot, dict) else None
+        sleeve = runner.get("sleeve")
+        sleeve = sleeve if isinstance(sleeve, dict) else {}
+        active = out["active"]
+        if snapshot is not None:
+            for key in ("budget_irt", "managed_equity_irt", "cash_irt", "profit_reserve_irt",
+                        "external_reserve_irt", "spendable_cash_irt"):
+                active[key] = _capital_number(snapshot.get(key))
+            active["units"] = _capital_assets(snapshot.get("units"))
+            active["protected_assets"] = _capital_assets(snapshot.get("protected_assets"))
+            active["pending"] = snapshot.get("pending") is not False
+            reason = snapshot.get("reason")
+            active["reason"] = reason[:400] if isinstance(reason, str) else None
+            active["updated_at"] = _capital_time(snapshot.get("updated_at"))
+            if not active["pending"] and any(active[key] is None for key in (
+                    "cash_irt", "profit_reserve_irt", "spendable_cash_irt", "units",
+                    "protected_assets", "updated_at")):
+                active.update(pending=True, reason="Saved capital snapshot is incomplete or invalid.")
+                out["read_ok"] = False
+        elif sleeve:
+            active["budget_irt"] = _capital_number(sleeve.get("budget"))
+            active["cash_irt"] = _capital_number(sleeve.get("cash"))
+            active["profit_reserve_irt"] = _capital_number(sleeve.get("profit_reserve_irt"))
+            active["units"] = _capital_assets(sleeve.get("units"), symbols=True)
+            active["updated_at"] = _capital_time(runner.get("updated_at"))
+            last_cycle = runner.get("last_cycle")
+            if isinstance(last_cycle, dict):
+                equity = last_cycle.get("equity_after", last_cycle.get("equity"))
+                active["managed_equity_irt"] = _capital_number(equity)
+        fingerprint = runner.get("capital_policy")
+        if isinstance(fingerprint, str) and re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+            out["capital_policy"] = fingerprint
+        account = runner.get("account_snapshot")
+        if isinstance(account, dict):
+            out["account"] = {"balances": _capital_assets(account.get("balances")),
+                              "prices_irt": _capital_assets(account.get("prices_irt")),
+                              "updated_at": _capital_time(account.get("updated_at"))}
+            out["warnings"].append("Account quantities and prices are cached observations; use the displayed "
+                                   "updated_at time. This command does not refresh the wallet.")
+        else:
+            out["warnings"].append("No cached account snapshot is available.")
+    counts = out["orders"]
+    if counts["active_count"] is None or counts["unknown_count"] is None:
+        out["active"].update(pending=True, reason="Bot orders are unavailable or invalid; protection cannot "
+                                                "be verified from the saved state.")
+    elif (counts["active_count"] or counts["unknown_count"]) and out["capital_policy"] is None:
+        out["active"].update(pending=True, reason="Active, resting or unknown bot orders must be resolved "
+                                                "before protection can be verified.")
+    return out
+
+
 def collect_bot_state(state_dir, notify_state_dir, notify_conf, now):
     """The dashboard's view of the bot's files through the notifier's own readers (bitpin.notify: an
     allowlist of files, size limits): equity and drawdown, the last decision with its Persian report,
@@ -1272,6 +1500,7 @@ def clean_actor(actor):
 # name -> (mutating: takes the change lock, function)
 COMMANDS = {
     "status": (False, Helper.cmd_status),
+    "capital_status": (False, Helper.cmd_capital_status),
     "performance": (False, Helper.cmd_performance),
     "technical": (False, Helper.cmd_technical),
     "research": (False, Helper.cmd_research),
@@ -1360,6 +1589,16 @@ def state_worker(argv):
     return 0
 
 
+def capital_worker(argv):
+    """Run as user bitpin: no credentials, networking or order mutations."""
+    import argparse
+    ap = argparse.ArgumentParser(prog="panel_helper.py capital-worker")
+    ap.add_argument("--state-dir", required=True)
+    args = ap.parse_args(argv)
+    print(json.dumps(collect_capital_state(args.state_dir, time.time()), separators=(",", ":")))
+    return 0
+
+
 def perf_worker(argv):
     """Run as user bitpin: print bitpin.performance.collect() as one JSON line (v3.6)."""
     import argparse
@@ -1429,6 +1668,8 @@ def main(argv=None):
         return models_worker(argv[1:])
     if argv[:1] == ["state-worker"]:
         return state_worker(argv[1:])
+    if argv[:1] == ["capital-worker"]:
+        return capital_worker(argv[1:])
     if argv[:1] == ["perf-worker"]:
         return perf_worker(argv[1:])
     if argv[:1] == ["ta-worker"]:

@@ -13,10 +13,10 @@ risk that implies: the model stays the decision maker, and the code adds discipl
 
 | | |
 |---|---|
-| **Version** | `3.15.3` · release notes in [CHANGELOG.md](CHANGELOG.md) |
+| **Version** | `3.16.0` · release notes in [CHANGELOG.md](CHANGELOG.md) |
 | **Runs on** | one Ubuntu server, as three independent systemd services |
 | **Dependencies** | none: Python standard library only (Python 3.7 to 3.14) |
-| **Tests** | about 1,500 unit and integration tests; no network or real key needed |
+| **Tests** | 2,300+ unit and integration tests; no network or real key needed |
 | **License** | [MIT](LICENSE) |
 
 > [!WARNING]
@@ -381,3 +381,9 @@ unseen period. Their code and data are not in this repository;
 ## License
 
 [MIT](LICENSE). The software is provided as is, without warranty of any kind; trading with it is at your own risk.
+
+### Trading capital and protected assets
+
+The Capital page sets a base IRT sleeve budget, profit reinvestment and quantity floors. With a budget, pre-existing coins and external cash stay outside the sleeve. Reinvestment on preserves the bot's own gains; off reserves excess free own IRT cash and uses at most the base capital for allocation orders. Losses reduce active capital without drawing from external cash or saved profit. Price appreciation can exceed the base until a normal rebalance. A protected USDT quantity cannot be sold or used to pay for another coin.
+
+Stop the bot and resolve its active/unknown orders before changing capital policy. Preview and save the Capital form, then use Apply to check, confirm live and start. Saved policy remains pending until the runner accepts it. The account values are dated cached observations; inspect their time before copying a full balance into a quantity floor. Existing settings default to reinvestment on and no manual asset floors.

@@ -28,6 +28,9 @@ from .panel_i18n import Text as T
 MISSING = object()
 
 GROUPS = [
+    ("capital", T("سرمایه و دارایی‌های محفوظ", "Capital and protected assets"),
+     T("سرمایهٔ پایه، مصرف سود و مقدار دارایی‌هایی که باید خارج از معامله بمانند.",
+       "Base trading capital, profit handling and asset quantities kept outside trading.")),
     ("style", T("سبک معامله و دستور کیمی", "Trading style and Kimi's brief"),
      T("کیمی تصمیم می‌گیرد؛ این‌ها چارچوب و سبک تصمیم او را تعیین می‌کنند.",
        "Kimi decides; these set the frame and the style of its decisions.")),
@@ -56,7 +59,7 @@ GROUPS = [
 ]
 
 KINDS = ("int", "float", "pct", "bool", "choice", "text", "longtext", "symbols", "coins", "coins_or_null",
-         "numbers", "times", "domains", "urls")
+         "numbers", "times", "domains", "urls", "amountmap")
 LIST_KINDS = ("symbols", "coins", "coins_or_null", "numbers", "times", "domains", "urls")
 
 
@@ -103,6 +106,22 @@ POINTS = T("واحد درصد", "percentage points")
 AGAIN_ABOVE = T("وقتی کوین به بالای این فاصله از سقف ۴۸ ساعته برگردد.",
                 "When the coin climbs back above this distance from its 48-hour high.")
 FIELDS = [
+    Field("config", "max_equity_irt", "int", "capital", T("سرمایهٔ پایهٔ معامله", "Base trading capital"),
+          T("مبلغ به تومان است. خالی یعنی کل موجودی قابل معاملهٔ حساب؛ دارایی‌های محفوظ جداگانه کنار گذاشته می‌شوند. "
+            "پس از زیان، از باقی حساب برای پُر کردن سرمایه برداشت نمی‌شود.",
+            "Amount in IRT (toman). Empty uses all tradable account funds; protected assets remain excluded. "
+            "Losses are never refilled from the rest of the account."),
+          unit=IRT, lo=1, hi=10 ** 13, nullable=True),
+    Field("config", "reinvest_profits", "bool", "capital", T("معاملهٔ دوباره با سود", "Reinvest profits"),
+          T("روشن: سود دوباره وارد سرمایهٔ معامله می‌شود. خاموش: سود از بودجهٔ معامله کنار گذاشته می‌شود. "
+            "کنار گذاشتن سود به معنی برداشت آن از صرافی نیست؛ زیان در هر دو حالت از بقیهٔ حساب جبران نمی‌شود.",
+            "On: profits return to trading capital. Off: profits are reserved outside the trading budget. "
+            "Reserving profits does not withdraw them from the exchange; neither mode refills losses from other funds.")),
+    Field("config", "protected_assets", "amountmap", "capital", T("مقدار دارایی محفوظ", "Protected asset quantities"),
+          T("هر سطر: نماد دارایی = مقدار واحد، مثل BTC = 0.0025. این مقدار فروخته یا به عنوان ارز پرداخت خرج نمی‌شود. "
+            "قفل مقدار ثابت است؛ ارزش تومانی آن با قیمت تغییر می‌کند. خالی یعنی قفل دستی ندارید.",
+            "One asset = unit quantity per line, e.g. BTC = 0.0025. These units cannot be sold or spent as a quote "
+            "currency. The lock fixes units; their IRT value moves with price. Empty means no manual asset locks."), max_items=32),
     # ------------------------------------------------------------------ style
     Field("kimi", "brain.extra_instructions", "longtext", "style",
           T("دستور سبک معامله برای کیمی", "Trading-style brief for Kimi"),
@@ -178,11 +197,6 @@ FIELDS = [
           T("کار ربات هنگام رسیدن به حد افت", "What the bot does at the drawdown limit"),
           choices=[("halt", T("فقط توقف؛ دارایی‌ها نگه داشته شوند", "Halt only; keep the holdings")),
                    ("flatten", T("توقف و فروش همه‌ی کوین‌ها به تومان", "Halt and sell every coin for IRT"))]),
-    Field("config", "max_equity_irt", "int", "risk", T("سقف سرمایه‌ی تحت مدیریت", "Capital the bot manages (cap)"),
-          T("خالی یعنی کل حساب. با یک عدد، ربات فقط همین مقدار را معامله می‌کند و به کوین‌هایی که الان در حساب هست "
-            "دست نمی‌زند.",
-            "Empty = the whole account. With a number the bot trades only that much and leaves the coins already in "
-            "the account alone."), unit=IRT, lo=1, hi=10 ** 13, nullable=True),
     Field("config", "risk.max_order_fraction", "pct", "risk", T("بزرگ‌ترین سفارش", "Largest order"),
           T("سفارش بزرگ‌تر کوچک می‌شود و بقیه در ساعت بعد اجرا می‌شود.",
             "A larger order is cut down; the rest runs in the next hour."), unit=OF_EQUITY, lo=1, hi=100),
@@ -431,7 +445,10 @@ def _dec(v):
 
 
 def _dec_text(d):
-    s = format(d.normalize(), "f")
+    # Decimal.normalize() uses the ambient precision and can round an exact asset floor.
+    s = format(d, "f")
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
     return "0" if s in ("-0", "") else s
 
 
@@ -462,6 +479,9 @@ def display(field, value):
             return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
         if k in ("domains", "urls") and isinstance(value, list):
             return "\n".join(str(x) for x in value)          # a textarea: one site (one feed) per line
+        if k == "amountmap" and isinstance(value, dict):
+            return "\n".join("%s = %s" % (asset, num_text(quantity) if isinstance(quantity, (int, float)) else quantity)
+                             for asset, quantity in sorted(value.items()))
         if k in LIST_KINDS:
             if not isinstance(value, list):
                 return json.dumps(value, ensure_ascii=False)
@@ -541,6 +561,26 @@ def parse_value(field, text):
             raise FieldError("حداکثر %d نویسه (الان %d)" % (field.max_len, len(s)),
                              "at most %d characters (now %d)" % (field.max_len, len(s)))
         return s
+    if k == "amountmap":
+        out = OrderedDict()
+        for line in s.splitlines():
+            if not line.strip():
+                continue
+            parts = line.split("=")
+            if len(parts) != 2:
+                raise FieldError("هر سطر باید به صورت نماد = مقدار باشد", "each line must be asset = quantity")
+            asset, quantity = parts[0].strip().upper(), parts[1].strip()
+            if not _COIN_RE.match(asset):
+                raise FieldError("نماد دارایی معتبر نیست", "not a valid asset symbol")
+            if asset in out:
+                raise FieldError("نماد دارایی تکراری است", "duplicate asset symbol")
+            if len(quantity) > 160:
+                raise FieldError("مقدار باید حداکثر ۱۶۰ نویسه باشد", "quantity must be at most 160 characters")
+            d = _parse_decimal(quantity)
+            if d < 0:
+                raise FieldError("مقدار نمی‌تواند منفی باشد", "quantity must not be negative")
+            out[asset] = _dec_text(d)
+        return _count(field, out)
     if s == "" and (field.nullable or k == "coins_or_null"):
         return None
     if k in ("int", "float", "pct"):
@@ -599,12 +639,12 @@ def parse_value(field, text):
     return _count(field, _dedupe(out))
 
 
-def parse_form(form):
+def parse_form(form, fields=None):
     """(changes, errors) from the posted form {field.key: text}: one change per field (the helper keeps
     only those that differ from the settings in force); errors {field.key: Text(Persian, English)}. A bool
     field that is absent is False (an unchecked checkbox is not posted)."""
     changes, errors = [], OrderedDict()
-    for f in FIELDS:
+    for f in FIELDS if fields is None else fields:
         text = form.get(f.key)
         if isinstance(text, list):
             text = text[-1] if text else None
@@ -626,6 +666,8 @@ def same(a, b):
         return _dec(a) == _dec(b)
     if isinstance(a, list) and isinstance(b, list):
         return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b))
+    if isinstance(a, dict) and isinstance(b, dict):
+        return set(a) == set(b) and all(same(a[key], b[key]) for key in a)
     if isinstance(a, str) and isinstance(b, str):
         return a.replace("\r\n", "\n").strip() == b.replace("\r\n", "\n").strip()
     return type(a) is type(b) and a == b
@@ -646,6 +688,24 @@ def check_value(field, value):
         if field.nullable or k == "coins_or_null":
             return None
         raise ValueError("may not be empty")
+    if k == "amountmap":
+        if not isinstance(value, dict):
+            raise ValueError("must be an asset quantity object")
+        out = OrderedDict()
+        for asset, quantity in value.items():
+            if not isinstance(asset, str) or not _COIN_RE.match(asset):
+                raise ValueError("invalid asset symbol")
+            if isinstance(quantity, bool) or not isinstance(quantity, (str, int, float)):
+                raise ValueError("quantity must be a decimal number")
+            if len(str(quantity)) > 160:
+                raise ValueError("quantity must be at most 160 characters")
+            d = _parse_decimal(quantity) if isinstance(quantity, str) else _dec(quantity)
+            if not d.is_finite():
+                raise ValueError("quantity must be finite")
+            if d < 0:
+                raise ValueError("quantity must not be negative")
+            out[asset] = _dec_text(d)
+        return _count(field, out)
     if k in ("text", "longtext"):
         if not isinstance(value, str):
             raise ValueError("must be a text")
@@ -724,7 +784,13 @@ def apply_changes(config_doc, kimi_doc, changes, defaults=None):
             continue
         doc = docs[field.file]
         cur = effective(doc, field, defaults)
-        if cur is not MISSING and same(cur, value):
+        comparison = cur
+        if field.kind == "amountmap" and cur is not MISSING:
+            try:
+                comparison = check_value(field, cur)
+            except ValueError:
+                pass
+        if cur is not MISSING and same(comparison, value):
             continue
         if _section_is_null(doc, field):
             errors.append("%s: the section %s is null (switched off) in %s.json - turn it on in the JSON editor "

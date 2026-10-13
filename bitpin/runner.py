@@ -153,7 +153,9 @@ from .api import (AuthBudgetExceeded, AuthError, BitpinAPIError, OrderNotSent, O
                   read_json)
 from .backtest import Panel
 from .broker import BrokerError, InsufficientFunds, LimitWouldCross, NotBotOrder, WalletDataError
-from .markets import IRT, USDT, ZERO, D, best_ask, best_bid, fmt_amount, mid_price, parse_symbol
+from .markets import IRT, USDT, ZERO, D, best_ask, best_bid, ceil_to_precision, fmt_amount, mid_price, parse_symbol
+
+from .capital import validate_policy, policy_fingerprint, spendable_asset, sweep_profit
 
 log = logging.getLogger("bitpin.runner")
 
@@ -237,6 +239,8 @@ DEFAULT_CONFIG = {
     "rebalance_threshold": 0.02,
     "cash_buffer_frac": 0.002,
     "max_equity_irt": None,
+    "reinvest_profits": True,
+    "protected_assets": {},
     "history_start_ts": RESEARCH_HISTORY_START,
     "history_csv_seed": True,
     "lookback_bars": 9000,
@@ -365,6 +369,11 @@ def load_config(path=None, overrides=None):
             elif v is not None or k in ("max_equity_irt", "history_start_ts"):
                 cfg[k] = v
     _validate_sections(cfg)
+    try:
+        floors = validate_policy(cfg["max_equity_irt"], cfg["reinvest_profits"], cfg["protected_assets"])
+        cfg["protected_assets"] = {a: str(q) for a, q in floors.items()}
+    except ValueError as e:
+        raise RunnerError(str(e))
     if cfg["max_equity_irt"] is not None:
         try:
             cap = D(cfg["max_equity_irt"])
@@ -484,7 +493,7 @@ def plan_orders(targets, units, closes, cash, threshold="0.02", fee_rate="0.0035
     """Mirror of backtest.simulate()'s rebalance step, in Decimal.
     targets/units/closes: {symbol: Decimal}; cash: IRT. Sells are listed before buys.
     `units`/`cash` must be what the bot manages (the runner passes its sleeve when capped);
-    `equity_cap` is a legacy option that only scales targets and is not used by the runner."""
+    `equity_cap` scales targets when fixed capital mode is selected."""
     threshold, fee_rate, dust_irt = D(threshold), D(fee_rate), D(dust_irt)
     syms = sorted(targets)
     equity = D(cash) + sum((units.get(s, ZERO) * closes[s] for s in syms if closes.get(s) is not None), ZERO)
@@ -743,18 +752,25 @@ class Runner:
         self.cash_buffer = D(self.cfg["cash_buffer_frac"])
         cap = self.cfg.get("max_equity_irt")
         self.equity_cap = D(cap) if cap is not None else None
+        self.reinvest_profits = self.cfg["reinvest_profits"]
+        self.protected_assets = validate_policy(cap, self.reinvest_profits, self.cfg["protected_assets"])
+        self._capital_fingerprint = policy_fingerprint(cap, self.reinvest_profits, self.protected_assets)
         self.state_path = os.path.join(state_dir, "runner_state_%s.json" % mode)
         self.state = read_json(self.state_path) or {}
         self._sleeve = None
+        prior_cap = (self.state.get("sleeve") or {}).get("budget")
+        self._capital_prior = self.state.get("capital_policy") or policy_fingerprint(prior_cap, True, {})
         self.extra_symbols = []
         if self.equity_cap is None and self.state.get("sleeve"):
             log.warning("runner state has a bot sleeve from a run with max_equity_irt, but max_equity_irt is not set "
                         "now: the bot manages the WHOLE toman balance and all strategy coins; the sleeve is dropped")
-            self.state.pop("sleeve", None)
+            # Retain the old ledger until the policy transition passes the order gate.
+            pass
         elif self.equity_cap is not None and self.state.get("sleeve"):
             raw = self.state["sleeve"]
             # a lowered cap that the sleeve's cash cannot absorb is refused at start, not every cycle
-            self._cash_after_cap_change(D(raw.get("budget")), D(raw.get("cash")), self.equity_cap)
+            reserved = D(raw.get("profit_reserve_irt", 0))
+            self._cash_after_cap_change(D(raw.get("budget")), D(raw.get("cash")) - reserved, self.equity_cap)
             owned = {s for s, u in (raw.get("units") or {}).items() if D(u) > 0}
             # coins the sleeve bought for a different strategy: priced separately and exited (target 0)
             self.extra_symbols = sorted(owned - set(self.symbols))
@@ -785,7 +801,8 @@ class Runner:
         self._exec_deadline = None      # brain mode: the executing decision's expires_at (no order after it)
         self._allocation_execution = None  # reporting only; active strictly inside one Kimi allocation trade
         self.offset = None
-        broker.track({parse_symbol(s)[0] for s in self.symbols + self.extra_symbols} | {"IRT"})
+        broker.track({parse_symbol(s)[0] for s in self.symbols + self.extra_symbols} |
+                     {"IRT"} | set(self.protected_assets))
         # A capped sleeve cannot see in the wallet whether an unknown order executed (the user's own
         # coins and toman share the account), so such an order is never silently aged out.
         broker.expire_unknown_orders = not self.capped
@@ -879,7 +896,80 @@ class Runner:
         return self.equity_cap is not None
 
     def _basis(self):
-        return ("sleeve:%s" % format(self.equity_cap, "f")) if self.capped else "account"
+        basis = ("sleeve:%s" % format(self.equity_cap, "f")) if self.capped else "account"
+        # Reinvestment changes only cash partition; preserve drawdown history across that toggle.
+        if self.protected_assets:
+            basis += ":capital:" + policy_fingerprint(self.equity_cap, True, self.protected_assets)
+        return basis
+
+    def _capital_ready(self, rep):
+        """Never activate a new policy over unresolved orders from the old policy."""
+        if self._capital_prior != self._capital_fingerprint:
+            try:
+                # Durable unresolved records cannot be cleared by a read-only lookup.
+                pending = self.broker.unresolved_count()
+                limits = self.broker.limit_orders(active_only=True)
+            except FATAL_ERRORS:
+                raise
+            except Exception as e:
+                pending, limits = [str(e)], []
+            if pending or limits:
+                reason = "capital policy awaits resolution of previous active or unknown orders"
+                rep.update(status="capital_policy_pending", capital_pending=reason)
+                self._save_state(capital_status={"pending": True, "reason": reason, "updated_at": self.clock()})
+                return False
+        if not self.capped:
+            self.state.pop("sleeve", None)
+        else:
+            self._sleeve_get()  # reconcile the old ledger before declaring a changed budget active
+        self._capital_prior = self._capital_fingerprint
+        self._save_state(capital_policy=self._capital_fingerprint,
+                         capital_policy_config={"max_equity_irt": self.equity_cap,
+                                                "reinvest_profits": self.reinvest_profits,
+                                                "protected_assets": self.protected_assets})
+        return True
+
+    def _capital_plan(self, *args, **kwargs):
+        args = list(args)
+        if len(args) > 6:
+            args[6] = self.equity_cap if not self.reinvest_profits else None
+        return plan_orders(*args, **kwargs)
+
+    def _capital_pending_cleanup(self, rep, cleanup):
+        """Honor STOP/halt cancellations using the prior policy's ledger."""
+        current = (self.equity_cap, self.reinvest_profits, self.protected_assets, self._capital_fingerprint)
+        prior = self.state.get("capital_policy_config") or {
+            "max_equity_irt": (self.state.get("sleeve") or {}).get("budget"),
+            "reinvest_profits": True, "protected_assets": {}}
+        cap = prior.get("max_equity_irt")
+        self.equity_cap = D(cap) if cap is not None else None
+        self.reinvest_profits = prior.get("reinvest_profits", True)
+        self.protected_assets = validate_policy(cap, self.reinvest_profits, prior.get("protected_assets", {}))
+        self._capital_fingerprint = self._capital_prior
+        self._sleeve = None
+        try:
+            cleanup(rep)
+        finally:
+            self.equity_cap, self.reinvest_profits, self.protected_assets, self._capital_fingerprint = current
+            self._sleeve = None
+
+    def _capital_available(self, asset):
+        """One allowance for market sales, quote spending and resting orders."""
+        # Reconcile realized cash profits before another order spends the proceeds.
+        if self.capped:
+            self._holdings(self.symbols + self.extra_symbols, refresh=False)
+        total, available = self.broker.balances(), self.broker.available()
+        own, reserved = None, ZERO
+        if self.capped:
+            sl = self._sleeve_get()
+            own = {"IRT": sl["cash"]}
+            for sym, qty in sl["units"].items():
+                base = parse_symbol(sym)[0]
+                own[base] = own.get(base, ZERO) + qty
+            reserved = sl["profit_reserve_irt"]
+        commitments = self.broker.locked_by_limits() if self.capped else None
+        return spendable_asset(asset, total, available, self.protected_assets,
+                               owned=own, committed=commitments, reserved_irt=reserved)
 
     def _fill_records(self):
         try:
@@ -906,6 +996,14 @@ class Runner:
         return new_cash
 
     def _sleeve_get(self):
+        try:
+            return self._sleeve_load()
+        except Exception:
+            # Temporary recursion cache during old-fill reconciliation must never bypass a refused cap.
+            self._sleeve = None
+            raise
+
+    def _sleeve_load(self):
         if self._sleeve is not None:
             return self._sleeve
         raw = self.state.get("sleeve")
@@ -916,13 +1014,14 @@ class Runner:
             recs = self._fill_records()
             if recs is None:   # without them, a later sync would book those orders into the sleeve
                 raise BrokerError("cannot read the broker's order records: the bot sleeve is created on a later cycle")
-            sl = {"budget": cap, "cash": cap, "units": {}, "created_at": self.clock(),
+            sl = {"budget": cap, "cash": cap, "profit_reserve_irt": ZERO, "units": {}, "created_at": self.clock(),
                   "booked": {r["identifier"]: {"ignore": True} for r in recs if r.get("identifier")}}
             log.warning("new bot sleeve: budget %s IRT, no coins. Only the sleeve is traded: coins already in the "
                         "account are never sold and toman above the budget is never used.", fmt_amount(cap))
             dirty = True
         else:
             sl = {"budget": D(raw.get("budget")), "cash": D(raw.get("cash")),
+                  "profit_reserve_irt": D(raw.get("profit_reserve_irt", 0)),
                   "units": {s: D(u) for s, u in (raw.get("units") or {}).items()},
                   "created_at": raw.get("created_at"), "booked": {}}
             if isinstance(raw.get("booked"), dict):
@@ -942,12 +1041,23 @@ class Runner:
                             len(sl["booked"]))
                 dirty = True
             if sl["budget"] != cap:
-                new_cash = self._cash_after_cap_change(sl["budget"], sl["cash"], cap)
+                # A crash can leave FINAL journaled fills unbooked in the old sleeve.
+                # Book those at its old budget before withdrawing/injecting any capital.
+                self._sleeve = sl
+                recs = self._fill_records()
+                if recs is None:
+                    raise BrokerError("cannot reconcile the prior capital ledger")
+                for rec in recs:
+                    self._sleeve_book(rec, save=False)
+                new_cash = self._cash_after_cap_change(sl["budget"], sl["cash"] - sl["profit_reserve_irt"], cap)
+                new_cash += sl["profit_reserve_irt"]
                 log.warning("max_equity_irt changed from %s to %s IRT: sleeve cash %s -> %s IRT (drawdown high-water "
                             "mark restarts)", fmt_amount(sl["budget"]), fmt_amount(cap), fmt_amount(sl["cash"]),
                             fmt_amount(new_cash))
                 sl["cash"], sl["budget"] = new_cash, cap
                 dirty = True
+        if sl["profit_reserve_irt"] < 0 or sl["profit_reserve_irt"] > max(ZERO, sl["cash"]):
+            raise RunnerError("invalid sleeve profit reserve; reconcile the ledger before trading")
         self._sleeve = sl
         if dirty:
             self._save_sleeve()
@@ -959,6 +1069,7 @@ class Runner:
         sl = self._sleeve
         try:
             self._save_state(sleeve={"budget": sl["budget"], "cash": sl["cash"], "created_at": sl.get("created_at"),
+                                     "profit_reserve_irt": sl["profit_reserve_irt"],
                                      "units": {s: u for s, u in sorted(sl["units"].items()) if u != 0},
                                      "booked": sl.get("booked") or {}})
         except Exception as e:  # noqa: BLE001 - retried with the next save; never abort after a fill
@@ -1053,29 +1164,66 @@ class Runner:
         self._sync_sleeve(rep)
 
     def _holdings(self, syms, refresh=True, clamp=True):
-        """(units, cash) the bot manages. Without a cap: the account's IRT and strategy coins.
-        With a cap: the sleeve, clamped to what the account really holds (clamp=False: the
-        ledger as booked, used while an order's outcome is unknown)."""
+        """Managed holdings exclude quantity floors and the bot's reserved cash profit."""
         if refresh:
             self.broker.refresh()
+            self._capital_account_at = self.clock()
         bal = self.broker.balances()
-        acct_units = {s: bal.get(parse_symbol(s)[0], ZERO) for s in syms}
-        acct_cash = bal.get("IRT", ZERO)
-        if not self.capped:
-            return acct_units, acct_cash
-        sl = self._sleeve_get()
-        units = {}
-        for s in syms:
-            own = sl["units"].get(s, ZERO)
-            u = min(own, acct_units[s]) if (clamp and own > 0) else max(own, ZERO)
-            if u < own:
-                log.warning("the bot sleeve owns %s %s but the account holds only %s: using %s (moved manually?)",
-                            own, parse_symbol(s)[0], acct_units[s], u)
-            units[s] = u
-        cash = max(ZERO, min(sl["cash"], acct_cash) if clamp else sl["cash"])
-        if clamp and cash < sl["cash"]:
-            log.warning("the bot sleeve has %s IRT but the account only %s IRT: using %s", fmt_amount(sl["cash"]),
-                        fmt_amount(acct_cash), fmt_amount(cash))
+        acct_units = {s: max(ZERO, bal.get(parse_symbol(s)[0], ZERO) -
+                             self.protected_assets.get(parse_symbol(s)[0], ZERO)) for s in syms}
+        acct_cash = max(ZERO, bal.get("IRT", ZERO) - self.protected_assets.get("IRT", ZERO))
+        sl = self._sleeve_get() if self.capped else None
+        if sl is None:
+            units, cash = acct_units, acct_cash
+            reserve = ZERO
+        else:
+            units = {s: min(max(ZERO, sl["units"].get(s, ZERO)), acct_units[s]) if clamp
+                     else max(ZERO, sl["units"].get(s, ZERO)) for s in syms}
+            reserve = sl["profit_reserve_irt"]
+            cash = max(ZERO, min(max(ZERO, sl["cash"] - reserve), max(ZERO, acct_cash - reserve)) if clamp
+                       else sl["cash"] - reserve)
+            px = getattr(self, "_cycle_prices", None) or self._last_prices
+            complete = all(px.get(s) is not None for s,u in units.items() if u > 0)
+            if complete:
+                eq = cash + sum((u * D(px[s]) for s,u in units.items() if u > 0), ZERO)
+                new_reserve, flow = sweep_profit(max(ZERO, sl["cash"]), reserve, eq,
+                                                self.equity_cap, self.reinvest_profits)
+                if flow < 0:
+                    # Resting buys may still spend their committed cash. Reserve only free own cash.
+                    free = spendable_asset("IRT", bal, self.broker.available(), self.protected_assets,
+                                           owned={"IRT": sl["cash"]},
+                                           committed=self.broker.locked_by_limits(), reserved_irt=reserve)
+                    new_reserve = reserve + min(-flow, free)
+                    flow = reserve - new_reserve
+                if flow:
+                    sl["profit_reserve_irt"] = new_reserve
+                    # Persist partition first. Risk's absolute receipt repairs a crash between files.
+                    self._save_sleeve()
+                    reserve = new_reserve
+                    cash = max(ZERO, min(max(ZERO, sl["cash"] - reserve), max(ZERO, acct_cash - reserve)) if clamp
+                               else sl["cash"] - reserve)
+            if not self.dry_run:
+                self.risk.adjust_profit_reserve(reserve, self._basis())
+        px = getattr(self, "_cycle_prices", None) or self._last_prices
+        complete = all(px.get(s) is not None for s,u in units.items() if u > 0)
+        equity = cash + sum((u * D(px[s]) for s,u in units.items() if u > 0), ZERO) if complete else None
+        owned_cash = {"IRT": sl["cash"]} if sl is not None else None
+        free_cash = spendable_asset("IRT", bal, self.broker.available(), self.protected_assets,
+                                    owned=owned_cash,
+                                    committed=self.broker.locked_by_limits() if self.capped else None,
+                                    reserved_irt=reserve)
+        status = {"budget_irt": self.equity_cap, "managed_equity_irt": equity,
+                  "cash_irt": sl["cash"] if sl is not None else bal.get("IRT", ZERO),
+                  "profit_reserve_irt": reserve, "spendable_cash_irt": free_cash,
+                  "external_reserve_irt": max(ZERO, bal.get("IRT", ZERO) - sl["cash"]) if sl is not None else ZERO,
+                  "units": {parse_symbol(s)[0]: u for s,u in units.items()},
+                  "protected_assets": self.protected_assets, "pending": False,
+                  "reason": None, "updated_at": self.clock()}
+        self._save_state(capital_status=status,
+                         account_snapshot={"balances": bal, "prices_irt": dict(
+                             {parse_symbol(s)[0]: p for s,p in px.items() if parse_symbol(s)[1] == "IRT"},
+                             IRT=1), "updated_at": getattr(self, "_capital_account_at",
+                                 (self.state.get("account_snapshot") or {}).get("updated_at"))})
         return units, cash
 
     def _frozen_funds(self, syms):
@@ -1376,7 +1524,7 @@ class Runner:
             log.warning("drawdown %.1f%% at the last closes reaches the limit; re-reading the wallet and the order "
                         "books to confirm", self.risk.peek_drawdown(eq, basis)["drawdown"] * 100)
             units, cash = self._holdings(list(targets), clamp=clamp)
-            plan = plan_orders(targets, units, prices, cash, self.threshold, self.fee_rate, None,
+            plan = self._capital_plan(targets, units, prices, cash, self.threshold, self.fee_rate, None,
                                dust_irt=self.risk.min_order_irt)
             eq = plan.equity
         info = {"equity_close": eq, "equity_mid": None}
@@ -1428,6 +1576,13 @@ class Runner:
         now = self.clock()
         rep = {"time": now, "mode": self.mode, "dry_run": self.dry_run, "strategy": repr(self.strategy),
                "status": None, "fills": [], "skipped": [], "errors": []}
+        if not self._capital_ready(rep):
+            if self.risk.kill_switch_active():
+                self._capital_pending_cleanup(rep, self._kill_cleanup)
+                rep["status"] = "kill_switch"
+            elif self.risk.is_halted():
+                self._capital_pending_cleanup(rep, self._halt_cleanup)
+            return rep
         if self.risk.kill_switch_active():
             rep["status"] = "kill_switch"
             log.warning("kill switch %s present: not trading", self.risk.kill_switch_path)
@@ -1479,7 +1634,7 @@ class Runner:
         frozen = self._frozen_funds(list(targets))
         if frozen:
             rep["frozen"] = {a: format(v, "f") for a, v in frozen.items()}
-        plan = plan_orders(targets, units, prices, cash, self.threshold, self.fee_rate, None,
+        plan = self._capital_plan(targets, units, prices, cash, self.threshold, self.fee_rate, None,
                            dust_irt=self.risk.min_order_irt)
         # the breaker is evaluated every cycle, also while orders are pending
         dd, plan = self._drawdown(plan, targets, prices, units, cash, clamp=not pending, gaps=gaps)
@@ -2162,6 +2317,15 @@ class Runner:
                 log.info("Kimi decision due (%s): building the market context", trigger)
                 ctx = self.builder.build(snap, recent_decisions=brain.recent_decisions(), abort=self._abort_reason,
                                          **bkw)
+                if isinstance(ctx, dict):
+                    ctx["capital_policy"] = {
+                        "base_budget_irt": str(self.equity_cap) if self.capped else None,
+                        "reinvest_profits": self.reinvest_profits,
+                        "profit_reserve_irt": str(self._sleeve_get()["profit_reserve_irt"]) if self.capped else "0",
+                        "protected_assets": {a: str(q) for a, q in self.protected_assets.items()},
+                        "note": "Portfolio and target weights refer only to managed capital. Protected units and "
+                                "reserved IRT cannot be sold or spent as quote currency. With reinvestment off, "
+                                "orders use at most the base budget; losses never draw on external or profit reserves."}
                 # now = THIS cycle's time, not the clock after the news research and the context
                 # build: decided_at (and the pacing history) must not drift with the work time, or
                 # the next hourly check is just short of the interval and a decision is lost
@@ -2587,7 +2751,7 @@ class Runner:
                                                              "origin": getattr(decision, "origin", None)}}
             if kind == "kimi":
                 state_fields["brain_executed"] = decision.decided_at   # attempted once; not proof of any fill
-        plan = plan_orders(targets, units, prices, cash, self.threshold, self.fee_rate, None,
+        plan = self._capital_plan(targets, units, prices, cash, self.threshold, self.fee_rate, None,
                            dust_irt=self.risk.min_order_irt)
         kind = info.get("action")
         if kind == "kimi" and not buys_only and decision is not None:
@@ -4073,6 +4237,30 @@ class Runner:
 
     def _place_resting(self, rep, sym, side, price, base, tag, meta, book, equity=None):
         """Place one post-only limit order. Returns the view, or None when it was not placed."""
+        try:
+            asset = parse_symbol(sym)[0 if side == "sell" else 1]
+            allowance = self._capital_available(asset)
+            market = self.broker.markets.get(sym)
+            if side == "buy":
+                allowance = market.floor_quote(allowance)
+            requested = market.floor_base(D(base))
+            rounded_price = market.limit_price(D(price), side)
+            need = requested if side == "sell" else ceil_to_precision(
+                rounded_price * requested, market.quote_amount_precision)
+            if need > allowance:
+                rep.setdefault("resting", {}).setdefault("skipped", []).append(
+                    "%s %s: requested limit exceeds spendable %s after capital protection" % (side, sym, asset))
+                return None
+            base = requested
+            if base <= 0:
+                rep.setdefault("resting", {}).setdefault("skipped", []).append(
+                    "%s %s: capital protection leaves no spendable %s" % (side, sym, asset))
+                return None
+        except FATAL_ERRORS:
+            raise
+        except Exception as e:
+            rep.setdefault("errors", []).append("capital limit check failed: %s" % e)
+            return None
         if self.dry_run:
             rep.setdefault("resting", {}).setdefault("would_place", []).append(
                 "%s %s %s @ %s (%s)" % (side, fmt_amount(base), sym, fmt_amount(price), tag))
@@ -4729,6 +4917,11 @@ class Runner:
                                        and getattr(o, "route", None) != "direct") else None
         try:
             self.broker.prepare()   # a due token is renewed BEFORE the book snapshot, not before the POST
+            asset = parse_symbol(o.symbol)[0 if side == "sell" else 1]
+            amount = min(D(amount), self._capital_available(asset))
+            if amount <= 0:
+                rep["skipped"].append((o.symbol, "capital protection leaves no spendable %s" % asset))
+                return True
             vet, book = self._vet(side, o.symbol, amount, last_close_1h, equity, flatten, price_deviation=dev)
         except FATAL_ERRORS:
             raise

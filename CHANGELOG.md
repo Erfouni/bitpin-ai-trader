@@ -4,6 +4,17 @@
 
 ---
 
+## 3.16.0 — سرمایهٔ مجاز معامله و قفل مقداری دارایی‌ها (2026-10-13)
+
+پنل «سرمایه و حفاظت دارایی» برای تعیین سرمایهٔ پایه، استفادهٔ دوباره از سود و قفل کردن مقدار مشخص دارایی‌ها اضافه شد. قفل تتر هم فروش تتر و هم خرج کردن آن برای خرید ارز دیگر را محدود می‌کند. تنظیمات قبلی با پیش‌فرض‌های بدون قفل و استفادهٔ دوباره از سود ادامه پیدا می‌کنند؛ مالک مقدارهای واقعی را انتخاب و تأیید می‌کند.
+
+- **Capital:** `reinvest_profits=true` preserves the existing compounding sleeve; false requires positive `max_equity_irt`. Fixed mode scales allocation orders to base capital and reserves excess free own IRT cash. Losses cannot draw on prior profit reserves or external account funds. Price appreciation can exceed the base until normal rebalance; this is not instantaneous liquidation.
+- **Protection:** `protected_assets` defines quantity floors. Market and resting placement boundaries protect both outgoing base and quote, sleeve ownership, own commitments and physical profit reserve. Rounded maker reservations cannot cross floors. Reserved profit is a partition of sleeve cash, never an added deposit.
+- **Consistency:** absolute reserve receipts adjust risk high-water marks once across restarts; old final fills reconcile before budget changes. A changed policy cannot activate while durable unknown or active orders remain. STOP/halt cancellations still run against the prior ledger.
+- **Panel:** bilingual responsive capital page, six cached metrics, saved versus active policy, quantity rows, cached balance copy, scoped preview/save and owner activation. Helper reads bounded nonsecret cached state; unknown values remain unknown. Both raw JSON and structured policy writes require a stopped bot and a clear order journal.
+- **Kimi:** only managed holdings enter allocation weights; decision context explicitly carries active capital policy and reserved/protected quantities.
+- **Validation:** synthetic runner, paper/live fake-broker, cashflow, helper, panel and regression tests; no paid model or authenticated exchange requests needed for verification.
+
 ## 3.15.3 — هماهنگی گزارش تصمیم با کنترل ریسک و اجرای سفارش (2026-10-12)
 
 گزارش فارسی از اهداف نهایی پس از کنترل‌ها و بررسی دوم ساخته می‌شود؛ پیشنهاد مدل و تأیید آن

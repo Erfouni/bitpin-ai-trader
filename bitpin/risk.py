@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from .api import atomic_write_json, read_json
+from .capital import _exact_sum
 from .markets import (DEFAULT_MIN_ORDER_USDT, IRT, USDT, ZERO, D, best_ask, best_bid, fmt_amount, limit_crosses,
                       max_fill_within, mid_price, slippage_vs_mid, walk_book)
 
@@ -207,6 +208,36 @@ class RiskManager:
         self._save()
 
     # ---- drawdown
+    def adjust_profit_reserve(self, reserved, basis):
+        """Apply an absolute reserve receipt once and return its signed cash flow.
+
+        Reserving IRT withdraws cash from active managed equity; reinvestment
+        releases it. Translate the same basis's historical marks by that flow,
+        so saving profit cannot create a drawdown and market losses still count.
+        The receipt and marks share one atomic risk-state save, including when
+        a process stops before its next equity measurement. A changed basis
+        records its receipt without translating old marks; update_equity rebases.
+        """
+        reserved = D(reserved)
+        previous = D(self._st.get("capital_profit_reserve", ZERO))
+        if reserved < ZERO or previous < ZERO:
+            raise ValueError("capital profit reserve must be nonnegative")
+        receipt_basis = self._st.get("capital_profit_reserve_basis")
+        same_basis = self._stored_basis() == basis and receipt_basis in (None, basis)
+        flow = _exact_sum(previous, reserved.copy_negate()) if same_basis else ZERO
+        updated = dict(self._st)
+        if flow:
+            for key in ("hwm", "last_equity"):
+                if updated.get(key) is not None:
+                    updated[key] = max(ZERO, _exact_sum(D(updated[key]), flow))
+            updated["hwm_log"] = [[day, str(max(ZERO, _exact_sum(value, flow)))]
+                                  for day, value in self._log_entries()]
+        updated["capital_profit_reserve"] = reserved
+        updated["capital_profit_reserve_basis"] = basis
+        self._st = updated
+        self._save()
+        return flow
+
     def _stored_basis(self):
         b = self._st.get("basis")
         if b is None and self._st.get("hwm") is not None:

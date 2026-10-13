@@ -549,6 +549,55 @@ FA = {
     "No value changes.": u"هیچ مقداری تغییر نمی‌کند.",
     "Apply now": u"اعمال همین حالا",
 
+    # ---------------------------------------------------------------- capital
+    "Capital & protection": u"سرمایه و حفاظت دارایی",
+    "Choose the funds the bot may trade and the quantities it must preserve":
+        u"انتخاب سرمایهٔ قابل معامله و مقدار دارایی‌هایی که ربات باید محفوظ نگه دارد",
+    "Unknown": u"نامشخص",
+    "Pending activation": u"در انتظار اعمال",
+    "Active policy": u"سیاست فعال",
+    "Active trading budget": u"بودجهٔ فعال معامله",
+    "Managed equity": u"ارزش سرمایهٔ تحت مدیریت",
+    "Managed cash": u"وجه نقد تحت مدیریت",
+    "Managed units": u"مقدار واحد تحت مدیریت",
+    "Active protected units": u"مقدار واحد محفوظ فعال",
+    "Recorded asset quantities": u"مقدارهای ثبت‌شدهٔ دارایی‌ها",
+    "Price (IRT)": u"قیمت (تومان)",
+    "No recorded asset quantities are available.": u"مقدار ثبت‌شده‌ای از دارایی‌ها در دسترس نیست.",
+    "Reserved profit": u"سود کنارگذاشته‌شده",
+    "Spendable cash": u"وجه نقد قابل خرج",
+    "Cash outside trading capital": u"وجه نقد خارج از سرمایهٔ معامله",
+    "Updated": u"آخرین ثبت",
+    "Unresolved orders": u"سفارش‌های تعیین‌تکلیف‌نشده",
+    "Capital currently in force": u"سرمایهٔ اکنون در اختیار ربات",
+    "Trading capital policy": u"سیاست سرمایهٔ معامله",
+    "No base amount is set: all tradable funds in the account are available to the bot. "
+    "Only protected quantities stay outside trading.":
+        u"سرمایهٔ پایه تعیین نشده: کل موجودی قابل معاملهٔ حساب در اختیار ربات است. فقط مقدارهای محفوظ خارج از معامله می‌مانند.",
+    "To change capital policy, stop the bot and resolve all resting or uncertain orders first. Preview checks the policy "
+    "without saving. After saving, the owner must confirm it in Apply settings.":
+        u"برای تغییر سیاست سرمایه، ابتدا ربات را متوقف و همهٔ سفارش‌های باز یا نامطمئن را تعیین تکلیف کنید. پیش‌نمایش، "
+        u"سیاست را بدون ذخیره بررسی می‌کند. پس از ذخیره، مالک باید آن را در «اعمال تنظیمات» تأیید کند.",
+    "Keep these quantities outside trading": u"این مقدارها خارج از معامله بمانند",
+    "For each asset, enter its symbol and protected unit quantity. These units cannot be sold or spent as a "
+    "quote currency. The lock fixes units; their IRT value moves with price. Empty means no manual asset locks.":
+        u"برای هر دارایی، نماد و مقدار واحد محفوظ را وارد کنید. این مقدار فروخته یا به عنوان ارز پرداخت خرج نمی‌شود. "
+        u"قفل مقدار ثابت است؛ ارزش تومانی آن با قیمت تغییر می‌کند. خالی یعنی قفل دستی ندارید.",
+    "Asset symbol": u"نماد دارایی",
+    "Protected units": u"مقدار واحد محفوظ",
+    "Cached account quantity": u"موجودی ثبت‌شدهٔ حساب",
+    "Manual quantity": u"ورود دستی مقدار",
+    "Use all cached units": u"استفاده از کل موجودی ثبت‌شده",
+    "Remove": u"حذف",
+    "Add an asset lock": u"افزودن دارایی محفوظ",
+    "Account snapshot": u"زمان ثبت موجودی حساب",
+    "Use all cached units copies the last recorded balance into this form. Review its time and quantity before saving; "
+    "it is not a live balance check.":
+        u"«استفاده از کل موجودی ثبت‌شده» آخرین مقدار ذخیره‌شده را در فرم می‌گذارد. پیش از ذخیره، زمان و مقدار آن را "
+        u"بررسی کنید؛ موجودی صرافی در این لحظه دوباره خوانده نمی‌شود.",
+    "No dated account quantity is available for this asset. Enter the quantity manually.":
+        u"موجودی تاریخ‌دار برای این دارایی در دسترس نیست. مقدار را دستی وارد کنید.",
+
     # ---------------------------------------------------------------- apply
     "Confirm the saved settings for live trading": u"تأیید تنظیمات ذخیره‌شده برای معاملهٔ واقعی",
     "This cannot be confirmed right now; see the text below.": u"در حال حاضر قابل تأیید نیست؛ متن زیر را ببینید.",

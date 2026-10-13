@@ -143,6 +143,7 @@ class TestExitSaleSanity(unittest.TestCase):
     def test_only_a_code_exits_toman_sale_gets_the_wider_limit(self):
         seen = []
         st = types.SimpleNamespace(broker=types.SimpleNamespace(prepare=lambda: None), _transient_skip=False)
+        st._capital_available = lambda asset: D(1)  # this test isolates the exit-price deviation contract
 
         def vet(side, sym, amount, lc, eq, flatten, price_deviation=None):
             seen.append(price_deviation)

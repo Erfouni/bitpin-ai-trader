@@ -45,6 +45,7 @@ import html
 import io
 import json
 import logging
+from decimal import Decimal, InvalidOperation
 import math
 import os
 import re
@@ -134,12 +135,13 @@ NAV = (
     (N_("Overview"), (("/", "dashboard", N_("Dashboard")), ("/performance", "trend", N_("Performance")),
                       ("/research", "spark", N_("Research & data")),
                       ("/technical", "spark", N_("Technical analysis")), ("/history", "list", N_("Trade history")))),
-    (N_("Trading"), (("/trade", "sliders", N_("Trade settings")), ("/models", "cpu", N_("Models & keys")),
+    (N_("Trading"), (("/capital", "wallet", N_("Capital & protection")),
+                     ("/trade", "sliders", N_("Trade settings")), ("/models", "cpu", N_("Models & keys")),
                      ("/apply", "check", N_("Apply settings")))),
     (N_("System"), (("/vpn", "globe", N_("VPN")), ("/logs", "logs", N_("Logs")),
                     ("/settings", "braces", N_("JSON editor")), ("/security", "shield", N_("Security")))),
 )
-BACK_PAGES = ("/", "/vpn", "/models", "/settings", "/trade", "/apply")
+BACK_PAGES = ("/", "/vpn", "/models", "/settings", "/trade", "/capital", "/apply")
 STATE_LABELS = {"active": N_("Running"), "activating": N_("Starting"), "deactivating": N_("Stopping"),
                 "reloading": N_("Reloading"), "inactive": N_("Stopped"), "dead": N_("Stopped"),
                 "failed": N_("Error"), "not-installed": N_("Not installed")}
@@ -1366,7 +1368,8 @@ class PanelApp(object):
         self._perf_cache = {}                      # (range, from, to) -> (time, report)
         self._get_routes = {
             "/": self._dashboard, "/models": self._models_get, "/settings": self._settings_get,
-            "/trade": self._trade_get, "/apply": self._apply_get, "/vpn": self._vpn_get, "/logs": self._logs_get,
+            "/trade": self._trade_get, "/capital": self._capital_get,
+            "/apply": self._apply_get, "/vpn": self._vpn_get, "/logs": self._logs_get,
             "/health": self._health_get, "/security": self._security_get, "/performance": self._performance_get,
             "/history": self._history_get, "/history.csv": self._history_csv, "/technical": self._technical_get,
             "/research": self._research_get,
@@ -1374,7 +1377,8 @@ class PanelApp(object):
         self._post_routes = {
             "/logout": self._logout, "/service": self._service_post, "/models/list": self._models_list,
             "/models/set": self._models_set, "/models/key": self._models_key, "/settings": self._settings_post,
-            "/trade": self._trade_post, "/apply": self._apply_post, "/apply/check": self._apply_check,
+            "/trade": self._trade_post, "/capital": self._capital_post,
+            "/apply": self._apply_post, "/apply/check": self._apply_check,
             "/vpn/test": self._vpn_test, "/vpn/raw": self._vpn_raw, "/vpn/put": self._vpn_put,
             "/security/password": self._password_post, "/security/totp/new": self._totp_new,
             "/security/totp/cancel": self._totp_cancel, "/security/totp/enable": self._totp_enable,
@@ -2650,11 +2654,11 @@ class PanelApp(object):
             toc, self._form(req, "/trade", "".join(sections) + bar, "trade")))
         return self._page(req, title, "".join(parts), status=status, active="/trade", sub=sub)
 
-    def _trade_field(self, ps, f, value, error):
+    def _trade_field(self, ps, f, value, error, show_key=True):
         fid = "f-" + re.sub(r"[^A-Za-z0-9_-]", "-", f.key)
         k = f.kind
         value = "" if value is None else str(value)
-        keytag = ' <code class="key" dir="ltr">%s</code>' % esc(f.dotted)
+        keytag = (' <code class="key" dir="ltr">%s</code>' % esc(f.dotted)) if show_key else ""
         max_len = getattr(f, "max_len", None)
         maxlen = ' maxlength="%d"' % max_len if max_len else ""
         label = esc(tr(f.label))
@@ -2665,7 +2669,7 @@ class PanelApp(object):
                    ' <span>%s%s</span></label>') % (fid, fid, esc(f.key), " checked" if value == "on" else "", label,
                                                    keytag)
         else:
-            if k in ("longtext", "symbols", "domains", "urls"):
+            if k in ("longtext", "symbols", "domains", "urls", "amountmap"):
                 cls += " wide"
             if k in ("int", "float", "pct"):
                 unit = tr(f.unit) if f.unit else ""
@@ -2678,7 +2682,7 @@ class PanelApp(object):
             elif k == "longtext":
                 ctl = '<textarea id="%s" name="%s" class="ltr short" dir="ltr" rows="6"%s>\n%s</textarea>' % (
                     fid, esc(f.key), maxlen, esc(value))
-            elif k in ("domains", "urls"):                # v3.5: the trusted news sites; v3.7: extra feeds
+            elif k in ("domains", "urls", "amountmap"):  # one entry per line
                 ctl = ('<textarea id="%s" name="%s" class="ltr short" dir="ltr" rows="%d" spellcheck="false" '
                        'autocomplete="off">\n%s</textarea>') % (fid, esc(f.key), 8 if k == "domains" else 4,
                                                                  esc(value))
@@ -2696,6 +2700,234 @@ class PanelApp(object):
                 te("More detail (in English)") if current() != "en" else te("More detail"), esc(more))
         err = '<p class="field-err">%s</p>' % esc(tr(error)) if error else ""
         return '<div class="field%s">%s%s%s</div>' % (cls, ctl, err, helps)
+
+    # ------------------------------------------------------------------ capital and protected quantities
+    def _capital_get(self, req):
+        return self._capital_page(req)
+
+    @staticmethod
+    def _capital_number(value):
+        """Exact quantities from cached JSON; a missing or malformed figure is never zero."""
+        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+            return None
+        try:
+            number = Decimal(str(value))
+            return number if number.is_finite() and number >= 0 else None
+        except (InvalidOperation, ValueError):
+            return None
+
+    def _capital_value(self, value, money=False):
+        number = self._capital_number(value)
+        if number is None:
+            return te("Unknown")
+        text = format(number, ",.0f") if money else format(number, "f")
+        return ltr(text)
+
+    def _capital_rows(self, form):
+        indices = sorted(set(int(m.group(1)) for key in form for m in [re.match(r"^asset_(\d{1,2})$", key)]
+                             if m and int(m.group(1)) < 32))
+        return [(str(form.get("asset_%d" % i, "")), str(form.get("quantity_%d" % i, "")))
+                for i in indices] or [("", "")]
+
+    def _capital_page(self, req, posted=None, rows=None, errors=None, result="", status=200, snapshot=None):
+        title, sub = tr("Capital & protection"), tr("Choose the funds the bot may trade and the quantities it must preserve")
+        ps, err_html = self._settings_module()
+        if ps is None:
+            return self._page(req, title, err_html, status=500, active="/capital", sub=sub)
+        if snapshot is None:
+            snapshot, error = self._call(req, "capital_status")
+            if error is not None:
+                result += self._helper_error(error)
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        active = snapshot.get("active") if isinstance(snapshot.get("active"), dict) else {}
+        account = snapshot.get("account") if isinstance(snapshot.get("account"), dict) else {}
+        orders = snapshot.get("orders") if isinstance(snapshot.get("orders"), dict) else {}
+        if posted is None:
+            config, error = self._call(req, "config_get")
+            if error is not None:
+                return self._page(req, title, result + self._helper_error(error), status=status, active="/capital", sub=sub)
+            try:
+                cdoc, kdoc = ps.load_docs(config.get("config") or "", config.get("kimi") or "")
+                posted = ps.form_values(cdoc, kdoc)
+                locked = ps.effective(cdoc, ps.BY_KEY["config:protected_assets"], ps.code_defaults())
+                rows = [(asset, ps.num_text(quantity) if isinstance(quantity, (int, float)) else quantity)
+                        for asset, quantity in sorted(locked.items())] if isinstance(locked, dict) else []
+                if len(rows) < 32:
+                    rows.append(("", ""))
+            except (ValueError, TypeError) as e:
+                return self._page(req, title, result + box("err", tr(
+                    "The settings files cannot be read: %s. Fix them in the <a href=\"/settings\">JSON editor</a>.")
+                    % bdi(e)), status=400, active="/capital", sub=sub)
+        rows, errors = rows or [("", "")], errors or {}
+        parts = [result]
+        if snapshot.get("warnings") and isinstance(snapshot["warnings"], list):
+            parts.append(box("warn", ul(snapshot["warnings"])))
+        status_text = te("Pending activation") if active.get("pending") is True else (
+            te("Active policy") if active.get("pending") is False else te("Unknown"))
+        metrics = []
+        for key, label in (("budget_irt", N_("Active trading budget")), ("managed_equity_irt", N_("Managed equity")),
+                           ("cash_irt", N_("Managed cash")), ("profit_reserve_irt", N_("Reserved profit")),
+                           ("spendable_cash_irt", N_("Spendable cash")),
+                           ("external_reserve_irt", N_("Cash outside trading capital"))):
+            metrics.append('<div class="capital-metric"><span class="muted small">%s</span>'
+                           '<div data-capital="%s"><span class="capital-value">%s</span> <span class="muted small">%s</span>'
+                           '</div></div>' % (te(label), key, self._capital_value(active.get(key), True), te("IRT")))
+        status_info = '<div class="capital-status"><span class="badge">%s</span><span class="muted small">%s: %s</span></div>' % (
+            status_text, te("Updated"), fmt_time(active.get("updated_at")))
+        if active.get("reason"):
+            status_info += '<p class="muted small">%s</p>' % bdi(active["reason"])
+        status_info += '<div class="capital-metrics">%s</div>' % "".join(metrics)
+        status_info += '<p class="muted small">%s: %s &middot; %s: %s</p>' % (
+            te("Resting limit orders"), self._capital_value(orders.get("active_count")),
+            te("Unresolved orders"), self._capital_value(orders.get("unknown_count")))
+        parts.append(card(te("Capital currently in force"), status_info, "wallet", cls="capital-summary"))
+        units = active.get("units") if isinstance(active.get("units"), dict) else {}
+        floors = active.get("protected_assets") if isinstance(active.get("protected_assets"), dict) else {}
+        balances = account.get("balances") if isinstance(account.get("balances"), dict) else {}
+        prices = account.get("prices_irt") if isinstance(account.get("prices_irt"), dict) else {}
+        assets = sorted(set(units) | set(floors) | set(balances))
+        asset_rows = [(code(asset), self._capital_value(units.get(asset)),
+                       '<span data-active-lock="%s">%s</span>' % (esc(asset), self._capital_value(floors.get(asset))),
+                       self._capital_value(balances.get(asset)), self._capital_value(prices.get(asset), True))
+                      for asset in assets]
+        asset_table = table([N_("Asset symbol"), N_("Managed units"), N_("Active protected units"),
+                             N_("Cached account quantity"), N_("Price (IRT)")], asset_rows, num=(1, 2, 3, 4)) if assets else (
+            '<p class="muted empty">%s</p>' % te("No recorded asset quantities are available."))
+        asset_table += '<p class="muted small">%s: %s</p>' % (te("Account snapshot"), fmt_time(account.get("updated_at")))
+        parts.append(card(te("Recorded asset quantities"), asset_table, "coins"))
+        if errors:
+            parts.append(box("err", te("Some values are not valid; each error is shown next to its field. Nothing was saved.")))
+        if not str(posted.get("config:max_equity_irt", "")).strip():
+            parts.append(box("warn", te("No base amount is set: all tradable funds in the account are available to the bot. "
+                                        "Only protected quantities stay outside trading.")))
+        parts.append(box("info", te("To change capital policy, stop the bot and resolve all resting or uncertain orders first. "
+                                    "Preview checks the policy without saving. After saving, the owner must confirm it in Apply settings.")))
+        capital_fields = [f for f in ps.FIELDS if f.group == "capital" and f.kind != "amountmap"]
+        inputs = "".join(self._trade_field(ps, f, posted.get(f.key, ""), errors.get(f.key), show_key=False)
+                         for f in capital_fields)
+        inner = card(te("Trading capital policy"), '<div class="fields capital-fields">%s</div>' % inputs, "sliders")
+        lock_controls = []
+        dated_account = _is_num(account.get("updated_at")) and 0 < account["updated_at"] < 1e11
+        cache_available = dated_account and any(self._capital_number(value) is not None for value in balances.values())
+        for i, (asset, quantity) in enumerate(rows):
+            cached = balances.get(str(asset).strip().upper()) if dated_account else None
+            cached_ok = self._capital_number(cached) is not None
+            aid, qid = "capital-asset-%d" % i, "capital-quantity-%d" % i
+            row_error = errors.get("row_%d" % i)
+            cache_text = ('%s: %s &middot; %s' % (te("Cached account quantity"), self._capital_value(cached),
+                                                fmt_time(account.get("updated_at")))) if cached_ok else te("Manual quantity")
+            current = ('<button type="submit" class="btn secondary sm" name="action" value="lock-current:%d"%s>%s</button>'
+                       % (i, "" if cache_available else ' disabled aria-disabled="true"', te("Use all cached units")))
+            remove = button(tr("Remove"), "ghost sm", "error", "action", "remove-lock:%d" % i)
+            lock_controls.append('<div class="capital-lock%s"><div class="capital-lock-inputs">'
+                                 '<div class="field"><label for="%s">%s</label><input type="text" id="%s" name="asset_%d" '
+                                 'value="%s" dir="ltr" class="ltr" maxlength="20" placeholder="BTC" autocomplete="off"></div>'
+                                 '<div class="field"><label for="%s">%s</label><input type="text" id="%s" '
+                                 'name="quantity_%d" value="%s" dir="ltr" class="ltr" inputmode="decimal" '
+                                 'maxlength="160" placeholder="0.0025" autocomplete="off"%s></div></div>'
+                                 '<div class="capital-lock-foot"><span class="muted small">%s</span><div class="actions">%s%s</div></div>%s'
+                                 '</div>' % (" has-err" if row_error else "", aid, te("Asset symbol"), aid, i, esc(asset),
+                                             qid, te("Protected units"), qid, i, esc(quantity),
+                                             ' aria-invalid="true"' if row_error else "", cache_text, current, remove,
+                                             '<p class="field-err">%s</p>' % esc(tr(row_error)) if row_error else ""))
+        lock_field = ps.BY_KEY["config:protected_assets"]
+        lock_body = '<p class="intro">%s</p><div class="capital-locks">%s</div>' % (
+            te("For each asset, enter its symbol and protected unit quantity. These units cannot be sold or spent as a "
+               "quote currency. The lock fixes units; their IRT value moves with price. Empty means no manual asset locks."),
+            "".join(lock_controls))
+        if lock_field.key in errors:
+            lock_body += '<p class="field-err">%s</p>' % esc(tr(errors[lock_field.key]))
+        lock_body += '<div class="actions">%s</div>' % button(tr("Add an asset lock"), "secondary", "lock", "action", "add-lock")
+        lock_body += '<p class="muted small">%s: %s</p>' % (te("Account snapshot"), fmt_time(account.get("updated_at")))
+        lock_body += help_p(te("Use all cached units copies the last recorded balance into this form. Review its time and quantity "
+                              "before saving; it is not a live balance check."))
+        inner += card(te("Keep these quantities outside trading"), lock_body, "shield")
+        bar = '<div class="actionbar"><p class="muted">%s</p><div class="actions">%s%s</div></div>' % (
+            te("Preview shows the changes without saving anything."),
+            button(tr("Preview changes"), "secondary", "eye", "action", "preview"),
+            button(tr("Save"), "primary", "save", "action", "save"))
+        # Native Enter submission uses the first submit button; never replace a typed floor with the cache.
+        default_submit = '<button type="submit" name="action" value="preview" hidden>%s</button>' % te("Preview changes")
+        parts.append(self._form(req, "/capital", default_submit + inner + bar, "capital-form"))
+        return self._page(req, title, "".join(parts), status=status, active="/capital", sub=sub)
+
+    def _capital_post(self, req):
+        ps, error = self._settings_module()
+        if ps is None:
+            return self._page(req, tr("Capital & protection"), error, status=500, active="/capital")
+        fields = [f for f in ps.FIELDS if f.group == "capital"]
+        posted = dict((f.key, req.form.get(f.key, "")) for f in fields)
+        posted["config:reinvest_profits"] = "on" if str(posted["config:reinvest_profits"]).lower() in ps.TRUE_WORDS else ""
+        rows, action = self._capital_rows(req.form), req.form.get("action", "")
+        for key in req.form:
+            if key.startswith(("asset_", "quantity_")):
+                match = re.match(r"^(asset|quantity)_(0|[1-9]\d?)$", key)
+                other = (("quantity_" if match.group(1) == "asset" else "asset_") + match.group(2)) if match else None
+                if not match or int(match.group(2)) >= 32 or other not in req.form:
+                    self._audit_action(req, "settings_set", "invalid row")
+                    return self._capital_page(req, posted, rows, result=box("err", te("Invalid request.")), status=400)
+        if action == "add-lock" or action.startswith("remove-lock:") or action.startswith("lock-current:"):
+            if action == "add-lock":
+                if len(rows) < 32:
+                    rows.append(("", ""))
+                return self._capital_page(req, posted, rows)
+            try:
+                index = int(action.split(":", 1)[1])
+                if not 0 <= index < len(rows):
+                    raise ValueError("row out of range")
+            except ValueError:
+                return self._capital_page(req, posted, rows, result=box("err", te("Invalid request.")), status=400)
+            if action.startswith("remove-lock:"):
+                del rows[index]
+                return self._capital_page(req, posted, rows)
+            snapshot, error = self._call(req, "capital_status")
+            account = snapshot.get("account") if isinstance(snapshot, dict) else None
+            balances = account.get("balances") if isinstance(account, dict) else None
+            asset = rows[index][0].strip().upper()
+            dated = isinstance(account, dict) and _is_num(account.get("updated_at")) and 0 < account["updated_at"] < 1e11
+            cached = balances.get(asset) if isinstance(balances, dict) and dated else None
+            if error or self._capital_number(cached) is None:
+                return self._capital_page(req, posted, rows, result=box("warn", te(
+                    "No dated account quantity is available for this asset. Enter the quantity manually.")), status=400,
+                                          snapshot=snapshot)
+            rows[index] = (asset, format(self._capital_number(cached), "f"))
+            return self._capital_page(req, posted, rows, snapshot=snapshot)
+        if action not in ("preview", "save"):
+            self._audit_action(req, "settings_set", "invalid action")
+            return self._capital_page(req, posted, rows, result=box("err", te("Invalid request.")), status=400)
+        row_errors, seen, normalized = {}, set(), []
+        for i, (asset, quantity) in enumerate(rows):
+            if not asset.strip() and not quantity.strip():
+                continue
+            try:
+                if not re.match(r"^[A-Z0-9]{2,20}$", asset.strip().upper()):
+                    raise ps.FieldError("نماد دارایی معتبر نیست", "not a valid asset symbol")
+                value = ps.parse_value(ps.BY_KEY["config:protected_assets"], "%s = %s" % (asset, quantity))
+                name = next(iter(value))
+                if name in seen:
+                    raise ps.FieldError("نماد دارایی تکراری است", "duplicate asset symbol")
+                seen.add(name)
+                normalized.append("%s = %s" % (name, value[name]))
+            except ps.FieldError as e:
+                row_errors["row_%d" % i] = e.text
+        posted["config:protected_assets"] = "\n".join(normalized)
+        changes, errors = ps.parse_form(posted, fields=fields)
+        errors.update(row_errors)
+        dry = action == "preview"
+        if errors:
+            self._audit_action(req, "settings_set", "invalid input", dry_run=dry, fields=sorted(errors))
+            return self._capital_page(req, posted, rows, errors, status=400)
+        data, error = self._call(req, "settings_set", changes=changes, dry_run=dry)
+        changed = data.get("changed", []) if isinstance(data, dict) else []
+        self._audit_action(req, "settings_set", error, dry_run=dry, capital_policy=True,
+                           written=bool(data.get("written")) if data else False)
+        if error:
+            return self._capital_page(req, posted, rows, result=self._helper_error(error))
+        result = self._trade_result(req, data, changed, dry)
+        if not dry and data.get("written"):
+            self._flash(req, result)
+            return self._redirect("/capital")
+        return self._capital_page(req, posted, rows, result=result)
 
     def _trade_post(self, req):
         ps, err_html = self._settings_module()
