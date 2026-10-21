@@ -147,7 +147,8 @@ class IPv4HTTPSHandler(urllib.request.HTTPSHandler):
 
 
 class WhaleClient:
-    def __init__(self, opener=None, timeout=12, max_bytes=4 * 1024 * 1024):
+    # Blockstream answers in about 6 s and sometimes just over 12 s; a 12 s limit failed whole runs.
+    def __init__(self, opener=None, timeout=30, max_bytes=4 * 1024 * 1024):
         self.opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect(), IPv4HTTPSHandler())
         self.timeout, self.max_bytes = timeout, max_bytes
 
