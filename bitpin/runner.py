@@ -902,9 +902,56 @@ class Runner:
             basis += ":capital:" + policy_fingerprint(self.equity_cap, True, self.protected_assets)
         return basis
 
+    def _capital_settle(self, rep):
+        """v3.16.1: let a changed capital policy become active. Runs under the PRIOR policy
+        (_capital_pending_cleanup), before the gate checks: unknown market orders are resolved and the
+        resting orders brought in step with the exchange (fills booked into the old ledger), then the
+        bot's remaining resting orders of the old policy - target sells and ladder bids, which the
+        maintenance re-places every cycle - are cancelled. Before, the gate ran ahead of every sync, so
+        one resting order kept the policy pending for good and the whole cycle (code stops, hold
+        exits, Kimi) stopped with it. A failure here only leaves the gate pending for this cycle; the
+        next cycle tries again."""
+        if self.dry_run:
+            return
+        try:
+            self.broker.resolve_pending()
+            self._after_resolve(rep)
+        except FATAL_ERRORS:
+            raise
+        except Exception as e:  # noqa: BLE001 - retried next cycle
+            log.warning("capital policy change: resolving earlier orders failed (%s); retried next cycle", e)
+        if self.brain is not None:
+            self._resting_sync(rep, self.clock())
+        else:
+            try:
+                self.broker.sync_limits()
+            except FATAL_ERRORS:
+                raise
+            except Exception as e:  # noqa: BLE001
+                log.warning("capital policy change: resting order sync failed (%s); retried next cycle", e)
+        try:
+            views = list(self.broker.limit_orders(active_only=True))
+        except FATAL_ERRORS:
+            raise
+        except Exception as e:  # noqa: BLE001
+            log.warning("capital policy change: resting orders unavailable (%s); retried next cycle", e)
+            return
+        if views:
+            log.warning("capital policy changed: cancelling %d resting bot order(s) of the previous policy; the "
+                        "maintenance re-places them under the new one", len(views))
+            self._cancel_views(rep, views, "capital policy change")
+            if self.brain is not None:
+                self._process_limit_fills(rep)     # a cancel that raced a fill
+                self._sync_sleeve(rep)
+
     def _capital_ready(self, rep):
-        """Never activate a new policy over unresolved orders from the old policy."""
+        """Never activate a new policy over unresolved orders from the old policy (v3.16.1: they are
+        first resolved, synced and - resting ones - cancelled under the old policy, _capital_settle)."""
         if self._capital_prior != self._capital_fingerprint:
+            # not while the bot is stopped (STOP keeps the target sells) or halted: then the old policy
+            # stays and run_once runs only the stop / halt cleanup under it
+            if not (self.risk.kill_switch_active() or self.risk.is_halted()):
+                self._capital_pending_cleanup(rep, self._capital_settle)
             try:
                 # Durable unresolved records cannot be cleared by a read-only lookup.
                 pending = self.broker.unresolved_count()

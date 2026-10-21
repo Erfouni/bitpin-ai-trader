@@ -88,11 +88,26 @@ class CapitalRunnerTest(RunnerBase):
         self.assertEqual(hold, {"AAA_IRT": D(1)})
         self.assertEqual(plan.orders, [])
 
-    def test_policy_change_blocks_previous_resting_order(self):
+    def test_policy_change_cancels_the_previous_resting_order_then_activates(self):
+        # v3.16.1: before, one resting order of the old policy kept the gate pending for good (no sync ran
+        # ahead of the gate), and with it every code stop, hold exit and Kimi decision
         r = self.runner(FixedWeights())
         r.broker.place_limit("AAA_IRT", "buy", D(90), D(2000))
         protected = self.runner(FixedWeights(), cfg={"protected_assets": {"IRT": "100000000"}})
-        self.assertEqual(protected.run_once()["status"], "capital_policy_pending")
+        rep = protected.run_once()
+        self.assertNotEqual(rep["status"], "capital_policy_pending")
+        self.assertEqual(protected.broker.limit_orders(active_only=True), [])
+        self.assertEqual(protected.state["capital_policy"], protected._capital_fingerprint)
+        self.assertFalse((protected.state.get("capital_status") or {}).get("pending"))
+
+    def test_a_failed_cancel_stays_pending_and_is_retried_next_cycle(self):
+        r = self.runner(FixedWeights())
+        r.broker.place_limit("AAA_IRT", "buy", D(90), D(2000))
+        protected = self.runner(FixedWeights(), cfg={"protected_assets": {"IRT": "100000000"}})
+        with mock.patch.object(protected.broker, "cancel", side_effect=RuntimeError("network down")):
+            self.assertEqual(protected.run_once()["status"], "capital_policy_pending")
+        self.assertNotEqual(protected.run_once()["status"], "capital_policy_pending")
+        self.assertEqual(protected.broker.limit_orders(active_only=True), [])
 
     def test_status_free_cash_excludes_own_limit_commitment(self):
         r = self.runner(FixedWeights(), cfg={"max_equity_irt": "5000000"})
@@ -181,6 +196,17 @@ class CapitalBrainTest(LadderBase):
         self.assertEqual(report["status"], "kill_switch")
         self.assertEqual(self.bids(), [])
         self.assertEqual(protected.state["capital_policy"], prior)
+
+    def test_a_policy_change_over_resting_ladder_bids_keeps_the_bot_running(self):
+        original = self.runner()
+        original.run_once()
+        self.assertGreater(len(self.bids()), 0)
+        protected = self.runner(cfg={"protected_assets": {"USDT": "1"}})
+        report = protected.run_once()
+        self.assertNotEqual(report["status"], "capital_policy_pending")
+        self.assertEqual(protected.state["capital_policy"], protected._capital_fingerprint)
+        self.assertTrue(any("capital policy change" in c for c in (report.get("resting") or {}).get("cancelled", [])),
+                        report.get("resting"))
 
     def test_kimi_decision_receives_explicit_capital_policy(self):
         r = self.runner(cfg={"max_equity_irt": "1000000", "reinvest_profits": False,
