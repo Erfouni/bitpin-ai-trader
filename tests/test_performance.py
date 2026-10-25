@@ -237,6 +237,19 @@ class TestChartAndPositions(unittest.TestCase):
         self.assertEqual(len(thin), perf.CHART_POINTS)
         self.assertEqual((thin[0], thin[-1]), (pts[0], pts[-1]))
 
+    def test_resting_order_amount_is_the_clamped_unfilled_remainder(self):
+        orders = {"orders": {
+            "partial": {"status": "resting", "kind": "limit", "symbol": "BTC_USDT", "side": "sell",
+                        "price": "60000", "base_amount": "10", "reported_base": "4"},
+            "open": {"status": "resting", "kind": "limit", "symbol": "ETH_USDT", "side": "buy",
+                     "price": "2000", "base_amount": "3"},
+            "filled_only": {"status": "resting", "kind": "limit", "symbol": "ADA_USDT", "side": "buy",
+                            "price": "1", "base_amount": "8", "filled_base": "3"},
+            "overfilled": {"status": "resting", "kind": "limit", "symbol": "SOL_USDT", "side": "sell",
+                           "price": "100", "base_amount": "2", "reported_base": "3"}}}
+        amounts = {order["asset"]: order["amount"] for order in perf.resting_orders(orders)}
+        self.assertEqual(amounts, {"BTC": 6.0, "ETH": 3.0, "ADA": 5.0, "SOL": 0.0})
+
     def test_positions_with_their_plan_orders_and_prices(self):
         r = perf.report(self.records, START, self.prices, T0, self.now, self.now, perf.resting_orders(ORDERS_DOC))
         pos = dict((p["asset"], p) for p in r["positions"])
