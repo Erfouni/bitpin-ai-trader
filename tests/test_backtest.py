@@ -75,6 +75,14 @@ class ResampleTest(unittest.TestCase):
         self.assertEqual(out[0].low, -0.5)
         self.assertEqual(out[0].volume, 4)
 
+    def test_a_duplicate_cannot_stand_in_for_a_missing_bar(self):
+        # [0, 3600, 3600, 10800] has four rows but misses 7200 and repeats 3600:
+        # only the complete bucket at 14400 survives.
+        holed = [Bar(0, 1, 1, 1, 1, 1), Bar(3600, 2, 2, 2, 2, 1),
+                 Bar(3600, 3, 3, 3, 3, 1), Bar(10800, 4, 4, 4, 4, 1)]
+        full = [Bar(14400 + 3600 * i, 5, 5, 5, 5, 1) for i in range(4)]
+        self.assertEqual([b.ts for b in resample(holed + full, 4)], [14400])
+
 
 if __name__ == "__main__":
     unittest.main()
