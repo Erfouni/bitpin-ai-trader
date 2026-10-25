@@ -167,6 +167,15 @@ def resting_orders(orders_doc):
             continue
         sym = str(o.get("symbol") or "").upper()
         price, amount = _f(o.get("price")), _f(o.get("base_amount"))
+        if amount is not None:
+            remaining = _f(o.get("remaining_base"))
+            filled = _f(o.get("filled_base"))
+            if remaining is not None:
+                amount = max(0.0, min(amount, remaining))
+            elif filled is not None:
+                amount = max(0.0, min(amount, amount - filled))
+            else:
+                amount = max(0.0, min(amount, amount - (_f(o.get("reported_base")) or 0.0)))
         if sym.count("_") != 1 or not price or o.get("side") not in ("buy", "sell"):
             continue
         asset, quote = sym.split("_")
