@@ -83,6 +83,23 @@ class ResampleTest(unittest.TestCase):
         full = [Bar(14400 + 3600 * i, 5, 5, 5, 5, 1) for i in range(4)]
         self.assertEqual([b.ts for b in resample(holed + full, 4)], [14400])
 
+    def test_distinct_off_grid_rows_do_not_make_a_complete_bucket(self):
+        for offset in (0, 1800):
+            with self.subTest(offset=offset):
+                # Four distinct rows still miss the hourly slot at 7200: the
+                # extra row at 9000 must not make the bucket look complete.
+                times = [0, 3600, 9000, 10800, 14400, 18000, 21600, 25200]
+                bars = [Bar(offset + t, 1, 1, 1, 1, 1) for t in times]
+                self.assertEqual(resample(bars, 4), [Bar(14400, 1, 1, 1, 1, 4)])
+
+    def test_resample_uses_timestamp_order_for_ohlc(self):
+        bars = [Bar(3600 * i, 10 + i, 20 + i, i, 10.5 + i, 1 + i) for i in range(8)]
+        shuffled = [bars[i] for i in (1, 0, 3, 2, 4, 5, 6, 7)]
+        self.assertEqual(resample(shuffled, 4), [
+            Bar(0, 10, 23, 0, 13.5, 10),
+            Bar(14400, 14, 27, 4, 17.5, 26),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()
