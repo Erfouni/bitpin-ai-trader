@@ -167,9 +167,10 @@ def available_symbols(res="60"):
 def resample(bars, factor):
     """Aggregate consecutive bars into bars `factor` times longer (e.g. 1h -> 4h with factor=4).
     Buckets are aligned to multiples of the new period in epoch time; partial buckets are kept
-    only if complete (all `factor` source bars present). The source step is the most common gap
-    between consecutive bars (v3.13: before, the gap of the first two bars - a missing bar right
-    at the start gave the whole series a wrong period); fewer than two bars give no bucket."""
+    only if complete (every expected source timestamp present exactly once: a duplicate cannot
+    stand in for a missing bar). The source step is the most common gap between consecutive bars
+    (v3.13: before, the gap of the first two bars - a missing bar right at the start gave the
+    whole series a wrong period); fewer than two bars give no bucket."""
     if factor == 1 or not bars:
         return list(bars)
     gaps = Counter(b.ts - a.ts for a, b in zip(bars, bars[1:]) if b.ts > a.ts)
@@ -182,8 +183,12 @@ def resample(bars, factor):
         buckets.setdefault(b.ts - (b.ts % period), []).append(b)
     out = []
     for k in sorted(buckets):
-        g = buckets[k]
-        if len(g) != factor:
+        g = sorted(buckets[k], key=lambda b: b.ts)
+        # Duplicates and missing bars both have to fail here: the cached CSV can keep
+        # duplicate timestamps, and a duplicate must not fill a missing bar's slot. The
+        # expected grid starts at the bucket's first bar, so a series offset from the
+        # period multiples (e.g. bars at :30) keeps working.
+        if [b.ts for b in g] != [g[0].ts + i * step for i in range(factor)]:
             continue
         out.append(Bar(k, g[0].open, max(x.high for x in g), min(x.low for x in g), g[-1].close,
                        sum(x.volume for x in g)))

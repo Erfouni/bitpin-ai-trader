@@ -75,6 +75,31 @@ class ResampleTest(unittest.TestCase):
         self.assertEqual(out[0].low, -0.5)
         self.assertEqual(out[0].volume, 4)
 
+    def test_a_duplicate_cannot_stand_in_for_a_missing_bar(self):
+        # [0, 3600, 3600, 10800] has four rows but misses 7200 and repeats 3600:
+        # only the complete bucket at 14400 survives.
+        holed = [Bar(0, 1, 1, 1, 1, 1), Bar(3600, 2, 2, 2, 2, 1),
+                 Bar(3600, 3, 3, 3, 3, 1), Bar(10800, 4, 4, 4, 4, 1)]
+        full = [Bar(14400 + 3600 * i, 5, 5, 5, 5, 1) for i in range(4)]
+        self.assertEqual([b.ts for b in resample(holed + full, 4)], [14400])
+
+    def test_distinct_off_grid_rows_do_not_make_a_complete_bucket(self):
+        for offset in (0, 1800):
+            with self.subTest(offset=offset):
+                # Four distinct rows still miss the hourly slot at 7200: the
+                # extra row at 9000 must not make the bucket look complete.
+                times = [0, 3600, 9000, 10800, 14400, 18000, 21600, 25200]
+                bars = [Bar(offset + t, 1, 1, 1, 1, 1) for t in times]
+                self.assertEqual(resample(bars, 4), [Bar(14400, 1, 1, 1, 1, 4)])
+
+    def test_resample_uses_timestamp_order_for_ohlc(self):
+        bars = [Bar(3600 * i, 10 + i, 20 + i, i, 10.5 + i, 1 + i) for i in range(8)]
+        shuffled = [bars[i] for i in (1, 0, 3, 2, 4, 5, 6, 7)]
+        self.assertEqual(resample(shuffled, 4), [
+            Bar(0, 10, 23, 0, 13.5, 10),
+            Bar(14400, 14, 27, 4, 17.5, 26),
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()
