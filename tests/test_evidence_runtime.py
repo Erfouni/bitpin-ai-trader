@@ -87,11 +87,12 @@ class EvidenceRuntimeTests(unittest.TestCase):
         cfg.update(overrides)
         return KimiBrain(llm, cfg, str(self.root), clock=lambda: (tick or [T0])[0])
 
-    def test_enabled_evidence_requires_a_review_even_when_all_targets_are_safe(self):
-        # A permissive legacy parser must not silently accept an unreviewed USDT-only reply.
-        with self.assertRaisesRegex(ValidationError, 'evidence_review'):
-            validate_response(reply({'USDT_IRT': 1}), {'USDT_IRT': 1}, ALLOWED, 'USDT_IRT', BAL,
-                              context=evidence_context(), now=T0)
+    def test_missing_review_is_noted_but_does_not_cost_the_decision(self):
+        # v3.16.2: the review is audit-only, so a reply without one keeps its allocation and says so.
+        out = validate_response(reply({'USDT_IRT': 1}), {'USDT_IRT': 1}, ALLOWED, 'USDT_IRT', BAL,
+                                context=evidence_context(), now=T0)
+        self.assertNotIn('evidence_review', out['analysis'])
+        self.assertTrue(any(n.startswith('evidence review ignored') for n in out['adjustments']), out['adjustments'])
 
     def test_real_prompt_contains_numeric_catalog_and_required_response_contract(self):
         brain = self.brain(EvidenceReply())
@@ -139,23 +140,28 @@ class EvidenceRuntimeTests(unittest.TestCase):
         self.assertEqual(catalog, submitted_context(llm.calls[0])['decision_evidence'])
         self.assertNotIn('evidence_catalog', decision_view(records[-1]))
 
-    def test_wrong_request_id_is_not_a_valid_allocation_or_a_silent_fallback(self):
+    def test_wrong_request_id_drops_the_review_but_keeps_the_allocation(self):
         llm = EvidenceReply(mutate=lambda obj, contract: obj['analysis']['evidence_review'].update(
             request_id='0' * 64))
         decision = self.brain(llm).decide(evidence_context(), {'USDT_IRT': 1})
-        self.assertFalse(decision.valid)
-        self.assertEqual(decision.error_kind, 'validation')
+        self.assertTrue(decision.valid, decision.error)
         self.assertEqual(len(llm.calls), 1)
         self.assertFalse(decision.fallback)
+        self.assertNotIn('evidence_review', decision.analysis)
+        self.assertNotIn('evidence_catalog', decision.analysis)
+        self.assertTrue(any('request_id' in n for n in decision.adjustments), decision.adjustments)
 
-    def test_unknown_or_false_citation_is_rejected_without_adding_a_probability_bonus(self):
+    def test_false_citation_drops_the_review_and_its_candidate_refs(self):
         def mutate(obj, contract):
             row = obj['analysis']['evidence_review']['sources']['personal_wallets']
             row['citations'][0]['value'] = 1000000000000000000
+            obj['analysis'].setdefault('candidates', {})['ETH_IRT'] = {'evidence_refs': [row['citations'][0]['id']]}
         decision = self.brain(EvidenceReply(mutate=mutate)).decide(evidence_context(), {'USDT_IRT': 1})
-        self.assertFalse(decision.valid)
-        self.assertIn('evidence', decision.error)
-        self.assertEqual(decision.error_kind, 'validation')
+        self.assertTrue(decision.valid, decision.error)
+        self.assertNotIn('evidence_review', decision.analysis)
+        for cand in (decision.analysis.get('candidates') or {}).values():
+            self.assertNotIn('evidence_refs', cand)
+        self.assertTrue(any(n.startswith('evidence review ignored') for n in decision.adjustments))
 
     def test_second_vote_validates_its_own_freshness_and_preserves_both_reviews(self):
         ctx = evidence_context()
@@ -186,11 +192,16 @@ class EvidenceRuntimeTests(unittest.TestCase):
         decision = self.brain(llm).decide(context(), {'USDT_IRT': 1})
         self.assertTrue(decision.valid, decision.error)
 
-    def test_missing_review_is_strict_under_every_legacy_analysis_policy(self):
-        for policy in (None, 'off', 'block', 'error'):
-            with self.subTest(policy=policy), self.assertRaisesRegex(ValidationError, 'evidence_review'):
-                validate_response(reply({'USDT_IRT': 1}), {'USDT_IRT': 1}, ALLOWED, 'USDT_IRT', BAL,
-                                  context=evidence_context(), now=T0, analysis_policy=policy)
+    def test_missing_review_is_noted_under_every_tolerant_analysis_policy(self):
+        for policy in (None, 'off', 'block'):
+            with self.subTest(policy=policy):
+                out = validate_response(reply({'USDT_IRT': 1}), {'USDT_IRT': 1}, ALLOWED, 'USDT_IRT', BAL,
+                                        context=evidence_context(), now=T0, analysis_policy=policy)
+                self.assertTrue(any(n.startswith('evidence review ignored') for n in out['adjustments']))
+        # "error" stays strict about the analysis block itself, independently of the evidence review
+        with self.assertRaisesRegex(ValidationError, 'analysis'):
+            validate_response(reply({'USDT_IRT': 1}), {'USDT_IRT': 1}, ALLOWED, 'USDT_IRT', BAL,
+                              context=evidence_context(), now=T0, analysis_policy='error')
 
     def test_total_context_budget_counts_catalog_and_preserves_portfolio(self):
         # Exercise the real budget algorithm with a minimal synthetic core.

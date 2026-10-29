@@ -416,11 +416,14 @@ def validate_review(review, contract, allowed_symbols, candidates):
         citations = row.get('citations')
         if type(citations) is not list or len(citations) > MAX_CITATIONS:
             _error(source + ' citations must be a bounded list')
+        # A group the decision does not use (neutral, effect none) may stay uncited; any other
+        # assessment of available evidence must rest on an exact citation.
+        needs_citation = assessment != 'neutral' or effect != 'none'
         if state != 'available':
             if assessment != 'unavailable' or citations or symbols or effect != 'none':
                 _error(source + ' unavailable or omitted evidence must have no citations or effect')
-        elif not citations or assessment == 'unavailable':
-            _error(source + ' available evidence requires an exact citation')
+        elif assessment == 'unavailable' or (needs_citation and not citations):
+            _error(source + ' available evidence requires an exact citation unless it is neutral with no effect')
         if state == 'available' and source in ('personal_wallets', 'custody_wallets') and (assessment != 'neutral' or effect != 'none'):
             _error(source + ' native balances and changes require neutral assessment and no effect')
         if effect != 'none' and (not symbols or assessment == 'neutral'):
@@ -446,7 +449,8 @@ def validate_review(review, contract, allowed_symbols, candidates):
             source_ids.add(identifier)
             cited.add(identifier)
             safe_citations.append({'id': identifier, 'field': field, 'value': value})
-        if state == 'available' and not any(_number(citation['value']) for citation in safe_citations):
+        if (state == 'available' and (needs_citation or safe_citations)
+                and not any(_number(citation['value']) for citation in safe_citations)):
             _error(source + ' requires at least one non-null numeric observation citation')
         for symbol in symbols:
             if not any(symbol in catalog[identifier][1]['allowed_symbols'] for identifier in source_ids):

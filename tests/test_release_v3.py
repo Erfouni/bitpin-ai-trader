@@ -24,9 +24,9 @@ def read(*p):
 
 class TestVersion(unittest.TestCase):
     def test_the_package_carries_the_release_version(self):
-        self.assertEqual(bitpin.__version__, "3.16.1")                      # v3.16.1: a capital policy change no longer freezes the bot
+        self.assertEqual(bitpin.__version__, "3.16.2")                      # v3.16.2: a faulty evidence review no longer costs the decision
         # a plain string constant, readable without importing (deploy scripts may grep it)
-        self.assertIn('__version__ = "3.16.1"', read("bitpin", "__init__.py"))
+        self.assertIn('__version__ = "3.16.2"', read("bitpin", "__init__.py"))
 
     def test_the_version_is_a_dotted_triple(self):
         self.assertRegex(bitpin.__version__, r"^\d+\.\d+\.\d+$")
@@ -71,9 +71,9 @@ class TestVersion(unittest.TestCase):
         self.assertIn("## 3.14.1", read("CHANGELOG.md"))
         self.assertIn("## 3.15.2", read("CHANGELOG.md"))
         self.assertIn("## 3.16.0", read("CHANGELOG.md"))
-        self.assertIn("## 3.16.1", read("CHANGELOG.md"))
+        self.assertIn("## 3.16.2", read("CHANGELOG.md"))
         for name in ("README.md", "README_FA.md"):                       # v3.1: English + Persian README
-            self.assertIn("`3.16.1`", read(name), name)
+            self.assertIn("`3.16.2`", read(name), name)
 
 
 # --------------------------------------------------------------------------- CHANGELOG.md

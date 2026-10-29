@@ -2228,14 +2228,16 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
     if evidence_contract is _EVIDENCE_UNSET:
         from .live_evidence import refresh_context
         evidence_contract = build_contract(refresh_context(context or {}, now))
-    evidence_review = None
+    evidence_review = evidence_problem = None
     if evidence_contract is not None:
         raw_analysis = obj.get("analysis") if isinstance(obj.get("analysis"), dict) else {}
         try:
             evidence_review = validate_review(raw_analysis.get("evidence_review"), evidence_contract,
                                               allowed, raw_analysis.get("candidates"))
         except EvidenceContractError as e:
-            raise SchemaValidationError("analysis.evidence_review: %s" % e)
+            # v3.16.2: the review is audit-only (no probability bonus, no gate reads it), so a faulty
+            # review is dropped with a note instead of costing the whole decision.
+            evidence_problem = str(e)
     if safe not in allowed_set:
         raise ValueError("safe asset %s must be one of the allowed symbols" % safe)
     targets = {}
@@ -2445,6 +2447,12 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
         # Private audit only. Panel/notification and recent-decision projections
         # deliberately expose a bounded review, never this submitted fact catalog.
         analysis["evidence_catalog"] = evidence_contract
+    elif evidence_problem is not None:
+        # Unverified references must not survive next to a review that was dropped.
+        for cand in (analysis.get("candidates") or {}).values():
+            if isinstance(cand, dict):
+                cand.pop("evidence_refs", None)
+        plan_notes.append("evidence review ignored (%s): the decision stands without it" % evidence_problem)
     notes.extend(steps)
     plans = {}
     for s in sorted(req_plans):
@@ -2489,8 +2497,9 @@ def validate_response(obj, current, allowed, safe, limits, tolerance=0.05, defau
 
 EVIDENCE_RULES = """PUBLIC EVIDENCE CONTRACT (when decision_evidence is present)
 Review all four groups BEFORE targets. Return analysis.evidence_review with the SAME schema_version and request_id.
-Each available group needs a catalog citation even if neutral/effect none: id, field, exact numeric value in given
-units; wei/sats stay integers. Never turn missing/null, absent, stale or omitted data into zero.
+Each available group you use (not neutral, or any effect) needs a catalog citation: id, field, exact numeric value in
+given units; wei/sats stay integers. Neutral with effect none may use citations []. Never turn missing/null, absent,
+stale or omitted data into zero.
 Unavailable/absent/omitted: assessment unavailable, citations [], affected_symbols [], effect none, specific reason
 (10-240 characters). assessment: supports|conflicts|mixed|neutral|unavailable. effect: supports_existing|
 reduces_conviction|changes_selection|changes_size|none.

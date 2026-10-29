@@ -181,8 +181,14 @@ class EvidenceContractTests(unittest.TestCase):
         contract = self.contract({'public_flow': fixture()['public_flow']})
         review = neutral_review(contract)
         review['sources']['bitpin_flow']['citations'] = []
-        with self.assertRaises(self.module().EvidenceContractError):
-            self.module().validate_review(review, contract, SYMBOLS, {})
+        # v3.16.2: a neutral group with no effect may stay uncited ...
+        result = self.module().validate_review(review, contract, SYMBOLS, {})
+        self.assertEqual(result['sources']['bitpin_flow']['citations'], [])
+        # ... but any other assessment of available evidence still needs an exact citation
+        for assessment in ('supports', 'conflicts', 'mixed', 'unavailable'):
+            review['sources']['bitpin_flow']['assessment'] = assessment
+            with self.subTest(assessment=assessment), self.assertRaises(self.module().EvidenceContractError):
+                self.module().validate_review(review, contract, SYMBOLS, {})
         review = neutral_review(contract)
         review['sources']['defi_daily']['citations'] = review['sources']['bitpin_flow']['citations']
         with self.assertRaises(self.module().EvidenceContractError):
