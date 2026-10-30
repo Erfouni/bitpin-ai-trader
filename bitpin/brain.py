@@ -150,6 +150,7 @@ from .analysis import (LIQUID_UNIVERSE, PLAN_HORIZON_HOURS, PLAN_INVALIDATION_MI
 from .analysis import current_weights as context_weights
 from . import analysis as _analysis      # asset_class / us_session_open are looked up at call time (spec C3)
 from . import technical                 # v3.8: the technical reading (TECHNICAL READING, ta)
+from . import core_rule                 # v3.17: the code's BTC trend rule (brain.core)
 from .evidence_contract import attach_contract, build_contract, validate_review, EvidenceContractError
 from .decision_report import decision_report_fa
 from .api import atomic_write_json
@@ -404,6 +405,11 @@ DEFAULT_BRAIN_CONFIG = {
     # v3 (B1): the reasoning effort of the 13:00 slot call only (null = the client's llm.reasoning_effort);
     # wake-ups keep the client's value. Passed to LLMClient.chat(reasoning_effort=...) when the client takes it.
     "slot_reasoning_effort": None,
+    # v3.17 CORE RULE (owner 2026-10-30): null = Kimi allocates (as before). An object (bitpin/core_rule.py) =
+    # a slow BTC/USDT trend rule decides in code and Kimi becomes a shadow: its targets are logged, never
+    # executed; it may only veto a rise of the core weight. "allocation": "paper" keeps the account in USDT
+    # while the rule's weight is logged; "live" executes it.
+    "core": None,
 }
 
 _SECRET_KEY_WORDS = ("api_key", "apikey", "secret", "token", "password", "authorization", "bearer", "credential")
@@ -767,6 +773,12 @@ def validate_brain_config(config):
         raise ConfigError("brain.slot_reasoning_effort must be null or one of %s (in quotes)"
                           % ", ".join(REASONING_EFFORTS))
     cfg["slot_reasoning_effort"] = sre.strip().lower() if isinstance(sre, str) else None
+    try:
+        cfg["core"] = core_rule.validate_core(cfg["core"])
+    except core_rule.CoreConfigError as e:
+        raise ConfigError(str(e))
+    if cfg["core"] is not None and cfg["core"]["symbol"] not in [str(s).strip().upper() for s in syms]:
+        raise ConfigError("brain.core.symbol %s must be in brain.allowed_symbols" % cfg["core"]["symbol"])
     return cfg
 
 
@@ -820,6 +832,10 @@ class Decision:
     analysis: dict = field(default_factory=dict)   # the reply's "analysis" block as parse_analysis kept it: numbers,
     #                                                row ids, verdicts, cleaned strings, the bot's recomputed book and
     #                                                its problems; display / log only, never fed back as text
+    core: dict = field(default_factory=dict)       # v3.17: the CORE RULE's numbers (close, sma, vol, target, held,
+    #                                                executed weight, veto, allocation); {} = brain.core off
+    shadow: dict = field(default_factory=dict)     # v3.17: Kimi's own decision while it is a shadow (valid, targets,
+    #                                                confidence, error): logged, never executed
 
     def to_dict(self, with_raw=True):
         d = asdict(self)
@@ -2512,6 +2528,15 @@ purchases, sales or smart money: available groups MUST be neutral/effect none. C
 NOT independent confirmations; ZERO probability bonus. Setup, news, P RULE, cost, headroom and confirmation
 gates govern increases; probability ceilings are never mandatory estimates. No review requires a trade or positive EV.
 """
+CORE_RULE_TEXT = """
+
+CORE RULE (code, owner 2026-10-30): the allocation is decided by the code's trend rule (%(sym)s on/off by its USDT
+close vs the %(n)d-day average, volatility-sized, capped), not by you. Your targets, plans, ladder and exits are
+recorded as a SHADOW to measure your judgment and are never executed; answer in the full format as usual.
+You may add "core_veto": {"multiplier": 1|0.5|0, "event": "%(events)s", "reason": "<short>"} to halve or stop
+the rule's INCREASE of %(sym)s, only for a concrete dated event in the NEWS BRIEF or the context (a hack, an
+exchange halt, a delisting, a stablecoin depeg, a regulatory action). Omit it otherwise. It never sells or adds."""
+
 EVIDENCE_SCHEMA = (', "evidence_review": {"schema_version": 1, "request_id": "<decision_evidence.request_id>", '
                    '"sources": {' + ', '.join(
                        '"%s": {"assessment": "<assessment>", "citations": [{"id": "<fact id>", '
@@ -2888,8 +2913,11 @@ def build_system_prompt(cfg, limits, knowledge, allowed, safe, competition_end=N
         "{{EVIDENCE_REFS_SCHEMA}}": ', "evidence_refs": []' if evidence_contract is not None else "",
         "{{TA_METHOD}}": technical.method_text(),
         "{{TA_SCHEMA}}": technical.schema_text(),
-        "{{OWNER}}": (("ADDITIONAL INSTRUCTIONS FROM THE ACCOUNT OWNER\n" + str(cfg["extra_instructions"]).strip())
-                      if str(cfg.get("extra_instructions") or "").strip() else ""),
+        "{{OWNER}}": ((("ADDITIONAL INSTRUCTIONS FROM THE ACCOUNT OWNER\n" + str(cfg["extra_instructions"]).strip())
+                       if str(cfg.get("extra_instructions") or "").strip() else "")
+                      + (CORE_RULE_TEXT % {"sym": cfg["core"]["symbol"], "n": cfg["core"]["lookback_days"],
+                                           "events": "|".join(core_rule.VETO_EVENTS)}
+                         if cfg.get("core") else "")),
         # v3.11 HOLD DISCIPLINE (study 07): a held coin whose plan stands is not re-tested and not sold
         "{{HELD_CANDIDATES}}": ("one per held coin whose plan is broken or at its take profit (HOLD DISCIPLINE: a coin "
                                 "whose plan stands is not re-tested and needs no candidate)" if hold_on else
@@ -2988,6 +3016,10 @@ class KimiBrain:
         self._invalid_since = None    # decided_at of the first invalid decision after the last valid one
         self._invalid_count = 0       # how many invalid decisions since then (a derisk needs several; downtime is
         #                               not a Kimi failure, so one failure before and one after a long stop is not)
+        # v3.17 CORE RULE: the paper weight it holds (persisted) and where its daily closes come from
+        # (replaceable in tests; the default downloads Bitpin's public daily bars)
+        self._core_paper = {}
+        self.core_closes = self._core_closes_default
         self.ladder_coins = list(cfg["ladder_coins"])
         missing = [c for c in self.ladder_coins if c + "_IRT" not in self.allowed]
         if missing:
@@ -3122,6 +3154,9 @@ class KimiBrain:
             log.warning("%d decision(s) of the previous bot version in the last 48 h do not count against the daily "
                         "decision caps (max_decisions_per_day / max_early_decisions_per_day start fresh)", len(legacy))
         self._last_valid_at = _fnum(d.get("last_valid_at"))
+        cp = d.get("core_paper")
+        if isinstance(cp, dict) and _fnum(cp.get("weight")) is not None:
+            self._core_paper = {"weight": min(1.0, max(0.0, float(cp["weight"]))), "since": _fnum(cp.get("since"))}
         self._last_valid_cash_irt = _fnum(d.get("last_valid_cash_irt"))
         self._invalid_since = _fnum(d.get("invalid_since"))
         try:
@@ -3234,7 +3269,8 @@ class KimiBrain:
                                                 "notified": self._notified,
                                                 "ladder_in_force": self._ladder_in_force,
                                                 "notify_base": self._notify_base,
-                                                "runner_notes": self._runner_notes})
+                                                "runner_notes": self._runner_notes,
+                                                "core_paper": self._core_paper})
         except OSError as e:
             log.error("cannot write %s: %s", self.state_path, e)
 
@@ -4042,7 +4078,8 @@ class KimiBrain:
             break
         # v3.12 (B1): a full decision that buys is asked a second time; only what both replies buy is bought
         if (decision is not None and decision.valid and obj_ok is not None and mode in HOLD_MODES
-                and bool(self.cfg.get("confirm_buys", True)) and messages is not None):
+                and bool(self.cfg.get("confirm_buys", True)) and messages is not None
+                and self.cfg.get("core") is None):     # v3.17: a shadow's buys are never executed, so never re-asked
             buys = sorted(s for s, w in decision.targets.items() if s != self.safe and w > cur.get(s, 0.0) + 1e-9)
             if buys:
                 attempts += 1
@@ -4051,6 +4088,8 @@ class KimiBrain:
                                                         attempts)
         if decision is None:
             decision = Decision(valid=False, raw=raw, error=err or "no valid reply", error_kind=err_kind or "validation")
+        if self.cfg.get("core") is not None:
+            decision = self._apply_core(decision, obj_ok, cur, now, mode, problem, blocked, thr)
         decision.decided_at = now
         decision.expires_at = now + float(self.cfg["decision_ttl_minutes"]) * 60
         decision.mode, decision.trigger_kind, decision.events, decision.endgame = mode, kind, events, eg
@@ -4082,6 +4121,89 @@ class KimiBrain:
         else:
             log.error("Kimi decision INVALID (%s): %s - not trading", decision.error_kind, decision.error)
         return decision
+
+    def _core_closes_default(self, symbol, days, now):
+        """The last `days` CLOSED daily closes of `symbol` (Bitpin public bars, oldest first)."""
+        from . import data as data_mod
+        bars = data_mod.fetch_bars(symbol, "1D", int(now) - 86400 * (days + 3), int(now))
+        return [b.close for b in data_mod.closed_only(bars, "1D", now)][-days:]
+
+    def _apply_core(self, decision, obj, cur, now, mode, problem, blocked, thr):
+        """v3.17 CORE RULE: replace what is executed by the code's trend rule; Kimi's decision becomes the shadow.
+        The result is valid whenever the rule has its data, also when Kimi failed: the core never waits for the
+        model. Bad market data (a context problem) stays invalid - the rule does not trade on it either."""
+        ccfg = self.cfg["core"]
+        sym, live = ccfg["symbol"], ccfg["allocation"] == "live"
+        shadow = {"valid": bool(decision.valid), "error": "" if decision.valid else str(decision.error or ""),
+                  "error_kind": "" if decision.valid else str(decision.error_kind or ""),
+                  "targets": ({s: round(w, 4) for s, w in decision.targets.items() if w > 1e-6}
+                              if decision.valid else {}),
+                  "confidence": decision.confidence if decision.valid else None}
+        core = {"allocation": ccfg["allocation"], "symbol": sym, "lookback_days": ccfg["lookback_days"],
+                "cap": ccfg["cap"]}
+        if problem:
+            decision.core, decision.shadow = dict(core, error="context: " + problem), shadow
+            return decision
+        try:
+            closes = self.core_closes(ccfg["price_symbol"], ccfg["lookback_days"] + ccfg["vol_days"] + 5, now)
+        except Exception as e:  # noqa: BLE001 - no data = the rule holds, it never guesses
+            closes = []
+            core["error"] = "daily closes unavailable: %s" % _short_repr(str(e), 160)
+        target, info = core_rule.core_weight(closes or [], ccfg)
+        core.update({k: v for k, v in info.items() if not (k == "error" and core.get("error"))})
+        held_real = float(cur.get(sym, 0.0))
+        held = held_real if live else float(self._core_paper.get("weight", 0.0))
+        notes = []
+        if target is None:
+            want = held
+            notes.append("core rule: %s - the weight stays %s" % (core.get("error") or info.get("error"), _pct(held)))
+        else:
+            want = core_rule.banded(target, held, ccfg["band"])
+            if want == held and target != held:
+                notes.append("core rule: target %s is within the %s band of %s - no change"
+                             % (_pct(target), _pct(ccfg["band"]), _pct(held)))
+        veto, vnote = 1.0, None
+        if ccfg["veto"] and decision.valid and isinstance(obj, dict):
+            veto, vnote = core_rule.parse_veto(obj.get("core_veto"))
+            if vnote:
+                notes.append(vnote)
+        if want > held + 1e-9:
+            if mode in NO_BUY_MODES:
+                notes.append("core rule: no increase in %s mode" % mode)
+                want = held
+            elif sym in (blocked or {}):
+                notes.append("core rule: %s not increased: %s" % (sym, blocked[sym]))
+                want = held
+            elif veto < 1.0:
+                ev = obj.get("core_veto") or {}
+                notes.append("core rule: Kimi's veto x%g (%s: %s)" % (veto, ev.get("event"),
+                                                                     _short_repr(str(ev.get("reason") or ""), 160)))
+                want = max(held, want * veto)
+        core.update(target=target, held=round(held, 4), weight=round(want, 4), veto=veto)
+        if not live and target is not None:
+            if abs(want - float(self._core_paper.get("weight", 0.0))) > 1e-9 or not self._core_paper:
+                self._core_paper = {"weight": round(want, 4), "since": now}
+            core["paper_since"] = self._core_paper.get("since")
+        execute = want if live else 0.0
+        targets = {s: 0.0 for s in self.allowed}
+        targets[sym] = round(execute, 6)
+        targets[self.safe] = round(1.0 - execute, 6)
+        changed = [s for s in targets if abs(targets[s] - cur.get(s, 0.0)) >= max(thr, 1e-9)]
+        reason = ("CORE RULE (%s): BTC %s USDT vs SMA%d %s (%+.1f%%), vol %s -> target %s, holding %s%s"
+                  % (ccfg["allocation"], core.get("close"), ccfg["lookback_days"], core.get("sma"),
+                     core.get("distance_pct") or 0.0, core.get("vol"),
+                     _pct(target) if target is not None else "n/a", _pct(want),
+                     "" if live else " on paper; the account stays in USDT"))
+        out = Decision(valid=True, targets=targets, confidence=1.0, reasoning=reason, raw=decision.raw,
+                       news_summary=decision.news_summary if decision.valid else "",
+                       key_risks=decision.key_risks if decision.valid else "", hold=not changed,
+                       cash_irt=0.0, adjustments=notes, proposed=dict(targets),
+                       ladder={c: 0.0 for c in self.ladder_coins}, exits={}, plans={}, analysis={},
+                       next_review_hours=24)
+        out.core, out.shadow = core, shadow
+        log.info("core rule (%s): target %s, holding %s, Kimi shadow %s", ccfg["allocation"], target, want,
+                 shadow["targets"] if shadow["valid"] else "invalid (%s)" % shadow["error_kind"])
+        return out
 
     def _confirm_buys(self, decision, obj1, buys, messages, cur, now, usage, t_start, budget_s, abort, chat_kw, vargs,
                       vkw, require_plan, apol, attempt_no):

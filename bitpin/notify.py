@@ -1373,6 +1373,25 @@ def _confirmation(c):
     return out
 
 
+def core_view(core, shadow):
+    """v3.17: brain Decision.core + .shadow as bounded display values, or None when the core rule is off."""
+    c = _dict(core)
+    if not c:
+        return None
+    s = _dict(shadow)
+    targets = _dict(s.get("targets"))
+    return {"allocation": "live" if c.get("allocation") == "live" else "paper",
+            "symbol": norm_symbol(c.get("symbol")) or "",
+            "lookback_days": _fnum(c.get("lookback_days")), "close": _fnum(c.get("close")),
+            "sma": _fnum(c.get("sma")), "distance_pct": _fnum(c.get("distance_pct")), "vol": _fnum(c.get("vol")),
+            "target": _fnum(c.get("target")), "held": _fnum(c.get("held")), "weight": _fnum(c.get("weight")),
+            "veto": _fnum(c.get("veto")), "error": clean_text(c.get("error"), 200) or None,
+            "shadow_valid": bool(s.get("valid")),
+            "shadow_targets": dict((norm_symbol(k), float(w)) for k, w in list(targets.items())[:12]
+                                   if norm_symbol(k) and _fnum(w) is not None),
+            "shadow_error": clean_text(s.get("error_kind") or s.get("error"), 120) or None}
+
+
 P_RULE_REASONS = ("missing", "unverifiable", "no_basis", "above", "ev")      # brain.p_rule_check (v3.13.1)
 
 
@@ -1438,6 +1457,8 @@ def _decision_view(rec):
         # release v3: the per-coin analysis numbers (p / ev / cost / verdict) shown under the Persian report
         "analysis": analysis_view(d.get("analysis")),
         "evidence_review": evidence_review_view(_dict(d.get("analysis")).get("evidence_review")),
+        # v3.17: the CORE RULE's numbers and Kimi's shadow decision (None when brain.core is off)
+        "core": core_view(d.get("core"), d.get("shadow")),
     }
     v["execution"] = execution_view(v)
     v["report_fa"] = decision_report_fa(v, v["execution"])

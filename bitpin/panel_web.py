@@ -1903,6 +1903,7 @@ class PanelApp(object):
         parts.append('<div class="dash"><div class="col">%s</div><div class="col">%s%s</div></div>' % (
             self._decision_card(data.get("last_decision")), self._services_card(data, bot),
             self._actions_card(req, bot.get("state"))))
+        parts.append(self._core_card(data.get("last_decision")))
         parts.append(self._evidence_review_card(data.get("last_decision")))
         parts.append(self._positions_card(pos))
         parts.append(self._news_card(data.get("news")))
@@ -1981,6 +1982,32 @@ class PanelApp(object):
                 te("Final report from the bot"), esc(d.get("report_fa"))))
         when = '<span class="muted small">%s</span>' % fmt_time(d.get("time")) if d.get("time") else ""
         return card(title, "".join(out), "spark", when)
+
+    def _core_card(self, decision):
+        """v3.17: the CORE RULE (the code's BTC trend rule) and Kimi's shadow decision; '' when the rule is off."""
+        core = decision.get("core") if isinstance(decision, dict) else None
+        if not isinstance(core, dict):
+            return ""
+        def pct(x):
+            return "-" if not isinstance(x, (int, float)) else "%.0f%%" % (100 * x)
+        rows = [(te("Mode"), te("Live: the rule trades") if core.get("allocation") == "live"
+                 else te("Paper: logged only, the account stays in USDT")),
+                (te("BTC close / average (USDT)"), "%s / %s (%s%%)" % (
+                    esc(core.get("close")), esc(core.get("sma")),
+                    "%+.1f" % core["distance_pct"] if isinstance(core.get("distance_pct"), (int, float)) else "-")),
+                (te("Volatility (annual)"), pct(core.get("vol"))),
+                (te("Rule target / held"), "%s / %s" % (pct(core.get("target")), pct(core.get("weight")))),
+                (te("Kimi veto"), "x%g" % core["veto"] if isinstance(core.get("veto"), (int, float)) else "-")]
+        if core.get("error"):
+            rows.append((te("Problem"), esc(core["error"])))
+        if core.get("shadow_valid"):
+            sh = ", ".join("%s %s" % (esc(s), pct(w)) for s, w in sorted((core.get("shadow_targets") or {}).items(),
+                                                                          key=lambda x: -x[1]) if w > 0.005)
+        else:
+            sh = "%s (%s)" % (te("No valid shadow decision"), esc(core.get("shadow_error") or "-"))
+        rows.append((te("Kimi's shadow choice (not executed)"), sh or "-"))
+        body = "".join("<tr><th>%s</th><td>%s</td></tr>" % (k, v) for k, v in rows)
+        return card(te("Core rule (BTC trend)"), '<table class="kv">%s</table>' % body, "list")
 
     def _evidence_review_card(self, decision):
         """Declared source consideration on this decision; only the helper's bounded validated projection."""
