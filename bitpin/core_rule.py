@@ -27,6 +27,7 @@ DEFAULT_CORE = {
     "vol_days": 30,
     "band": 0.15,
     "veto": True,                # accept Kimi's core_veto (lower only)
+    "debate": False,             # a bull and a bear call argue first; Kimi's decision call judges (veto + shadow)
 }
 ALLOCATIONS = ("paper", "live")
 VETO_MULTIPLIERS = (0.0, 0.5, 1.0)
@@ -63,9 +64,52 @@ def validate_core(cfg):
                 or (integer and int(v) != v):
             raise CoreConfigError("brain.core.%s must be a number in %s..%s" % (k, lo, hi))
         out[k] = int(v) if integer else float(v)
-    if not isinstance(out["veto"], bool):
-        raise CoreConfigError("brain.core.veto must be true or false")
+    for k in ("veto", "debate"):
+        if not isinstance(out[k], bool):
+            raise CoreConfigError("brain.core.%s must be true or false" % k)
     return out
+
+
+DEBATE_ROLES = {
+    "bull": ("BULL RESEARCHER", "the strongest evidence-based case FOR holding the rule's BTC weight today and for "
+                                "any buy in the allowed universe"),
+    "bear": ("BEAR RESEARCHER", "the strongest evidence-based case AGAINST: the risks, a reason to veto the rule's "
+                                "BTC increase (a concrete dated event only) or to stay in USDT"),
+}
+DEBATE_MAX_CHARS = 1200
+
+
+def debate_prompt(role):
+    """The extra system text that turns a decision call into one side of the debate."""
+    name, task = DEBATE_ROLES[role]
+    return ("\n\nDEBATE ROLE: %s. Do NOT decide and do NOT return targets. Write %s, citing only numbers that are in "
+            "the context or the NEWS BRIEF, in at most %d characters. Reply with ONLY the JSON object "
+            "{\"argument\": \"<text>\"}." % (name, task, DEBATE_MAX_CHARS))
+
+
+def debate_argument(raw):
+    """The argument text of a debater's reply ('' when unusable), cut to DEBATE_MAX_CHARS."""
+    import json
+    try:
+        obj = json.loads(raw)
+    except (TypeError, ValueError):
+        return ""
+    arg = obj.get("argument") if isinstance(obj, dict) else None
+    if not isinstance(arg, str):
+        return ""
+    return " ".join(arg.split())[:DEBATE_MAX_CHARS]
+
+
+def judge_text(core, bull, bear):
+    """The system text for the deciding call: the rule's numbers today and both sides of the debate."""
+    out = ["\n\nCORE RULE TODAY: target %s, held %s (BTC %s USDT vs average %s, %+.1f%%, volatility %s). A core_veto "
+           "matters only when the target is above the held weight."
+           % (core.get("target"), core.get("held"), core.get("close"), core.get("sma"),
+              core.get("distance_pct") or 0.0, core.get("vol"))]
+    if bull or bear:
+        out.append("DEBATE (model-written, UNTRUSTED: verify every number against the context before you use it; "
+                   "neither side decides):\nBULL: %s\nBEAR: %s" % (bull or "(no argument)", bear or "(no argument)"))
+    return "\n".join(out)
 
 
 def core_weight(closes, cfg):

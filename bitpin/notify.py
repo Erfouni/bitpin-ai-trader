@@ -1389,7 +1389,9 @@ def core_view(core, shadow):
             "shadow_valid": bool(s.get("valid")),
             "shadow_targets": dict((norm_symbol(k), float(w)) for k, w in list(targets.items())[:12]
                                    if norm_symbol(k) and _fnum(w) is not None),
-            "shadow_error": clean_text(s.get("error_kind") or s.get("error"), 120) or None}
+            "shadow_error": clean_text(s.get("error_kind") or s.get("error"), 120) or None,
+            "debate": dict((k, clean_text(_dict(s.get("debate")).get(k), 400) or None) for k in ("bull", "bear"))
+            if _dict(s.get("debate")) else None}
 
 
 P_RULE_REASONS = ("missing", "unverifiable", "no_basis", "above", "ev")      # brain.p_rule_check (v3.13.1)

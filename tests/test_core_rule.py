@@ -142,6 +142,30 @@ class BrainCoreTests(unittest.TestCase):
         system = llm.calls[0]["messages"][0]["content"]
         self.assertIn("CORE RULE", system)
         self.assertIn("core_veto", system)
+        self.assertIn("CORE RULE TODAY: target 0.6, held 0.0", system)   # Kimi sees what it may veto
+
+    def test_debate_runs_bull_and_bear_then_the_judge_decides(self):
+        llm = FakeLLM([{"argument": "Trend intact, 10% above the average."},
+                       {"argument": "Exchange halted withdrawals today (Reuters, dated)."},
+                       reply({"USDT_IRT": 1.0}, core_veto={"multiplier": 0, "event": "exchange_halt", "reason": "halt"})])
+        d = self.brain(llm, debate=True).decide(context(), {"USDT_IRT": 1.0})
+        self.assertTrue(d.valid, d.error)
+        self.assertEqual(len(llm.calls), 3)
+        self.assertIn("BULL RESEARCHER", llm.calls[0]["messages"][0]["content"])
+        self.assertIn("BEAR RESEARCHER", llm.calls[1]["messages"][0]["content"])
+        judge = llm.calls[2]["messages"][0]["content"]
+        self.assertIn("BULL: Trend intact", judge)
+        self.assertIn("BEAR: Exchange halted", judge)
+        self.assertEqual(d.targets["BTC_IRT"], 0.0)                     # the judge's veto stopped the rise
+        self.assertIn("halted", d.shadow["debate"]["bear"])
+
+    def test_a_failed_debater_does_not_stop_the_decision(self):
+        llm = FakeLLM([LLMError("timeout"), "not json", reply({"USDT_IRT": 1.0})])
+        d = self.brain(llm, debate=True).decide(context(), {"USDT_IRT": 1.0})
+        self.assertTrue(d.valid, d.error)
+        self.assertAlmostEqual(d.targets["BTC_IRT"], 0.6)
+        self.assertEqual(len(d.shadow["debate"]["errors"]), 2)
+        self.assertNotIn("DEBATE (", llm.calls[2]["messages"][0]["content"])
 
 
 class DisplayTests(unittest.TestCase):
@@ -162,6 +186,10 @@ class DisplayTests(unittest.TestCase):
         self.assertIn("77800", html)
         self.assertIn("llm", html)
         self.assertEqual(PanelApp._core_card(None, {"core": None}), "")
+        v = core_view(self.RECORD_CORE, {"valid": True, "targets": {}, "debate": {"bull": "up <b>", "bear": "risk"}})
+        html = PanelApp._core_card(None, {"core": v})
+        self.assertIn("up &lt;b&gt;", html)                             # model text is escaped
+        self.assertIn("risk", html)
 
 
 if __name__ == "__main__":

@@ -2006,6 +2006,10 @@ class PanelApp(object):
         else:
             sh = "%s (%s)" % (te("No valid shadow decision"), esc(core.get("shadow_error") or "-"))
         rows.append((te("Kimi's shadow choice (not executed)"), sh or "-"))
+        deb = core.get("debate") if isinstance(core.get("debate"), dict) else {}
+        for key, label in (("bull", N_("Debate: bull")), ("bear", N_("Debate: bear"))):
+            if deb.get(key):
+                rows.append((te(label), esc(deb[key])))
         body = "".join("<tr><th>%s</th><td>%s</td></tr>" % (k, v) for k, v in rows)
         return card(te("Core rule (BTC trend)"), '<table class="kv">%s</table>' % body, "list")
 

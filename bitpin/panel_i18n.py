@@ -193,6 +193,8 @@ FA = {
     "Problem": u"مشکل",
     "No valid shadow decision": u"تصمیم آزمایشی معتبری نیست",
     "Kimi's shadow choice (not executed)": u"انتخاب آزمایشی کیمی (اجرا نمی‌شود)",
+    "Debate: bull": u"بحث: خوش‌بین",
+    "Debate: bear": u"بحث: بدبین",
     "Bitpin activity": u"فعالیت بازار بیت‌پین",
     "Daily DeFi data": u"داده‌های روزانهٔ دیفای",
     "Publicly attributed ETH addresses": u"آدرس‌های اتریوم منتسب به افراد",

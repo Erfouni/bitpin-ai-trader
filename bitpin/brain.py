@@ -3980,6 +3980,15 @@ class KimiBrain:
                                            blocked=blocked, trigger_kind=kind)
         tradable = self.tradable_symbols(context)
         chat_kw = self._chat_kwargs(kind)
+        # v3.17 CORE RULE: the rule's numbers are computed first and shown to Kimi (it may only veto a rise);
+        # with brain.core.debate a bull and a bear call argue before Kimi's call judges
+        core_pre, debate = None, {}
+        if self.cfg.get("core") is not None and messages is not None:
+            core_pre = self._core_today(now, cur)
+            if self.cfg["core"]["debate"]:
+                debate = self._debate(messages, context, abort, chat_kw, usage, budget_s - (self.monotonic() - t_start))
+            messages = [dict(messages[0], content=messages[0]["content"] + core_rule.judge_text(
+                core_pre, debate.get("bull"), debate.get("bear")))] + messages[1:]
         apol = str(self.cfg.get("analysis_policy") or "off")
         halt_pct = (float(self.cfg["drawdown_breaker"]) * 100.0) if self.cfg.get("drawdown_breaker") else None
         vargs = (cur, self.allowed, self.safe, self.limits, float(self.cfg["sum_tolerance"]),
@@ -4089,7 +4098,7 @@ class KimiBrain:
         if decision is None:
             decision = Decision(valid=False, raw=raw, error=err or "no valid reply", error_kind=err_kind or "validation")
         if self.cfg.get("core") is not None:
-            decision = self._apply_core(decision, obj_ok, cur, now, mode, problem, blocked, thr)
+            decision = self._apply_core(decision, obj_ok, cur, now, mode, problem, blocked, thr, core_pre, debate)
         decision.decided_at = now
         decision.expires_at = now + float(self.cfg["decision_ttl_minutes"]) * 60
         decision.mode, decision.trigger_kind, decision.events, decision.endgame = mode, kind, events, eg
@@ -4128,7 +4137,55 @@ class KimiBrain:
         bars = data_mod.fetch_bars(symbol, "1D", int(now) - 86400 * (days + 3), int(now))
         return [b.close for b in data_mod.closed_only(bars, "1D", now)][-days:]
 
-    def _apply_core(self, decision, obj, cur, now, mode, problem, blocked, thr):
+    def _core_today(self, now, cur):
+        """The rule's numbers for this decision: {"target" (None = no data), "held", close / sma / vol ...,
+        "error"}. held is the account's weight when live, the paper weight otherwise."""
+        ccfg = self.cfg["core"]
+        out = {}
+        try:
+            closes = self.core_closes(ccfg["price_symbol"], ccfg["lookback_days"] + ccfg["vol_days"] + 5, now)
+        except Exception as e:  # noqa: BLE001 - no data = the rule holds, it never guesses
+            closes = []
+            out["error"] = "daily closes unavailable: %s" % _short_repr(str(e), 160)
+        target, info = core_rule.core_weight(closes or [], ccfg)
+        out.update({k: v for k, v in info.items() if not (k == "error" and out.get("error"))})
+        live = ccfg["allocation"] == "live"
+        out["target"] = target
+        out["held"] = round(float(cur.get(ccfg["symbol"], 0.0)) if live else float(self._core_paper.get("weight", 0.0)),
+                            4)
+        return out
+
+    def _debate(self, messages, context, abort, chat_kw, usage, left):
+        """v3.17 debate: one bull and one bear call on the same messages; {"bull", "bear", "errors"}. A side that
+        fails or has no time left is simply missing - the judge decides anyway (it only vetoes and is a shadow)."""
+        out, errors = {}, []
+        kw = dict(chat_kw)
+        if "reasoning_effort" in kw:
+            kw["reasoning_effort"] = "high"          # the arguments do not need the slot's full depth
+        t0 = self.monotonic()
+        for role in ("bull", "bear"):
+            remaining = left - (self.monotonic() - t0)
+            if remaining < max(MIN_RETRY_SECONDS, left * 0.5):
+                errors.append("%s: no time left" % role)
+                continue
+            msgs = [dict(messages[0], content=messages[0]["content"] + core_rule.debate_prompt(role))] + messages[1:]
+            try:
+                res = self._chat_with_evidence(msgs, context, json_mode=bool(self.cfg["json_mode"]), web_search=False,
+                                               time_limit=remaining * 0.25, abort=abort, **kw)
+            except Exception as e:  # noqa: BLE001 - a debater never stops the decision
+                errors.append("%s: %s" % (role, _short_repr(str(e), 120)))
+                continue
+            _add_usage(usage, res.get("usage") or {})
+            arg = core_rule.debate_argument(res.get("content") or "")
+            if arg:
+                out[role] = arg
+            else:
+                errors.append("%s: no usable argument" % role)
+        if errors:
+            out["errors"] = errors
+        return out
+
+    def _apply_core(self, decision, obj, cur, now, mode, problem, blocked, thr, pre=None, debate=None):
         """v3.17 CORE RULE: replace what is executed by the code's trend rule; Kimi's decision becomes the shadow.
         The result is valid whenever the rule has its data, also when Kimi failed: the core never waits for the
         model. Bad market data (a context problem) stays invalid - the rule does not trade on it either."""
@@ -4144,15 +4201,11 @@ class KimiBrain:
         if problem:
             decision.core, decision.shadow = dict(core, error="context: " + problem), shadow
             return decision
-        try:
-            closes = self.core_closes(ccfg["price_symbol"], ccfg["lookback_days"] + ccfg["vol_days"] + 5, now)
-        except Exception as e:  # noqa: BLE001 - no data = the rule holds, it never guesses
-            closes = []
-            core["error"] = "daily closes unavailable: %s" % _short_repr(str(e), 160)
-        target, info = core_rule.core_weight(closes or [], ccfg)
-        core.update({k: v for k, v in info.items() if not (k == "error" and core.get("error"))})
-        held_real = float(cur.get(sym, 0.0))
-        held = held_real if live else float(self._core_paper.get("weight", 0.0))
+        pre = pre if pre is not None else self._core_today(now, cur)
+        core.update({k: v for k, v in pre.items() if k not in ("target", "held")})
+        target, held = pre["target"], pre["held"]
+        if debate:
+            shadow["debate"] = dict(debate)
         notes = []
         if target is None:
             want = held
