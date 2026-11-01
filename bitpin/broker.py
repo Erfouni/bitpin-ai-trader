@@ -830,7 +830,7 @@ class PaperBroker(Broker):
         if remaining > 0 and self._range_source is not None:
             step = self._range_step
             placed = float(e.get("created_at") or now)
-            start = -(-int(placed) // step) * step            # first bar that opened after placement
+            start = -(-placed // step) * step                 # first bar that opened at or after placement
             checked = e.get("range_checked_at")
             if checked:
                 start = max(start, int(float(checked)) // step * step)   # re-read the bar that was still forming

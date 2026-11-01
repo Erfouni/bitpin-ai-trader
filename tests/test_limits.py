@@ -443,6 +443,23 @@ class PaperLimitTest(unittest.TestCase):
         self.assertEqual(p2.limit_orders()[0]["state"], LIMIT_FILLED)
         self.assertEqual(p2.balances()["USDT"], Decimal("31.20"))
 
+    def test_fractional_placement_excludes_candle_opened_before_it(self):
+        self.clock.t = 120.5
+        p = self.broker()
+        p.place_limit("BTC_USDT", "buy", "68800", "0.001", identifier="fractional")
+        self.b["BTC_USDT"] = {"asks": [["70000", "1"]], "bids": [["68000", "1"]]}
+        self.ranges.bars["BTC_USDT"] = [(120, "68000", "69000", 1)]
+
+        p.sync_limits()
+
+        self.assertEqual(self.ranges.calls[-1][1], 180)
+        self.assertEqual(p.limit_orders()[0]["filled_base"], Decimal("0"))
+
+        self.ranges.bars["BTC_USDT"].append((180, "68000", "69000", 1))
+        self.clock.t = 240
+        self.assertEqual(p.sync_limits()["changed"][0]["state"], LIMIT_FILLED)
+        self.assertEqual(p.limit_orders()[0]["filled_base"], Decimal("0.001"))
+
     def test_fill_through_requires_a_trade_below_the_bid(self):
         p = self.broker(fill_through="0.005")
         p.place_limit("BTC_USDT", "buy", "68800", "0.001", identifier="b")
