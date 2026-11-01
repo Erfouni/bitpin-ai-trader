@@ -4344,7 +4344,7 @@ class Notifier:
             if rest > 0.005:
                 parts.append("USDT %s" % fmt_pct(rest, digits=0))
             return "، ".join(parts)
-        L = ["⚖️ <b>مقایسهٔ روش‌ها</b> (به USDT، از %s تا پایان %s UTC)" % (
+        L = ["⚖️ <b>مقایسهٔ روش‌ها</b> (به USDT، از %s تا پایان روز %s)" % (
             fa(methods_report.day_label(c["start"])), fa(methods_report.day_label(c["end"])))]
         L.append(line("🧭", "قانون اصلی (آزمایشی)", c["core"], " — الان: %s" % holding(c["core_now"])))
         L.append(line("🤖", "کیمی (آزمایشی)", c["shadow"],

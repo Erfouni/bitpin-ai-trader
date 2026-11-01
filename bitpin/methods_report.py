@@ -4,8 +4,8 @@ Owner (2026-11-01): "every day a report in the Telegram bot comparing the method
 brain.core the decision log carries, per decision, the rule's weight (Decision.core) and Kimi's own allocation
 (Decision.shadow). This module replays both on Bitpin's public daily closes:
 
-  * every decision re-weights at the close of its UTC day (the last decision of a day wins); a shadow that
-    is invalid keeps the previous shadow weights;
+  * every decision re-weights at the first daily close after it (Bitpin's day ends at Tehran midnight; the
+    last decision before a close wins); a shadow that is invalid keeps the previous shadow weights;
   * weights drift with the prices between decisions;
   * a change pays COST_USDT_ROUTE per unit of weight for coins traded through COIN_USDT, COST_TOMAN_ROUTE
     for every other market (an estimate: spread and slippage are not measured here);
@@ -13,7 +13,7 @@ brain.core the decision log carries, per decision, the rule's weight (Decision.c
 
 Pure functions plus one injectable price fetcher; the notifier builds the Telegram text.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 SAFE = "USDT_IRT"
 USDT_ROUTED = ("BTC", "ETH", "XRP", "SOL")
@@ -22,14 +22,10 @@ COST_TOMAN_ROUTE = 0.012
 DAY = 86400
 
 
-def utc_day(t):
-    return int(t // DAY * DAY)
-
-
 def trial_points(records):
-    """(core_points, shadow_points, core_symbol): [(day, {symbol: weight})] in time order from the decision
-    records that carry the core rule; the last decision of a UTC day wins."""
-    core, shadow, sym = {}, {}, None
+    """(core_points, shadow_points, core_symbol): [(decided_at, {symbol: weight})] in time order from the decision
+    records that carry the core rule (an invalid shadow adds no point: the previous shadow weights stay)."""
+    core, shadow, sym = [], [], None
     for rec in records:
         d = rec.get("decision") if isinstance(rec, dict) else None
         c = d.get("core") if isinstance(d, dict) else None
@@ -38,14 +34,13 @@ def trial_points(records):
         t = d.get("decided_at")
         if not isinstance(t, (int, float)):
             continue
-        day = utc_day(t)
         sym = str(c.get("symbol") or "BTC_IRT").upper()
-        core[day] = {sym: float(c["weight"])} if c["weight"] > 0 else {}
+        core.append((t, {sym: float(c["weight"])} if c["weight"] > 0 else {}))
         s = d.get("shadow") if isinstance(d.get("shadow"), dict) else {}
         if s.get("valid") and isinstance(s.get("targets"), dict):
-            shadow[day] = {str(k).upper(): float(w) for k, w in s["targets"].items()
-                           if str(k).upper() != SAFE and isinstance(w, (int, float)) and w > 0}
-    return sorted(core.items()), sorted(shadow.items()), sym
+            shadow.append((t, {str(k).upper(): float(w) for k, w in s["targets"].items()
+                               if str(k).upper() != SAFE and isinstance(w, (int, float)) and w > 0}))
+    return sorted(core, key=lambda p: p[0]), sorted(shadow, key=lambda p: p[0]), sym
 
 
 def cost_of(symbol):
@@ -53,12 +48,24 @@ def cost_of(symbol):
 
 
 def replay(points, prices, days):
-    """[(day, equity)] of following the weights in `points` over `days` (start 1.0 at the first point's day).
-    prices = {symbol: {day: USDT close}}; a missing close keeps the previous one (no return that day)."""
+    """[(close_time, equity)] of following the weights in `points` over the daily closes `days` (close times):
+    every point is applied at the first close at or after its time (the last one before a close wins), equity
+    1.0 from the first close a point applies to. prices = {symbol: {close_time: USDT close}}; a missing close
+    keeps the previous one (no return that day)."""
     if not points:
         return []
-    want = dict(points)
-    start = points[0][0]
+    pts = sorted(points, key=lambda p: p[0])
+    want, i = {}, 0
+    for day in days:
+        last = None
+        while i < len(pts) and pts[i][0] <= day:
+            last = pts[i][1]
+            i += 1
+        if last is not None:
+            want[day] = last
+    if not want:
+        return []
+    start = min(want)
     filled = {}
     for s, series in prices.items():          # forward-fill each symbol over the calendar
         last, filled[s] = None, {}
@@ -102,10 +109,7 @@ def compare(records, fetch, now):
     core_pts, shadow_pts, sym = trial_points(records)
     if not core_pts:
         return None
-    start, end = core_pts[0][0], utc_day(now) - DAY          # through the last CLOSED day
-    if end < start:
-        return {"start": start, "end": end, "core": None, "shadow": None, "btc": None,
-                "core_now": core_pts[-1][1], "shadow_now": shadow_pts[-1][1] if shadow_pts else None}
+    start, end = core_pts[0][0], now
     syms = {sym} | {s for _, w in shadow_pts for s in w}
     prices = {}
     for s in sorted(syms):
@@ -115,7 +119,10 @@ def compare(records, fetch, now):
             prices[s] = {}
     if not prices.get(sym):
         raise ValueError("no daily closes for %s" % sym)
-    days = sorted(d for d in prices.get(sym, {}) if start <= d <= end)
+    days = sorted(d for d in prices.get(sym, {}) if start <= d <= end)    # closes after the first decision
+    if not days:
+        return {"start": start, "end": start, "core": None, "shadow": None, "btc": None,
+                "core_now": core_pts[-1][1], "shadow_now": shadow_pts[-1][1] if shadow_pts else None}
 
     def summary(series):
         if not series:
@@ -133,14 +140,18 @@ def compare(records, fetch, now):
 
 
 def fetch_daily(symbol, start, end):
-    """Bitpin's public CLOSED daily closes as [(day_ts, close)]."""
+    """Bitpin's public CLOSED daily bars as [(close_time, close)] (Bitpin's day ends at Tehran midnight)."""
     from . import data
-    bars = data.closed_only(data.fetch_bars(symbol, "1D", int(start), int(end) + DAY), "1D")
-    return [(utc_day(b.ts), b.close) for b in bars]
+    bars = data.closed_only(data.fetch_bars(symbol, "1D", int(start) - DAY, int(end) + DAY), "1D")
+    return [(b.ts + DAY, b.close) for b in bars]
+
+
+TEHRAN = timezone(timedelta(hours=3, minutes=30))
 
 
 def day_label(t):
-    return datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d")
+    """The Tehran date of the day that ENDS at close time t."""
+    return datetime.fromtimestamp(t - 1, TEHRAN).strftime("%Y-%m-%d")
 
 
 REPORT_FILE = "methods_report.json"     # in the bot's state dir: written by the brain, read by the notifier
