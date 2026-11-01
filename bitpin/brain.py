@@ -151,6 +151,7 @@ from .analysis import current_weights as context_weights
 from . import analysis as _analysis      # asset_class / us_session_open are looked up at call time (spec C3)
 from . import technical                 # v3.8: the technical reading (TECHNICAL READING, ta)
 from . import core_rule                 # v3.17: the code's BTC trend rule (brain.core)
+from . import methods_report            # v3.19: the daily comparison of the methods (Telegram)
 from .evidence_contract import attach_contract, build_contract, validate_review, EvidenceContractError
 from .decision_report import decision_report_fa
 from .api import atomic_write_json
@@ -3020,6 +3021,7 @@ class KimiBrain:
         # (replaceable in tests; the default downloads Bitpin's public daily bars)
         self._core_paper = {}
         self.core_closes = self._core_closes_default
+        self.methods_fetch = methods_report.fetch_daily     # v3.19: daily closes for the methods comparison
         self.ladder_coins = list(cfg["ladder_coins"])
         missing = [c for c in self.ladder_coins if c + "_IRT" not in self.allowed]
         if missing:
@@ -4122,6 +4124,8 @@ class KimiBrain:
         self.last_decision = decision
         self._record(decision, early)
         self._persist(decision, context, cur, trigger or self.last_trigger, news_meta=news_meta, news_text=news_text)
+        if self.cfg.get("core") is not None and kind in SLOT_KINDS:
+            self._write_methods_report(now)
         if decision.valid:
             log.info("Kimi decision (%s): %s conf=%.2f%s%s ladder=%s", decision.mode,
                      {s: round(w, 3) for s, w in decision.nonzero_targets().items()},
@@ -4136,6 +4140,16 @@ class KimiBrain:
         from . import data as data_mod
         bars = data_mod.fetch_bars(symbol, "1D", int(now) - 86400 * (days + 3), int(now))
         return [b.close for b in data_mod.closed_only(bars, "1D", now)][-days:]
+
+    def _write_methods_report(self, now):
+        """v3.19: replay the core rule and Kimi's shadow from the decision log into methods_report.json (read by the
+        notifier for its daily comparison and /compare). Never raises: a failure only skips this report."""
+        try:
+            doc = methods_report.report(methods_report.tail_records(self.log_path), self.methods_fetch, now)
+            if doc is not None:
+                atomic_write_json(os.path.join(self.state_dir, methods_report.REPORT_FILE), doc)
+        except Exception as e:  # noqa: BLE001
+            log.warning("methods comparison not written: %s", _short_repr(str(e), 200))
 
     def _core_today(self, now, cur):
         """The rule's numbers for this decision: {"target" (None = no data), "held", close / sma / vol ...,

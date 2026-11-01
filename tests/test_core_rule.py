@@ -83,7 +83,17 @@ class BrainCoreTests(unittest.TestCase):
                "core": dict(core, allocation=allocation)}
         b = KimiBrain(llm, cfg, self.tmp.name, clock=lambda: T0)
         b.core_closes = lambda sym, days, now: list(closes if closes is not None else trend(True))
+        b.methods_fetch = lambda sym, start, end: [(T0 // 86400 * 86400 - 86400 * i, 70000.0) for i in range(3)]
         return b
+
+    def test_a_slot_decision_writes_the_methods_report(self):
+        import json
+        import os
+        b = self.brain(FakeLLM([reply({"USDT_IRT": 1.0})]))
+        b.decide(context(), {"USDT_IRT": 1.0}, trigger="scheduled decision slot test")
+        path = os.path.join(self.tmp.name, "methods_report.json")
+        with open(path, encoding="utf-8") as f:
+            self.assertEqual(json.load(f)["schema"], 1)
 
     def test_live_rule_executes_and_kimi_targets_are_only_a_shadow(self):
         llm = FakeLLM([reply({"ETH_IRT": 0.5, "USDT_IRT": 0.5})])

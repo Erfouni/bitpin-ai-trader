@@ -96,7 +96,7 @@ redirects never followed, hard wall-clock timeouts, retries with backoff on netw
 
 Commands (getUpdates long poll, persisted offset, only from TELEGRAM_CHAT_ID chats and only in a
 PRIVATE chat with the bot - in a group every member could use them; everything else is ignored):
-/status /last /help /stop (+ /stop_confirm within 60 s, measured between the two messages'
+/status /last /compare /help /stop (+ /stop_confirm within 60 s, measured between the two messages'
 Telegram dates). A getUpdates conflict / auth failure that lasts 10 minutes raises an alert
 ("commands, including /stop, do not work"). /stop never touches
 the bot's directory itself: it writes stop_request.json (stamped with the Telegram time of the
@@ -133,6 +133,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from bitpin.decision_report import decision_report_fa, execution_view
+from bitpin import methods_report
 
 log = logging.getLogger("bitpin.notify")
 
@@ -1916,7 +1917,7 @@ def bot_files(mode):
             "brain_state": "kimi_brain_state.json", "news_cache": "news_cache.json",
             "kimi_budget": "kimi_budget.json", "news_budget": "news_budget.json", "log": "bot_%s.log" % mode,
             "stop": KILL_SWITCH_FILE, "events": "bot_events.jsonl", "spend": "llm_spend.json",
-            "feed_health": "news_feed_health.json"}
+            "feed_health": "news_feed_health.json", "methods": methods_report.REPORT_FILE}
 
 
 # --------------------------------------------------------------------------- persistent state
@@ -2807,6 +2808,7 @@ class Renderer:
         L = ["🤖 <b>دستورهای اطلاع‌رسان ربات بیت‌پین</b>",
              "/status — وضعیت فعلی: ارزش حساب، دارایی‌ها، آخرین تصمیم، سلامت (فقط خواندنی)",
              "/last — آخرین تصمیم Kimi با همهٔ جزئیات",
+             "/compare — مقایسهٔ روش‌ها: قانون اصلی، کیمی و نگه داشتن USDT (هر شب هم خودکار می‌آید)",
              "/help — همین راهنما"]
         if allow_stop:
             L.append("/stop — توقف اضطراری ربات (با تأیید /stop_confirm)")
@@ -4311,6 +4313,49 @@ class Notifier:
         self.st["last_summary_day"] = today
         self.st["last_summary_t"] = now
         self.enqueue("s:" + today, "summary", text)
+        # v3.19: the daily comparison of the methods while the core rule is on trial (the bot writes it after
+        # its daily decision; a missing or unreadable report only drops this one message, never the summary)
+        try:
+            mtext = self.methods_text(now)
+        except Exception as e:  # noqa: BLE001
+            log.warning("methods comparison skipped: %s", safe_err(e))
+            mtext = None
+        if mtext:
+            self.enqueue("m:" + today, "summary", mtext)
+
+    def methods_text(self, now):
+        """v3.19: the core rule (paper), Kimi's shadow, holding USDT and BTC since the trial began, in USDT, from
+        the bot's methods_report.json (the notifier has no network but Telegram); None before the first report."""
+        c = methods_report.load(self._read_json("methods"))
+        if c is None:
+            return None
+
+        def line(icon, name, res, extra=""):
+            if not res:
+                return "%s %s: هنوز روز کاملی نگذشته%s" % (icon, name, extra)
+            return "%s %s: <b>%s</b> (روز آخر %s)%s" % (icon, name, fmt_pct(res[0], signed=True, digits=2),
+                                                       fmt_pct(res[1], signed=True, digits=2), extra)
+
+        def holding(w):
+            if not w:
+                return "همه USDT"
+            parts = ["%s %s" % (s.split("_")[0], fmt_pct(v, digits=0)) for s, v in sorted(w.items(), key=lambda x: -x[1])]
+            rest = 1.0 - sum(w.values())
+            if rest > 0.005:
+                parts.append("USDT %s" % fmt_pct(rest, digits=0))
+            return "، ".join(parts)
+        L = ["⚖️ <b>مقایسهٔ روش‌ها</b> (به USDT، از %s تا پایان %s UTC)" % (
+            fa(methods_report.day_label(c["start"])), fa(methods_report.day_label(c["end"])))]
+        L.append(line("🧭", "قانون اصلی (آزمایشی)", c["core"], " — الان: %s" % holding(c["core_now"])))
+        L.append(line("🤖", "کیمی (آزمایشی)", c["shadow"],
+                      " — الان: %s" % holding(c["shadow_now"]) if c["shadow_now"] is not None else ""))
+        L.append("💵 نگه داشتن USDT: <b>%s</b>" % fmt_pct(0, signed=True, digits=2))
+        L.append(line("₿", "فقط BTC (مرجع)", c["btc"]))
+        L.append("ℹ️ هزینه‌ها تخمینی‌اند: %s هر طرف از مسیر USDT، %s از مسیر تومان. هیچ‌کدام اجرا نشده‌اند."
+                 % (fmt_pct(methods_report.COST_USDT_ROUTE), fmt_pct(methods_report.COST_TOMAN_ROUTE)))
+        if c.get("computed_at"):
+            L.append("🕰 محاسبه: %s" % fmt_when(c["computed_at"]))
+        return "\n".join(L)
 
     def current_equity(self):
         """(equity, time) from the freshest of: runner_state last_cycle (after trades), the last
@@ -5062,7 +5107,8 @@ class Notifier:
             return                           # addressed to another bot
         date = _fnum(msg.get("date"))
         handler = {"/start": self._cmd_help, "/help": self._cmd_help, "/status": self._cmd_status,
-                   "/last": self._cmd_last, "/stop": self._cmd_stop, "/stop_confirm": self._cmd_stop_confirm}.get(cmd)
+                   "/last": self._cmd_last, "/compare": self._cmd_compare, "/stop": self._cmd_stop,
+                   "/stop_confirm": self._cmd_stop_confirm}.get(cmd)
         if handler is None:
             self.reply(cid, "دستور شناخته نشد. فهرست دستورها: /help")
             return
@@ -5122,6 +5168,14 @@ class Notifier:
 
     def _cmd_last(self, chat, now, date=None):
         self.reply(chat, self.last_text())
+
+    def _cmd_compare(self, chat, now, date=None):
+        try:
+            text = self.methods_text(now)
+        except Exception as e:  # noqa: BLE001 - an unreadable report
+            log.warning("/compare failed: %s", safe_err(e))
+            text = None
+        self.reply(chat, text or "⚖️ هنوز گزارش مقایسه‌ای ثبت نشده؛ بعد از تصمیم روزانهٔ بعدی (ساعت ۱۹) آماده می‌شود.")
 
     def _stop_disabled_text(self):
         return ("دستور <code>/stop</code> در تنظیمات اطلاع‌رسان خاموش است (allow_stop_command). توقف از روی سرور: "
