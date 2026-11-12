@@ -359,15 +359,15 @@ def _unacked(e):
 
 def bars_range_source(res="1", fetch=None):
     """range_source for PaperBroker from the public candle endpoint (bitpin.data.fetch_bars):
-    (symbol, start_ts, until_ts) -> (low, high) over the bars that OPENED at or after start_ts and
-    had trades (volume > 0), or None when there were none."""
+    (symbol, start_ts, until_ts) -> (low, high) over the bars that opened within
+    the inclusive time range and had trades (volume > 0), or None when there were none."""
     def src(symbol, start_ts, until_ts):
         from . import data as data_mod   # imported late: data has no bitpin imports, no cycle
         f = fetch or data_mod.fetch_bars
         bars = f(symbol, res, int(start_ts), int(until_ts))
         lo = hi = None
         for b in bars:
-            if b.ts < start_ts or not b.volume or b.volume <= 0:
+            if not start_ts <= b.ts <= until_ts or not b.volume or b.volume <= 0:
                 continue
             bl, bh = D(b.low), D(b.high)
             lo = bl if lo is None else min(lo, bl)
