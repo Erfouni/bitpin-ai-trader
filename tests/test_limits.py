@@ -533,6 +533,25 @@ class PaperLimitTest(unittest.TestCase):
         self.assertEqual(calls, [("BTC_USDT", "1", 1000020, 1000500)])
         self.assertIsNone(bars_range_source("60", fetch=lambda *a: [])("BTC_USDT", 0, 1))
 
+    def test_paper_sell_limit_ignores_candle_after_sync_time(self):
+        self.clock.t = 120
+        bars = [
+            Bar(120, 95000, 96000, 94000, 95500, 1),
+            Bar(180, 95500, 97100, 95000, 97000, 1),
+        ]
+        self.ranges = bars_range_source("1", fetch=lambda *args: bars)
+        p = self.broker(btc="0.001", persist=False)
+        p.place_limit("BTC_USDT", "sell", "97000", "0.0003", identifier="future-sell")
+
+        self.clock.t = 150
+        self.assertEqual(p.sync_limits()["changed"], [])
+        order = p.limit_orders()[0]
+        self.assertEqual((order["state"], order["filled_base"]), (LIMIT_OPEN, Decimal("0")))
+
+        self.clock.t = 180
+        order, = p.sync_limits()["changed"]
+        self.assertEqual((order["state"], order["filled_base"]), (LIMIT_FILLED, Decimal("0.0003")))
+
 
 # --------------------------------------------------------------------------- live limits (fake exchange)
 
